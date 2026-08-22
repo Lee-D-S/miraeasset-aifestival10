@@ -28,4 +28,4 @@ class ChunkRecord:
     source_path: str
     embedding: list[float] | None = None
     span: list[int] = field(default_factory=list)
-
+    text_hash: str = ""

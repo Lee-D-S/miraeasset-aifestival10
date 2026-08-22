@@ -41,6 +41,16 @@ python -m scripts.inspect_corpus --source "C:\Users\idong\OneDrive\바탕 화면
 
 `ClovaClient.rerank_documents()`는 Vector DB에서 검색한 문서 목록을 `POST /v1/api-tools/reranker`로 보내고, 관련 문서·인용 문서·추천 검색어를 반환합니다.
 
+### Build the vector index
+
+실제 색인은 CLOVA API 키와 PostgreSQL 접속정보가 설정된 환경에서 실행합니다.
+
+```powershell
+python -m scripts.build_index --source "C:\Users\idong\OneDrive\바탕 화면\공모전\2026 미래에셋 ai 페스티벌\data\3.공시" --limit 10
+```
+
+`--limit`을 생략하면 manifest 전체를 처리합니다. 동일한 원본 해시와 chunk가 이미 있으면 문서를 건너뛰므로 중단 후 재실행할 수 있습니다.
+
 ### CLOVA client structure
 
 CLOVA Studio API별 구현은 `rag/clients/`에 분리되어 있습니다. 공통 HTTP 인증은 `base.py`가 담당하고, 문단 나누기·임베딩·리랭커·RAG Reasoning은 각각의 client가 담당합니다. 기존 `ClovaClient` facade는 호환성을 위해 남아 있습니다.

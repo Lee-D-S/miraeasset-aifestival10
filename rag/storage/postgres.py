@@ -123,6 +123,28 @@ class PostgresStore:
                 cursor.execute(query, values)
             connection.commit()
 
+    def document_is_current(self, document_id: str, source_hash: str) -> bool:
+        with self.connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT d.source_hash, COUNT(c.id)
+                    FROM documents d
+                    LEFT JOIN document_chunks c ON c.document_id = d.id
+                    WHERE d.id = %s
+                    GROUP BY d.source_hash
+                    """,
+                    (document_id,),
+                )
+                row = cursor.fetchone()
+        return bool(row and row[0] == source_hash and row[1] > 0)
+
+    def delete_chunks(self, document_id: str) -> None:
+        with self.connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM document_chunks WHERE document_id = %s", (document_id,))
+            connection.commit()
+
     def upsert_chunks(self, chunks: Iterable[ChunkRecord]) -> int:
         rows = list(chunks)
         if not rows:
@@ -186,4 +208,3 @@ class PostgresStore:
                 cursor.execute(query, parameters)
                 columns = [description.name for description in cursor.description]
                 return [dict(zip(columns, row)) for row in cursor.fetchall()]
-
