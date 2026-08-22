@@ -23,6 +23,14 @@ uvicorn app:app --reload
 
 현재 문서 검색기는 빈 로컬 검색기로 구성되어 있습니다. 이후 문서 분할, CLOVA Embedding, 벡터 DB, CLOVA 답변 생성을 단계적으로 연결합니다.
 
+### Corpus inspection
+
+승인된 공시 corpus만 검사하려면 다음 명령을 사용합니다.
+
+```powershell
+python -m scripts.inspect_corpus --source "C:\Users\idong\OneDrive\바탕 화면\공모전\2026 미래에셋 ai 페스티벌\data\3.공시" --limit 10
+```
+
 ### CLOVA 문단 나누기 설정
 
 `.env`에 `CLOVA_API_KEY`를 설정한 뒤 `ClovaClient.segment_text()`를 호출하면 최신 문단 나누기 API를 사용합니다. 기본값은 `alpha=-100`, `segCnt=-1`, `postProcess=true`이며, API 응답의 `topicSeg`를 임베딩 대상 문단 목록으로 변환합니다.
