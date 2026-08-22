@@ -63,6 +63,12 @@ python -m scripts.local_smoke_test
 
 현재 로컬 smoke test는 추가 패키지 설치 없이 동작하는 임시 cosine store와 deterministic fake embedding을 사용합니다. FAISS 또는 Chroma는 실제 로컬 색인 규모가 필요할 때 교체 도입합니다.
 
+실제 공시 문서 일부를 로컬 색인하려면 다음 명령을 사용합니다. 기본값은 manifest의 첫 5개 문서이며, 결과는 Git에서 제외되는 `vector_db/`에 저장됩니다.
+
+```powershell
+python -m scripts.build_local_index --source "C:\Users\idong\OneDrive\바탕 화면\공모전\2026 미래에셋 ai 페스티벌\data\3.공시" --limit 5
+```
+
 ### CLOVA client structure
 
 CLOVA Studio API별 구현은 `rag/clients/`에 분리되어 있습니다. 공통 HTTP 인증은 `base.py`가 담당하고, 문단 나누기·임베딩·리랭커·RAG Reasoning은 각각의 client가 담당합니다. 기존 `ClovaClient` facade는 호환성을 위해 남아 있습니다.

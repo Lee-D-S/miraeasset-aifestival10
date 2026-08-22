@@ -1,6 +1,8 @@
 import math
+import json
 from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 
@@ -47,6 +49,34 @@ class LocalVectorStore:
                 **row.metadata,
             })
         return sorted(scored, key=lambda item: item["score"], reverse=True)[:limit]
+
+    def save(self, path: str) -> None:
+        payload = [
+            {
+                "id": row.id,
+                "text": row.text,
+                "source_path": row.source_path,
+                "embedding": row.embedding,
+                "metadata": row.metadata,
+            }
+            for row in self.rows.values()
+        ]
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    @classmethod
+    def load(cls, path: str) -> "LocalVectorStore":
+        target = Path(path)
+        store = cls()
+        if not target.exists():
+            return store
+        payload = json.loads(target.read_text(encoding="utf-8"))
+        store.upsert(LocalVectorRow(**item) for item in payload)
+        return store
+
+    def __len__(self) -> int:
+        return len(self.rows)
 
     @staticmethod
     def _cosine_similarity(left: list[float], right: list[float]) -> float:
