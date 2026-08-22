@@ -51,6 +51,10 @@ python -m scripts.build_index --source "C:\Users\idong\OneDrive\바탕 화면\�
 
 `--limit`을 생략하면 manifest 전체를 처리합니다. 동일한 원본 해시와 chunk가 이미 있으면 문서를 건너뛰므로 중단 후 재실행할 수 있습니다.
 
+### Retrieval structure
+
+`rag/retrieval/vector_search.py`는 질문을 Embedding v2로 변환하고 PostgreSQL pgvector에서 cosine 검색을 수행합니다. `rag/retrieval/rerank.py`는 검색된 상위 chunk를 CLOVA 리랭커에 전달하고 `citedDocuments`를 원래 chunk 메타데이터와 연결합니다. 실제 DB와 CLOVA API가 준비되기 전에는 두 구성요소에 fake 구현을 주입해 로컬 테스트할 수 있습니다.
+
 ### CLOVA client structure
 
 CLOVA Studio API별 구현은 `rag/clients/`에 분리되어 있습니다. 공통 HTTP 인증은 `base.py`가 담당하고, 문단 나누기·임베딩·리랭커·RAG Reasoning은 각각의 client가 담당합니다. 기존 `ClovaClient` facade는 호환성을 위해 남아 있습니다.
