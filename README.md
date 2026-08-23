@@ -69,6 +69,12 @@ python -m scripts.local_smoke_test
 python -m scripts.build_local_index --source "C:\Users\idong\OneDrive\바탕 화면\공모전\2026 미래에셋 ai 페스티벌\data\3.공시" --limit 5
 ```
 
+CLOVA 문단 나누기 API를 문서 1개로 테스트하려면 다음 명령을 사용합니다. 이 명령부터 CLOVA API 사용량이 발생합니다.
+
+```powershell
+python -m scripts.test_clova_segmentation --source "C:\Users\idong\OneDrive\바탕 화면\공모전\2026 미래에셋 ai 페스티벌\data\3.공시"
+```
+
 ### CLOVA client structure
 
 CLOVA Studio API별 구현은 `rag/clients/`에 분리되어 있습니다. 공통 HTTP 인증은 `base.py`가 담당하고, 문단 나누기·임베딩·리랭커·RAG Reasoning은 각각의 client가 담당합니다. 기존 `ClovaClient` facade는 호환성을 위해 남아 있습니다.
