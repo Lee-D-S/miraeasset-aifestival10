@@ -1,10 +1,15 @@
 import argparse
 import json
+import sys
 
 from rag.clients.embedding import EmbeddingClient
 from rag.clients.segmentation import SegmentationClient
 from rag.config import settings
 from rag.ingestion.pipeline import CorpusScanner
+
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
 
 
 def main() -> None:

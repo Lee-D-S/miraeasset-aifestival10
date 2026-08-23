@@ -1,8 +1,13 @@
 import argparse
 import json
+import sys
 
 from rag.clients.embedding import EmbeddingClient
 from rag.storage.local import LocalVectorStore
+
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
 
 
 def main() -> None:

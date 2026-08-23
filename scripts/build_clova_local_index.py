@@ -1,5 +1,6 @@
 import argparse
 import json
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -8,6 +9,10 @@ from rag.clients.segmentation import SegmentationClient
 from rag.config import settings
 from rag.ingestion.pipeline import CorpusScanner
 from rag.storage.local import LocalVectorRow, LocalVectorStore
+
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
 
 
 def _metadata(document, chunk_index: int, text: str) -> dict[str, str | int]:
