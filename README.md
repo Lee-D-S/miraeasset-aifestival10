@@ -108,6 +108,14 @@ python -m scripts.search_clova_local_index "2023년 1분기 사업 내용은 무
 
 검색 결과는 기본적으로 CLOVA 리랭커에도 전달됩니다. 리랭커 결과에는 `result`, `suggested_queries`, `cited_documents`가 포함됩니다. `--rerank-top-k`로 리랭커에 전달할 문서 수를 조정할 수 있습니다.
 
+리랭커와 RAG Reasoning까지 연결한 로컬 end-to-end 테스트는 다음과 같이 실행합니다.
+
+```powershell
+python -m scripts.run_clova_local_rag "삼성전자의 2023년 1분기 공시 문서에 기재된 주요 사업 내용은 무엇인가요?" --retrieval-top-k 5 --rerank-top-k 5
+```
+
+이 명령은 검색 도구 호출, 로컬 검색, 리랭킹, 최종 답변 생성, 인용 문서 출력을 순서대로 수행합니다.
+
 `/answer`는 검색 결과가 없거나 리랭커가 관련 문서를 선택하지 못하면 근거 없는 답변을 생성하지 않고, `retrieved_context`를 비우고 다음 문구를 반환합니다: `제공된 공시 문서에서는 해당 정보를 확인할 수 없습니다.`
 
 ### CLOVA client structure

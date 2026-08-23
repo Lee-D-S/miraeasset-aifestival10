@@ -1,12 +1,8 @@
 SEARCH_TOOL = {
     "type": "function",
     "function": {
-        "name": "search_financial_documents",
-        "description": (
-            "지정된 공시 문서만 검색하는 도구입니다. 질문에서 기업명, 기간, "
-            "공시 유형과 핵심 지표를 추출해 검색하세요. 검색 결과에 근거가 없으면 "
-            "추측하지 말고 확인할 수 없다고 답하세요."
-        ),
+        "name": "ncloud_cs_retrieval",
+        "description": "지정된 공시 문서에서 사용자 질문과 관련된 정보를 검색하는 도구입니다.",
         "parameters": {
             "type": "object",
             "properties": {

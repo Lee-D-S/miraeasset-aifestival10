@@ -27,14 +27,7 @@ class RagAnswerGenerator:
         search: Callable[[str], RerankedResult],
     ) -> GeneratedAnswer:
         messages: list[dict[str, Any]] = [
-            {
-                "role": "system",
-                "content": (
-                    "제공된 공시 문서만 근거로 답변하세요. 문서에 없는 숫자, 날짜, "
-                    "기업 정보는 추측하지 마세요. 답변에 사용한 근거의 기업명과 기간을 유지하세요."
-                ),
-            },
-            {"role": "user", "content": question},
+            {"role": "user", "content": question}
         ]
         all_documents: dict[str, RetrievedDocument] = {}
         traces: list[str] = []
@@ -80,7 +73,6 @@ class RagAnswerGenerator:
                     "role": "tool",
                     "toolCallId": str(tool_call.get("id", "")),
                     "content": json.dumps(tool_payload, ensure_ascii=False),
-                    "toolCalls": tool_calls,
                 })
 
         return GeneratedAnswer(
