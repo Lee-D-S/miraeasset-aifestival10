@@ -75,6 +75,8 @@ CLOVA 문단 나누기 API를 문서 1개로 테스트하려면 다음 명령을
 python -m scripts.test_clova_segmentation --source "C:\Users\idong\OneDrive\바탕 화면\공모전\2026 미래에셋 ai 페스티벌\data\3.공시"
 ```
 
+문서가 API 입력 한도를 넘으면 segmentation client가 줄바꿈 경계를 우선해 여러 요청으로 나누어 처리합니다. 단독 테스트는 기본적으로 문서 앞부분 20,000자만 호출하며, `--max-chars`로 조정할 수 있습니다.
+
 ### CLOVA client structure
 
 CLOVA Studio API별 구현은 `rag/clients/`에 분리되어 있습니다. 공통 HTTP 인증은 `base.py`가 담당하고, 문단 나누기·임베딩·리랭커·RAG Reasoning은 각각의 client가 담당합니다. 기존 `ClovaClient` facade는 호환성을 위해 남아 있습니다.

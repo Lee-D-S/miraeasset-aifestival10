@@ -28,7 +28,10 @@ class ClovaApiClient:
         try:
             with urlopen(request, timeout=120) as response:
                 return json.loads(response.read().decode("utf-8"))
-        except (HTTPError, URLError) as error:
+        except HTTPError as error:
+            detail = error.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"CLOVA API request failed: HTTP {error.code}: {detail}") from error
+        except URLError as error:
             raise RuntimeError(f"CLOVA API request failed: {error}") from error
 
     @staticmethod
@@ -37,4 +40,3 @@ class ClovaApiClient:
         if status.get("code") != "20000":
             raise RuntimeError(f"CLOVA {operation} failed: {status}")
         return response.get("result", {})
-
