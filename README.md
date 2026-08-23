@@ -130,6 +130,18 @@ GET /answer?question_id=Q-001&question=삼성전자의%202023년%201분기%20사
 
 CLOVA Studio API별 구현은 `rag/clients/`에 분리되어 있습니다. 공통 HTTP 인증은 `base.py`가 담당하고, 문단 나누기·임베딩·리랭커·RAG Reasoning은 각각의 client가 담당합니다. 기존 `ClovaClient` facade는 호환성을 위해 남아 있습니다.
 
+### 답변 품질 평가
+
+큐레이션한 질문은 `tests/eval_cases.json`에 정의하고, 로컬 Vector Store와 현재 `/answer` 파이프라인의 검색·출처·근거·숫자·기간·무응답 처리를 다음 명령으로 평가할 수 있습니다.
+
+```powershell
+python scripts/evaluate_rag.py `
+  --cases tests/eval_cases.json `
+  --output test_data/evaluation/latest_evaluation.json
+```
+
+결과는 JSON과 Markdown으로 생성되며, `test_data/evaluation/`은 원본 데이터와 평가 결과가 커지지 않도록 Git에서 제외합니다. 평가 실행 내역은 `docs/검증 기록.md`에 누적합니다.
+
 ### 검증 기록
 
 실제 공시 문서와 CLOVA API를 사용한 단위·통합·smoke·end-to-end 검증 시도, 오류와 수정 내역은 [docs/검증 기록.md](docs/검증%20기록.md)에 기록합니다.
