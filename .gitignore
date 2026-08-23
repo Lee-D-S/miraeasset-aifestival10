@@ -6,4 +6,9 @@ __pycache__/
 !.env.example
 test_data/*.json
 test_data/evaluation/
+data/
+*.log
+*.pem
+*.key
+*.crt
 .pytest_cache/

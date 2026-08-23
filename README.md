@@ -2,10 +2,11 @@
 
 AI Festival 2026 - 퍼스트펭귄
 
-## RAG API scaffold
+## 현재 구현 상태
 
-현재 프로젝트는 CLOVA Studio 기반 RAG 구현을 위한 최소 FastAPI 골격입니다.
-최신 CLOVA Studio API 문서를 확인한 뒤 `rag/services/clova_client.py`에 실제 API 호출을 연결합니다.
+현재 프로젝트는 CLOVA Studio 기반 로컬 RAG MVP입니다. 지정 공시 문서의 일부를 문단 단위로 색인하고, 질문 Embedding v2 검색·메타데이터 필터·리랭커·RAG Reasoning을 연결해 `/answer` 응답까지 생성합니다.
+
+현재 로컬 검증은 `test_data/disclosure_clova_local.json`을 사용합니다. PostgreSQL DSN을 설정하면 PostgreSQL + pgvector 저장소가 우선 선택되지만, 현재 실제 운영 DB는 아직 연결하지 않았습니다.
 
 ### Run locally
 
@@ -21,7 +22,16 @@ uvicorn app:app --reload
 - `GET /health`
 - `GET /answer?question_id=Q-001&question=질문내용`
 
-현재 문서 검색기는 빈 로컬 검색기로 구성되어 있습니다. 이후 문서 분할, CLOVA Embedding, 벡터 DB, CLOVA 답변 생성을 단계적으로 연결합니다.
+`/answer`의 기본 흐름은 다음과 같습니다.
+
+```text
+질문
+→ Embedding v2
+→ 로컬 Vector Store 또는 PostgreSQL + pgvector 검색
+→ 메타데이터 필터
+→ CLOVA 리랭커
+→ RAG Reasoning tool call 및 최종 답변
+```
 
 ### Corpus inspection
 
@@ -43,13 +53,13 @@ python -m scripts.inspect_corpus --source "C:\Users\idong\OneDrive\바탕 화면
 
 ### Build the vector index
 
-실제 색인은 CLOVA API 키와 PostgreSQL 접속정보가 설정된 환경에서 실행합니다.
+`build_index`는 PostgreSQL + pgvector 전체 색인을 위한 확장 경로입니다. 현재 비용을 발생시키지 않는 로컬 검증은 아래의 `build_clova_local_index`를 사용합니다.
 
 ```powershell
 python -m scripts.build_index --source "C:\Users\idong\OneDrive\바탕 화면\공모전\2026 미래에셋 ai 페스티벌\data\3.공시" --limit 10
 ```
 
-`--limit`을 생략하면 manifest 전체를 처리합니다. 동일한 원본 해시와 chunk가 이미 있으면 문서를 건너뛰므로 중단 후 재실행할 수 있습니다.
+`--limit`을 생략하면 manifest 전체를 처리합니다. 동일한 원본 해시와 chunk가 이미 있으면 문서를 건너뛰므로 중단 후 재실행할 수 있습니다. 전체 공시 데이터 색인은 아직 운영 단계에서 수행할 작업입니다.
 
 ### Retrieval structure
 
