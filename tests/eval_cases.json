@@ -1,10 +1,10 @@
 [
   {
     "question_id": "EVAL-001",
-    "question": "삼성전자의 2023년 1분기 주요 제품 매출은?",
+    "question": "삼성전자의 2023년 1분기 부문별 매출은?",
     "expected_source": ["20230515002335_quarter_2023_03"],
-    "required_terms": ["삼성전자", "2023년 1분기", "주요 제품"],
-    "expected_values": ["63조 7,454억"],
+    "required_terms": ["삼성전자", "2023년 1분기", "DX", "DS"],
+    "expected_values": ["46조 2,225억", "13조 7,345억"],
     "expected_periods": ["2023년 1분기"],
     "answerable": true
   },

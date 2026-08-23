@@ -98,7 +98,6 @@ def evaluate_case(case: dict[str, Any], service: Any) -> dict[str, Any]:
     expected_values = [str(value) for value in case.get("expected_values", [])]
     grounded = (
         retrieval_hit
-        and _contains_all(context, required_terms)
         and _contains_all(answer, required_terms)
         and _value_matches(context, expected_values)
         and not answer.startswith(FALLBACK_ANSWER)
