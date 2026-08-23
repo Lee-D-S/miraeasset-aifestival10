@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from rag.config import settings
 from rag.generation.answer_generator import RagAnswerGenerator
 from rag.retrieval.rerank import DocumentReranker
@@ -6,6 +8,7 @@ from rag.schemas import AnswerResponse, RetrievedDocument
 from rag.clients.embedding import EmbeddingClient
 from rag.clients.reranker import RerankerClient
 from rag.clients.rag_reasoning import RagReasoningClient
+from rag.storage.local import LocalVectorStore
 from rag.storage.postgres import PostgresStore
 
 
@@ -14,8 +17,13 @@ class AnswerService:
         self.retriever = None
         self.reranker = None
         self.generator = None
-        if settings.postgres_dsn and settings.clova_api_key:
+        if settings.clova_api_key and settings.postgres_dsn:
             store = PostgresStore(settings.postgres_dsn)
+        elif settings.clova_api_key and Path(settings.local_vector_index).exists():
+            store = LocalVectorStore.load(settings.local_vector_index)
+        else:
+            store = None
+        if store is not None:
             self.retriever = VectorRetriever(store, EmbeddingClient(), settings.retrieval_top_k)
             self.reranker = DocumentReranker(RerankerClient())
             self.generator = RagAnswerGenerator(RagReasoningClient(), settings.max_tool_rounds)
@@ -26,7 +34,7 @@ class AnswerService:
                 question_id=question_id,
                 question=question,
                 retrieved_context="",
-                think_trace="CLOVA API 키 또는 PostgreSQL 연결 설정이 없습니다.",
+                think_trace="CLOVA API 키 또는 Vector Store 연결 설정이 없습니다.",
                 answer="RAG 서버가 아직 연결되지 않았습니다.",
             )
 

@@ -116,6 +116,12 @@ python -m scripts.run_clova_local_rag "삼성전자의 2023년 1분기 공시 �
 
 이 명령은 검색 도구 호출, 로컬 검색, 리랭킹, 최종 답변 생성, 인용 문서 출력을 순서대로 수행합니다.
 
+대회용 `/answer`도 CLOVA API 키와 로컬 색인이 있으면 같은 로컬 RAG 흐름을 사용합니다. PostgreSQL DSN이 설정되면 PostgreSQL이 우선됩니다.
+
+```text
+GET /answer?question_id=Q-001&question=삼성전자의%202023년%201분기%20사업%20내용은%20무엇인가요?
+```
+
 `/answer`는 검색 결과가 없거나 리랭커가 관련 문서를 선택하지 못하면 근거 없는 답변을 생성하지 않고, `retrieved_context`를 비우고 다음 문구를 반환합니다: `제공된 공시 문서에서는 해당 정보를 확인할 수 없습니다.`
 
 ### CLOVA client structure
