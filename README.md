@@ -104,6 +104,8 @@ python -m scripts.build_clova_local_index --source "C:\Users\idong\OneDrive\바�
 python -m scripts.search_clova_local_index "2023년 1분기 사업 내용은 무엇인가요?" --top-k 3
 ```
 
+`/answer`는 검색 결과가 없거나 리랭커가 관련 문서를 선택하지 못하면 근거 없는 답변을 생성하지 않고, `retrieved_context`를 비우고 다음 문구를 반환합니다: `제공된 공시 문서에서는 해당 정보를 확인할 수 없습니다.`
+
 ### CLOVA client structure
 
 CLOVA Studio API별 구현은 `rag/clients/`에 분리되어 있습니다. 공통 HTTP 인증은 `base.py`가 담당하고, 문단 나누기·임베딩·리랭커·RAG Reasoning은 각각의 client가 담당합니다. 기존 `ClovaClient` facade는 호환성을 위해 남아 있습니다.

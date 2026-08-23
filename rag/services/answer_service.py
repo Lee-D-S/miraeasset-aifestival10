@@ -31,7 +31,21 @@ class AnswerService:
             )
 
         documents = self.retriever.search(question, limit=settings.retrieval_top_k)
+        if not documents:
+            return self._not_found_response(
+                question_id,
+                question,
+                "지정된 공시 문서에서 질문과 관련된 검색 결과가 없습니다.",
+            )
+
         reranked = self.reranker.rerank(question, documents[:settings.rerank_top_k])
+        if not reranked.documents:
+            return self._not_found_response(
+                question_id,
+                question,
+                "검색된 문서가 질문과 충분히 관련되지 않아 답변을 생성하지 않았습니다.",
+            )
+
         generated = self.generator.generate(question, lambda query: self.reranker.rerank(
             query,
             self.retriever.search(query, limit=settings.retrieval_top_k)[:settings.rerank_top_k],
@@ -40,12 +54,10 @@ class AnswerService:
         context = self._format_context(final_documents)
 
         if not final_documents:
-            return AnswerResponse(
-                question_id=question_id,
-                question=question,
-                retrieved_context="",
-                think_trace=generated.think_trace or "검색 결과가 없습니다.",
-                answer="관련 근거 문서를 찾지 못했습니다.",
+            return self._not_found_response(
+                question_id,
+                question,
+                generated.think_trace or "최종 답변에 사용할 근거 문서가 없습니다.",
             )
 
         return AnswerResponse(
@@ -54,6 +66,20 @@ class AnswerService:
             retrieved_context=context,
             think_trace=generated.think_trace or "관련 문서를 검색하고 리랭킹했습니다.",
             answer=generated.answer,
+        )
+
+    @staticmethod
+    def _not_found_response(
+        question_id: str,
+        question: str,
+        trace: str,
+    ) -> AnswerResponse:
+        return AnswerResponse(
+            question_id=question_id,
+            question=question,
+            retrieved_context="",
+            think_trace=trace,
+            answer="제공된 공시 문서에서는 해당 정보를 확인할 수 없습니다.",
         )
 
     @staticmethod
