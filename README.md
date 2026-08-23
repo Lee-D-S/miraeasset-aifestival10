@@ -85,6 +85,19 @@ python -m scripts.test_clova_embedding --source "C:\Users\idong\OneDrive\바탕 
 
 정상 결과는 `embedding_dimension: 1024`를 포함해야 합니다. 이 smoke test는 전체 문서를 색인하지 않고 문단 1개만 호출합니다.
 
+문단 나누기 결과와 Embedding v2 결과를 로컬 Vector Store에 저장하려면 다음 명령을 사용합니다. 기본값은 첫 문서의 최대 3개 문단이며, 이미 저장된 문단은 API를 다시 호출하지 않습니다.
+
+```powershell
+python -m scripts.build_clova_local_index --source "C:\Users\idong\OneDrive\바탕 화면\공모전\2026 미래에셋 ai 페스티벌\data\3.공시"
+```
+
+생성 파일:
+
+- `vector_db/segmentation_cache.json`: 문단 나누기 결과 캐시
+- `vector_db/disclosure_clova_local.json`: 문단 원문·출처·Embedding v2 벡터
+
+전체 문단을 처리하려면 `--max-chunks -1`을 사용합니다. 이 경우 문단 수만큼 Embedding v2 API가 호출됩니다.
+
 ### CLOVA client structure
 
 CLOVA Studio API별 구현은 `rag/clients/`에 분리되어 있습니다. 공통 HTTP 인증은 `base.py`가 담당하고, 문단 나누기·임베딩·리랭커·RAG Reasoning은 각각의 client가 담당합니다. 기존 `ClovaClient` facade는 호환성을 위해 남아 있습니다.
