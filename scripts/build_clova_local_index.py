@@ -50,6 +50,7 @@ def main() -> None:
     parser.add_argument("--source", default=settings.source_root, required=not bool(settings.source_root))
     parser.add_argument("--limit", type=int, default=1)
     parser.add_argument("--max-chars", type=int, default=20_000)
+    parser.add_argument("--chunk-start", type=int, default=0)
     parser.add_argument("--max-chunks", type=int, default=3)
     parser.add_argument("--segmentation-cache", default="vector_db/segmentation_cache.json")
     parser.add_argument("--output", default="vector_db/disclosure_clova_local.json")
@@ -91,8 +92,9 @@ def main() -> None:
             }
             _save_json(segmentation_cache_path, segmentation_cache)
 
-        selected = paragraphs if args.max_chunks < 0 else paragraphs[: args.max_chunks]
-        for chunk_index, paragraph in enumerate(selected):
+        available = list(enumerate(paragraphs[args.chunk_start :], start=args.chunk_start))
+        selected = available if args.max_chunks < 0 else available[: args.max_chunks]
+        for chunk_index, paragraph in selected:
             chunk_id = f"{document.document_id}#chunk-{chunk_index}"
             existing = store.rows.get(chunk_id)
             if existing and existing.text == paragraph:

@@ -98,6 +98,8 @@ python -m scripts.build_clova_local_index --source "C:\Users\idong\OneDrive\바�
 
 전체 문단을 처리하려면 `--max-chunks -1`을 사용합니다. 이 경우 문단 수만큼 Embedding v2 API가 호출됩니다.
 
+표지·목차 이후의 본문 문단부터 추가하려면 `--chunk-start`를 지정합니다. 예를 들어 `--chunk-start 4 --max-chunks 6`은 5번째 문단부터 6개를 색인합니다.
+
 저장된 로컬 색인을 질문으로 검색하려면 다음과 같이 실행합니다. 이때 문서 임베딩은 재사용하고 질문 임베딩만 새로 생성합니다.
 
 ```powershell
