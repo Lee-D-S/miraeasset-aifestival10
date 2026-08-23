@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from rag.clients.embedding import EmbeddingClient
+from rag.retrieval.filters import extract_metadata_filters
 from rag.schemas import RetrievedDocument
 from rag.storage.postgres import PostgresStore
 
@@ -20,6 +21,12 @@ class VectorRetriever:
     ) -> list[RetrievedDocument]:
         if not query.strip():
             return []
+        if filters is None:
+            corp_names = []
+            rows = getattr(self.store, "rows", {})
+            for row in rows.values():
+                corp_names.append(str(row.metadata.get("corp_name", "")))
+            filters = extract_metadata_filters(query, corp_names=corp_names)
         vector = self.embedder.embed_text(query).vector
         rows = self.store.search(vector, limit=limit or self.default_limit, filters=filters)
         return [

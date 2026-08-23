@@ -38,7 +38,15 @@ class LocalVectorStore:
     ) -> list[dict[str, Any]]:
         scored = []
         for row in self.rows.values():
-            if filters and any(row.metadata.get(key) != value for key, value in filters.items() if value):
+            if filters and any(
+                value
+                and (
+                    value not in str(row.metadata.get(key, ""))
+                    if key == "document_type"
+                    else str(row.metadata.get(key, "")) != value
+                )
+                for key, value in filters.items()
+            ):
                 continue
             score = self._cosine_similarity(embedding, row.embedding)
             scored.append({

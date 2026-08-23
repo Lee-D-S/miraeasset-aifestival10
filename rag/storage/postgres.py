@@ -190,8 +190,12 @@ class PostgresStore:
         for field in ("corp_name", "corp_code", "document_type", "report_period", "source_group"):
             value = (filters or {}).get(field)
             if value:
-                conditions.append(f"d.{field} = %s")
-                parameters.append(value)
+                if field == "document_type":
+                    conditions.append(f"d.{field} ILIKE %s")
+                    parameters.append(f"%{value}%")
+                else:
+                    conditions.append(f"d.{field} = %s")
+                    parameters.append(value)
         parameters.extend([embedding, limit])
         query = f"""
         SELECT c.id, c.text, c.source_path, d.corp_name, d.corp_code,

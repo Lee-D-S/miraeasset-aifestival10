@@ -3,6 +3,7 @@ import json
 import sys
 
 from rag.clients.embedding import EmbeddingClient
+from rag.retrieval.filters import extract_metadata_filters
 from rag.retrieval.rerank import DocumentReranker
 from rag.schemas import RetrievedDocument
 from rag.storage.local import LocalVectorStore
@@ -27,7 +28,9 @@ def main() -> None:
         raise RuntimeError(f"Vector index is empty or missing: {args.index}")
 
     query_embedding = EmbeddingClient().embed_text(args.question)
-    results = store.search(query_embedding.vector, limit=args.top_k)
+    corp_names = [str(row.metadata.get("corp_name", "")) for row in store.rows.values()]
+    filters = extract_metadata_filters(args.question, corp_names=corp_names)
+    results = store.search(query_embedding.vector, limit=args.top_k, filters=filters)
     retrieved_documents = [
         RetrievedDocument(
             id=row["id"],
@@ -51,6 +54,7 @@ def main() -> None:
                 "question": args.question,
                 "query_input_tokens": query_embedding.input_tokens,
                 "index_size": len(store),
+                "metadata_filters": filters,
                 "results": [
                     {
                         "id": row["id"],
