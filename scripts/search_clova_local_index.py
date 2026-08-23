@@ -3,6 +3,8 @@ import json
 import sys
 
 from rag.clients.embedding import EmbeddingClient
+from rag.retrieval.rerank import DocumentReranker
+from rag.schemas import RetrievedDocument
 from rag.storage.local import LocalVectorStore
 
 
@@ -17,6 +19,7 @@ def main() -> None:
     parser.add_argument("question")
     parser.add_argument("--index", default="vector_db/disclosure_clova_local.json")
     parser.add_argument("--top-k", type=int, default=5)
+    parser.add_argument("--rerank-top-k", type=int, default=5)
     args = parser.parse_args()
 
     store = LocalVectorStore.load(args.index)
@@ -25,6 +28,23 @@ def main() -> None:
 
     query_embedding = EmbeddingClient().embed_text(args.question)
     results = store.search(query_embedding.vector, limit=args.top_k)
+    retrieved_documents = [
+        RetrievedDocument(
+            id=row["id"],
+            source=row["source_path"],
+            text=row["text"],
+            score=max(0.0, min(1.0, float(row["score"]))),
+            metadata={
+                key: row.get(key, "")
+                for key in ("corp_name", "document_type", "report_period", "chunk_index")
+            },
+        )
+        for row in results
+    ]
+    reranked = DocumentReranker().rerank(
+        args.question,
+        retrieved_documents[: args.rerank_top_k],
+    )
     print(
         json.dumps(
             {
@@ -44,6 +64,19 @@ def main() -> None:
                     }
                     for row in results
                 ],
+                "reranker": {
+                    "result": reranked.answer,
+                    "suggested_queries": reranked.suggested_queries,
+                    "cited_documents": [
+                        {
+                            "id": document.id,
+                            "source_path": document.source,
+                            "text": document.text,
+                            "metadata": document.metadata,
+                        }
+                        for document in reranked.documents
+                    ],
+                },
             },
             ensure_ascii=False,
             indent=2,
