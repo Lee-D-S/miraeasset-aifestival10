@@ -129,3 +129,7 @@ GET /answer?question_id=Q-001&question=삼성전자의%202023년%201분기%20사
 ### CLOVA client structure
 
 CLOVA Studio API별 구현은 `rag/clients/`에 분리되어 있습니다. 공통 HTTP 인증은 `base.py`가 담당하고, 문단 나누기·임베딩·리랭커·RAG Reasoning은 각각의 client가 담당합니다. 기존 `ClovaClient` facade는 호환성을 위해 남아 있습니다.
+
+### 검증 기록
+
+실제 공시 문서와 CLOVA API를 사용한 단위·통합·smoke·end-to-end 검증 시도, 오류와 수정 내역은 [docs/검증 기록.md](docs/검증%20기록.md)에 기록합니다.
