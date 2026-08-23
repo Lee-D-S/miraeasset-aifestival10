@@ -38,8 +38,10 @@ uvicorn app:app --reload
 승인된 공시 corpus만 검사하려면 다음 명령을 사용합니다.
 
 ```powershell
-python -m scripts.inspect_corpus --source "C:\Users\idong\OneDrive\바탕 화면\공모전\2026 미래에셋 ai 페스티벌\data\3.공시" --limit 10
+python -m scripts.inspect_corpus --source "<DATA_DIR>" --limit 10
 ```
+
+`<DATA_DIR>`는 제공받은 공시 데이터가 있는 사용자 환경의 실제 경로로 바꿉니다. 공시 원본은 저장소에 포함하지 않습니다.
 
 ### CLOVA 문단 나누기 설정
 
@@ -56,7 +58,7 @@ python -m scripts.inspect_corpus --source "C:\Users\idong\OneDrive\바탕 화면
 `build_index`는 PostgreSQL + pgvector 전체 색인을 위한 확장 경로입니다. 현재 비용을 발생시키지 않는 로컬 검증은 아래의 `build_clova_local_index`를 사용합니다.
 
 ```powershell
-python -m scripts.build_index --source "C:\Users\idong\OneDrive\바탕 화면\공모전\2026 미래에셋 ai 페스티벌\data\3.공시" --limit 10
+python -m scripts.build_index --source "<DATA_DIR>" --limit 10
 ```
 
 `--limit`을 생략하면 manifest 전체를 처리합니다. 동일한 원본 해시와 chunk가 이미 있으면 문서를 건너뛰므로 중단 후 재실행할 수 있습니다. 전체 공시 데이터 색인은 아직 운영 단계에서 수행할 작업입니다.
@@ -76,13 +78,13 @@ python -m scripts.local_smoke_test
 실제 공시 문서 일부를 로컬 색인하려면 다음 명령을 사용합니다. 기본값은 manifest의 첫 5개 문서이며, 결과는 Git에서 제외되는 `test_data/`에 저장됩니다.
 
 ```powershell
-python -m scripts.build_local_index --source "C:\Users\idong\OneDrive\바탕 화면\공모전\2026 미래에셋 ai 페스티벌\data\3.공시" --limit 5
+python -m scripts.build_local_index --source "<DATA_DIR>" --limit 5
 ```
 
 CLOVA 문단 나누기 API를 문서 1개로 테스트하려면 다음 명령을 사용합니다. 이 명령부터 CLOVA API 사용량이 발생합니다.
 
 ```powershell
-python -m tests.test_clova_segmentation --source "C:\Users\idong\OneDrive\바탕 화면\공모전\2026 미래에셋 ai 페스티벌\data\3.공시"
+python -m tests.test_clova_segmentation --source "<DATA_DIR>"
 ```
 
 문서가 API 입력 한도를 넘으면 segmentation client가 줄바꿈 경계를 우선해 여러 요청으로 나누어 처리합니다. 단독 테스트는 기본적으로 문서 앞부분 20,000자만 호출하며, `--max-chars`로 조정할 수 있습니다.
@@ -90,7 +92,7 @@ python -m tests.test_clova_segmentation --source "C:\Users\idong\OneDrive\바탕
 문단 나누기 후 첫 문단 1개를 실제 Embedding v2로 변환하려면 다음 명령을 사용합니다. 문단 나누기와 임베딩 API 사용량이 각각 발생합니다.
 
 ```powershell
-python -m tests.test_clova_embedding --source "C:\Users\idong\OneDrive\바탕 화면\공모전\2026 미래에셋 ai 페스티벌\data\3.공시" --max-chars 20000 --paragraph-index 0
+python -m tests.test_clova_embedding --source "<DATA_DIR>" --max-chars 20000 --paragraph-index 0
 ```
 
 정상 결과는 `embedding_dimension: 1024`를 포함해야 합니다. 이 smoke test는 전체 문서를 색인하지 않고 문단 1개만 호출합니다.
@@ -98,7 +100,7 @@ python -m tests.test_clova_embedding --source "C:\Users\idong\OneDrive\바탕 �
 문단 나누기 결과와 Embedding v2 결과를 로컬 Vector Store에 저장하려면 다음 명령을 사용합니다. 기본값은 첫 문서의 최대 3개 문단이며, 이미 저장된 문단은 API를 다시 호출하지 않습니다.
 
 ```powershell
-python -m scripts.build_clova_local_index --source "C:\Users\idong\OneDrive\바탕 화면\공모전\2026 미래에셋 ai 페스티벌\data\3.공시"
+python -m scripts.build_clova_local_index --source "<DATA_DIR>"
 ```
 
 생성 파일:
