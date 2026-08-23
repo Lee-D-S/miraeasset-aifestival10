@@ -25,7 +25,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Build a no-cost local vector index from disclosure documents.")
     parser.add_argument("--source", default=settings.source_root, required=not bool(settings.source_root))
     parser.add_argument("--limit", type=int, default=5)
-    parser.add_argument("--output", default="vector_db/disclosure_local.json")
+    parser.add_argument("--output", default="test_data/disclosure_fake_local.json")
     parser.add_argument("--question", default="매출과 영업이익에 대한 공시 내용을 알려줘")
     args = parser.parse_args()
 

@@ -17,7 +17,7 @@ def main() -> None:
         description="Search a local CLOVA Embedding v2 vector index."
     )
     parser.add_argument("question")
-    parser.add_argument("--index", default="vector_db/disclosure_clova_local.json")
+    parser.add_argument("--index", default="test_data/disclosure_clova_local.json")
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--rerank-top-k", type=int, default=5)
     args = parser.parse_args()

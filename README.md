@@ -63,7 +63,7 @@ python -m scripts.local_smoke_test
 
 현재 로컬 smoke test는 추가 패키지 설치 없이 동작하는 임시 cosine store와 deterministic fake embedding을 사용합니다. FAISS 또는 Chroma는 실제 로컬 색인 규모가 필요할 때 교체 도입합니다.
 
-실제 공시 문서 일부를 로컬 색인하려면 다음 명령을 사용합니다. 기본값은 manifest의 첫 5개 문서이며, 결과는 Git에서 제외되는 `vector_db/`에 저장됩니다.
+실제 공시 문서 일부를 로컬 색인하려면 다음 명령을 사용합니다. 기본값은 manifest의 첫 5개 문서이며, 결과는 Git에서 제외되는 `test_data/`에 저장됩니다.
 
 ```powershell
 python -m scripts.build_local_index --source "C:\Users\idong\OneDrive\바탕 화면\공모전\2026 미래에셋 ai 페스티벌\data\3.공시" --limit 5
@@ -72,7 +72,7 @@ python -m scripts.build_local_index --source "C:\Users\idong\OneDrive\바탕 화
 CLOVA 문단 나누기 API를 문서 1개로 테스트하려면 다음 명령을 사용합니다. 이 명령부터 CLOVA API 사용량이 발생합니다.
 
 ```powershell
-python -m scripts.test_clova_segmentation --source "C:\Users\idong\OneDrive\바탕 화면\공모전\2026 미래에셋 ai 페스티벌\data\3.공시"
+python -m tests.test_clova_segmentation --source "C:\Users\idong\OneDrive\바탕 화면\공모전\2026 미래에셋 ai 페스티벌\data\3.공시"
 ```
 
 문서가 API 입력 한도를 넘으면 segmentation client가 줄바꿈 경계를 우선해 여러 요청으로 나누어 처리합니다. 단독 테스트는 기본적으로 문서 앞부분 20,000자만 호출하며, `--max-chars`로 조정할 수 있습니다.
@@ -80,7 +80,7 @@ python -m scripts.test_clova_segmentation --source "C:\Users\idong\OneDrive\바�
 문단 나누기 후 첫 문단 1개를 실제 Embedding v2로 변환하려면 다음 명령을 사용합니다. 문단 나누기와 임베딩 API 사용량이 각각 발생합니다.
 
 ```powershell
-python -m scripts.test_clova_embedding --source "C:\Users\idong\OneDrive\바탕 화면\공모전\2026 미래에셋 ai 페스티벌\data\3.공시" --max-chars 20000 --paragraph-index 0
+python -m tests.test_clova_embedding --source "C:\Users\idong\OneDrive\바탕 화면\공모전\2026 미래에셋 ai 페스티벌\data\3.공시" --max-chars 20000 --paragraph-index 0
 ```
 
 정상 결과는 `embedding_dimension: 1024`를 포함해야 합니다. 이 smoke test는 전체 문서를 색인하지 않고 문단 1개만 호출합니다.
@@ -93,8 +93,8 @@ python -m scripts.build_clova_local_index --source "C:\Users\idong\OneDrive\바�
 
 생성 파일:
 
-- `vector_db/segmentation_cache.json`: 문단 나누기 결과 캐시
-- `vector_db/disclosure_clova_local.json`: 문단 원문·출처·Embedding v2 벡터
+- `test_data/segmentation_cache.json`: 문단 나누기 결과 캐시
+- `test_data/disclosure_clova_local.json`: 문단 원문·출처·Embedding v2 벡터
 
 전체 문단을 처리하려면 `--max-chunks -1`을 사용합니다. 이 경우 문단 수만큼 Embedding v2 API가 호출됩니다.
 

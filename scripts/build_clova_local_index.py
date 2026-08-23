@@ -52,8 +52,8 @@ def main() -> None:
     parser.add_argument("--max-chars", type=int, default=20_000)
     parser.add_argument("--chunk-start", type=int, default=0)
     parser.add_argument("--max-chunks", type=int, default=3)
-    parser.add_argument("--segmentation-cache", default="vector_db/segmentation_cache.json")
-    parser.add_argument("--output", default="vector_db/disclosure_clova_local.json")
+    parser.add_argument("--segmentation-cache", default="test_data/segmentation_cache.json")
+    parser.add_argument("--output", default="test_data/disclosure_clova_local.json")
     args = parser.parse_args()
 
     documents, errors = CorpusScanner(args.source).scan(limit=args.limit)

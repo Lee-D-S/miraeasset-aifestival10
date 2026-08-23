@@ -17,7 +17,7 @@ class Settings:
     clova_api_host: str = os.getenv("CLOVA_API_HOST", "clovastudio.stream.ntruss.com")
     postgres_dsn: str = os.getenv("POSTGRES_DSN", "")
     local_vector_index: str = os.getenv(
-        "LOCAL_VECTOR_INDEX", "vector_db/disclosure_clova_local.json"
+        "LOCAL_VECTOR_INDEX", "test_data/disclosure_clova_local.json"
     )
     source_root: str = os.getenv("RAG_SOURCE_ROOT", "")
     retrieval_top_k: int = int(os.getenv("RAG_RETRIEVAL_TOP_K", "20"))
