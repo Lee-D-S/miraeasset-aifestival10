@@ -98,6 +98,12 @@ python -m scripts.build_clova_local_index --source "C:\Users\idong\OneDrive\바�
 
 전체 문단을 처리하려면 `--max-chunks -1`을 사용합니다. 이 경우 문단 수만큼 Embedding v2 API가 호출됩니다.
 
+저장된 로컬 색인을 질문으로 검색하려면 다음과 같이 실행합니다. 이때 문서 임베딩은 재사용하고 질문 임베딩만 새로 생성합니다.
+
+```powershell
+python -m scripts.search_clova_local_index "2023년 1분기 사업 내용은 무엇인가요?" --top-k 3
+```
+
 ### CLOVA client structure
 
 CLOVA Studio API별 구현은 `rag/clients/`에 분리되어 있습니다. 공통 HTTP 인증은 `base.py`가 담당하고, 문단 나누기·임베딩·리랭커·RAG Reasoning은 각각의 client가 담당합니다. 기존 `ClovaClient` facade는 호환성을 위해 남아 있습니다.
