@@ -15,11 +15,12 @@ def main() -> None:
     parser.add_argument("--output", default="test_data/agentic_rag_local.json")
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--postgres-dsn", default="")
+    parser.add_argument("--failure-log", default="agentic_rag_ingestion_failures.json")
     args = parser.parse_args()
     embedder = ClovaEmbedding() if settings.clova_api_key else DeterministicEmbedding()
     segmenter = ClovaSegmentation() if settings.clova_api_key else None
     writer = PostgresIndexWriter(args.postgres_dsn) if args.postgres_dsn else None
-    count = build_local_index(args.source, args.output, embedder=embedder, segmenter=segmenter, writer=writer, limit=args.limit)
+    count = build_local_index(args.source, args.output, embedder=embedder, segmenter=segmenter, writer=writer, limit=args.limit, failure_log=args.failure_log)
     print(f"indexed_chunks={count}")
 
 

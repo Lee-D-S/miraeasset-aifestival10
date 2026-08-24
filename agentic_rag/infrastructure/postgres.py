@@ -11,6 +11,12 @@ class PostgresVectorRetriever:
         self.dsn = dsn
         self.embedder = embedder
 
+    def healthcheck(self) -> bool:
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute("SELECT 1", ())
+            row = cursor.fetchone()
+        return bool(row and row[0] == 1)
+
     @contextmanager
     def connection(self):
         try:
@@ -72,6 +78,9 @@ class PostgresIndexWriter:
         CREATE EXTENSION IF NOT EXISTS vector;
         CREATE TABLE IF NOT EXISTS documents (id TEXT PRIMARY KEY, corp_name TEXT NOT NULL DEFAULT '', corp_code TEXT NOT NULL DEFAULT '', document_type TEXT NOT NULL DEFAULT '', market TEXT NOT NULL DEFAULT '', report_period TEXT NOT NULL DEFAULT '', disclosure_date DATE, source_path TEXT NOT NULL, source_hash TEXT NOT NULL, file_extension TEXT NOT NULL DEFAULT '', source_group TEXT NOT NULL DEFAULT '');
         CREATE TABLE IF NOT EXISTS document_chunks (id TEXT PRIMARY KEY, document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE, chunk_index INTEGER NOT NULL, text TEXT NOT NULL, embedding vector, source_path TEXT NOT NULL, text_hash TEXT NOT NULL, UNIQUE(document_id, chunk_index));
+        CREATE INDEX IF NOT EXISTS document_chunks_embedding_idx ON document_chunks USING ivfflat (embedding vector_cosine_ops);
+        CREATE INDEX IF NOT EXISTS documents_corp_name_idx ON documents (corp_name);
+        CREATE INDEX IF NOT EXISTS documents_report_period_idx ON documents (report_period);
         """
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute(schema)

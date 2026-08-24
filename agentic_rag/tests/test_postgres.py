@@ -10,6 +10,7 @@ class FakeCursor:
     def __exit__(self, *args): return False
     def execute(self, query, params): self.params = params
     def fetchall(self): return [("1", "근거", "doc.pdf", "기업A", 0.8)]
+    def fetchone(self): return (1,)
 
 
 class FakeConnection:
@@ -33,3 +34,5 @@ class PostgresContractTests(unittest.TestCase):
         self.assertEqual(result[0]["source"], "doc.pdf")
         self.assertEqual(result[0]["metadata"]["corp_name"], "기업A")
 
+    def test_healthcheck_contract(self):
+        self.assertTrue(TestRetriever("dsn", lambda text: [0.1]).healthcheck())

@@ -51,6 +51,8 @@ RAG Reasoning tool call은 registry에 등록된 `local_corpus_search`만 실행
 python -m agentic_rag.ingestion.cli --source "<DATA_DIR>" --output "test_data/agentic_rag_local.json"
 ```
 
+실패한 문서는 기본적으로 `agentic_rag_ingestion_failures.json`에 기록되며, `--failure-log`로 경로를 지정할 수 있다.
+
 PostgreSQL 색인 구축:
 
 ```powershell

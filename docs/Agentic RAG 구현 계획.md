@@ -474,6 +474,7 @@ C:\projects\dis-164\agentic_rag\
 - [x] 로컬 JSON vector 검색
 - [x] PostgreSQL + pgvector retriever/writer 코드
 - [x] local/PostgreSQL 검색 결과 shape 계약 테스트
+- [x] PostgreSQL 연결 healthcheck 계약 테스트
 - [x] source metadata·chunk ID 보존
 - [ ] 실제 PostgreSQL/pgvector 통합 테스트
 - [ ] 동일 corpus local/PostgreSQL 품질 비교
@@ -489,11 +490,13 @@ C:\projects\dis-164\agentic_rag\
 - [x] local JSON 색인 저장
 - [x] PostgreSQL 색인 writer
 - [x] `python -m agentic_rag.ingestion.cli` 실행 경로
+- [x] 실패 문서 기록 및 성공 문서 계속 처리
+- [x] deterministic chunk ID 기반 재실행 계약
 - [ ] 실제 CLOVA segmentation을 이용한 corpus 색인 검증
 - [ ] 색인 실패 문서 기록·재시작 복구 검증
 - [ ] PostgreSQL 색인 end-to-end 검증
 
-현재 상태: 로컬 색인 pipeline과 결정론적 embedding 테스트는 통과했으나 운영 corpus/DB 검증은 남아 있다.
+현재 상태: 로컬 색인 pipeline·실패 문서 기록·결정론적 재실행 계약은 검증했으나 실제 CLOVA segmentation과 운영 DB 검증은 남아 있다.
 
 ### Phase 8 — timeout·retry·fallback
 

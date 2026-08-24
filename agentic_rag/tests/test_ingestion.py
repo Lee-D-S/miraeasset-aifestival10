@@ -20,3 +20,15 @@ class IngestionTests(unittest.TestCase):
             rows = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(rows[0]["id"], json.loads(output.read_text(encoding="utf-8"))[0]["id"])
             self.assertTrue(LocalVectorRetriever(str(output)).search("기업A", 1, {}))
+
+    def test_failed_documents_are_recorded_and_successful_documents_continue(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source"
+            source.mkdir()
+            (source / "good.txt").write_text("정상 문서", encoding="utf-8")
+            (source / "bad.pdf").write_bytes(b"not a pdf")
+            output = Path(directory) / "index.json"
+            failures = Path(directory) / "failures.json"
+            count = build_local_index(str(source), str(output), embedder=DeterministicEmbedding(), failure_log=str(failures))
+            self.assertEqual(count, 1)
+            self.assertIn("bad.pdf", failures.read_text(encoding="utf-8"))
