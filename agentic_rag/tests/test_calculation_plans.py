@@ -3,6 +3,7 @@ import unittest
 from agentic_rag.agents.calculation import make_calculation_agent
 from agentic_rag.agents.calculation_planner import deterministic_plan, make_calculation_planner
 from agentic_rag.deterministic.calculation_registry import execute_operation
+from agentic_rag.deterministic.calculation_dsl import evaluate_expression
 from agentic_rag.deterministic.calculation_schema import validate_calculation_plan
 
 
@@ -20,6 +21,12 @@ class CalculationPlanTests(unittest.TestCase):
             execute_operation("divide", [1, 0])
         with self.assertRaises(ValueError):
             execute_operation("__import__", [1, 2])
+
+    def test_nested_json_calculation_dsl_is_whitelisted(self):
+        expression = {"op": "divide", "args": [{"op": "add", "args": [{"value": 10}, {"value": 10}]}, {"value": 2}]}
+        self.assertEqual(evaluate_expression(expression), 10.0)
+        with self.assertRaises(ValueError):
+            evaluate_expression({"op": "eval", "args": [{"value": 1}, {"value": 2}]})
 
     def test_invalid_plan_is_rejected(self):
         valid, reason = validate_calculation_plan({"operation": "eval", "metric": "revenue"})
