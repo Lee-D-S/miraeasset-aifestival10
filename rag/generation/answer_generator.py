@@ -55,8 +55,14 @@ class RagAnswerGenerator:
                 traces.append(thinking)
             tool_calls = message.get("toolCalls", []) or []
             if not tool_calls:
+                answer = self._answer_from_message(message)
+                if not answer:
+                    traces.append("empty_answer_retry")
+                    retry_response = self.client.generate(messages, [])
+                    retry_message = retry_response.get("message", {}) or {}
+                    answer = self._answer_from_message(retry_message)
                 return GeneratedAnswer(
-                    answer=str(message.get("content", "")).strip(),
+                    answer=answer or "관련 공시 근거는 찾았지만 답변 생성 결과가 비어 있습니다.",
                     documents=list(all_documents.values()),
                     think_trace=" ".join(traces),
                 )
@@ -95,6 +101,14 @@ class RagAnswerGenerator:
             documents=list(all_documents.values()),
             think_trace=" ".join(traces),
         )
+
+    @staticmethod
+    def _answer_from_message(message: dict[str, Any]) -> str:
+        for key in ("content", "answer", "text"):
+            value = str(message.get(key, "")).strip()
+            if value:
+                return value
+        return ""
 
     @staticmethod
     def _query_from_arguments(arguments: Any) -> str:

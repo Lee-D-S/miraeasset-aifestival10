@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from pathlib import Path
 
 
 def format_fallback_answer(
@@ -35,5 +36,5 @@ def _format_documents(documents: Sequence[dict]) -> list[str]:
         metadata = document.get("metadata", {}) or {}
         period = metadata.get("report_period") or "기간 미상"
         source = document.get("source", "출처 미상")
-        lines.append(f"- {period} | {source}")
+        lines.append(f"- {period} | {Path(source).name}")
     return lines

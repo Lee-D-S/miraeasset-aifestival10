@@ -30,11 +30,15 @@ class FallbackAnswerTests(unittest.TestCase):
 
             def search(self, query, *, limit, filters):
                 if filters == {"corp_name": "A기업"}:
-                    return [RetrievedDocument(id="a-2024", source="A-2024.xml", text="", score=0.8, metadata={"corp_name": "A기업", "report_period": "2024-12"})]
+                    return [
+                        RetrievedDocument(id="a-2024-1", source="A-2024.xml", text="", score=0.8, metadata={"corp_name": "A기업", "report_period": "2024-12"}),
+                        RetrievedDocument(id="a-2024-2", source="A-2024.xml", text="", score=0.7, metadata={"corp_name": "A기업", "report_period": "2024-12"}),
+                    ]
                 return [RetrievedDocument(id="b-2025", source="B-2025.xml", text="", score=0.7, metadata={"corp_name": "B기업", "report_period": "2025-12"})]
 
         result = AlternativeFinder(FakeRetriever()).find("A기업 2025년 사업보고서")
-        self.assertEqual(result.same_company[0].id, "a-2024")
+        self.assertEqual(result.same_company[0].id, "a-2024-1")
+        self.assertEqual(len(result.same_company), 1)
         self.assertEqual(result.same_period[0].id, "b-2025")
 
 

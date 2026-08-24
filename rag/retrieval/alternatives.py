@@ -38,7 +38,8 @@ class AlternativeFinder:
             same_company = [
                 document for document in same_company
                 if not period or document.metadata.get("report_period") != period
-            ][: self.limit]
+            ]
+            same_company = self._deduplicate(same_company)
 
         same_period = []
         if period:
@@ -50,6 +51,24 @@ class AlternativeFinder:
             same_period = [
                 document for document in same_period
                 if not company or document.metadata.get("corp_name") != company
-            ][: self.limit]
+            ]
+            same_period = self._deduplicate(same_period)
 
         return AlternativeDocuments(same_company=same_company, same_period=same_period)
+
+    def _deduplicate(self, documents: list[RetrievedDocument]) -> list[RetrievedDocument]:
+        unique: list[RetrievedDocument] = []
+        seen: set[tuple[str, str, str]] = set()
+        for document in documents:
+            key = (
+                document.source,
+                str(document.metadata.get("corp_name", "")),
+                str(document.metadata.get("report_period", "")),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(document)
+            if len(unique) >= self.limit:
+                break
+        return unique
