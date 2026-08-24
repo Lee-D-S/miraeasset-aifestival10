@@ -10,6 +10,7 @@ load_dotenv()
 @dataclass(frozen=True)
 class Settings:
     environment: str = os.getenv("APP_ENV", "local")
+    rag_backend: str = os.getenv("RAG_BACKEND", "classic")
     clova_enabled: bool = os.getenv("CLOVA_ENABLED", "false").lower() == "true"
     clova_api_key: str = os.getenv("CLOVA_API_KEY", "")
     clova_api_gateway_key: str = os.getenv("CLOVA_API_GATEWAY_KEY", "")

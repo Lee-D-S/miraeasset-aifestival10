@@ -13,10 +13,11 @@ python -m pip install -r requirements-langgraph.txt
 
 ## 실행
 
-기존 API와 분리된 LangGraph API입니다.
+기존 `app.py`에서 선택할 수 있는 LangGraph 기반 RAG 구현입니다. 별도 FastAPI 진입점은 두지 않습니다.
 
 ```powershell
-uvicorn langgraph_app.app:app --reload --port 8001
+$env:RAG_BACKEND="langgraph"
+uvicorn app:app --reload
 ```
 
 엔드포인트:
