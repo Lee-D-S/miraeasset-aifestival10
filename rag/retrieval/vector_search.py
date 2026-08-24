@@ -12,6 +12,11 @@ class VectorRetriever:
     embedder: EmbeddingClient
     default_limit: int = 20
 
+    def list_corp_names(self) -> list[str]:
+        if hasattr(self.store, "list_corp_names"):
+            return self.store.list_corp_names()
+        return []
+
     def search(
         self,
         query: str,

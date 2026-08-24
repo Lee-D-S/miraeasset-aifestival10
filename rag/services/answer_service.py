@@ -1,8 +1,10 @@
 from pathlib import Path
 
 from common.config import settings
+from common.fallback import format_fallback_answer
 from rag.generation.answer_generator import RagAnswerGenerator
 from rag.retrieval.rerank import DocumentReranker
+from rag.retrieval.alternatives import AlternativeFinder
 from rag.retrieval.vector_search import VectorRetriever
 from common.schemas import AnswerResponse, RetrievedDocument
 from rag.clients.embedding import EmbeddingClient
@@ -17,6 +19,7 @@ class AnswerService:
         self.retriever = None
         self.reranker = None
         self.generator = None
+        self.alternative_finder = None
         if settings.clova_api_key and settings.postgres_dsn:
             store = PostgresStore(settings.postgres_dsn)
         elif settings.clova_api_key and Path(settings.local_vector_index).exists():
@@ -27,6 +30,7 @@ class AnswerService:
             self.retriever = VectorRetriever(store, EmbeddingClient(), settings.retrieval_top_k)
             self.reranker = DocumentReranker(RerankerClient())
             self.generator = RagAnswerGenerator(RagReasoningClient(), settings.max_tool_rounds)
+            self.alternative_finder = AlternativeFinder(self.retriever)
 
     def answer(self, question_id: str, question: str) -> AnswerResponse:
         if not self.retriever or not self.reranker or not self.generator:
@@ -43,7 +47,8 @@ class AnswerService:
             return self._not_found_response(
                 question_id,
                 question,
-                "지정된 공시 문서에서 질문과 관련된 검색 결과가 없습니다.",
+                "요청한 기업·기간·공시 조건과 일치하는 검색 문서가 없습니다.",
+                question,
             )
 
         reranked = self.reranker.rerank(question, documents[:settings.rerank_top_k])
@@ -51,7 +56,8 @@ class AnswerService:
             return self._not_found_response(
                 question_id,
                 question,
-                "검색된 문서가 질문과 충분히 관련되지 않아 답변을 생성하지 않았습니다.",
+                "검색된 문서 중 질문과 관련성이 충분한 문서를 리랭커가 선택하지 못했습니다.",
+                question,
             )
 
         generated = self.generator.generate(question, lambda query: self.reranker.rerank(
@@ -66,6 +72,7 @@ class AnswerService:
                 question_id,
                 question,
                 generated.think_trace or "최종 답변에 사용할 근거 문서가 없습니다.",
+                question,
             )
 
         return AnswerResponse(
@@ -76,18 +83,26 @@ class AnswerService:
             answer=generated.answer,
         )
 
-    @staticmethod
     def _not_found_response(
+        self,
         question_id: str,
         question: str,
         trace: str,
+        lookup_question: str,
     ) -> AnswerResponse:
+        alternatives = self.alternative_finder.find(lookup_question) if self.alternative_finder else None
+        same_company = alternatives.same_company if alternatives else []
+        same_period = alternatives.same_period if alternatives else []
         return AnswerResponse(
             question_id=question_id,
             question=question,
             retrieved_context="",
             think_trace=trace,
-            answer="제공된 공시 문서에서는 해당 정보를 확인할 수 없습니다.",
+            answer=format_fallback_answer(
+                trace,
+                same_company=[document.model_dump() for document in same_company],
+                same_period=[document.model_dump() for document in same_period],
+            ),
         )
 
     @staticmethod
