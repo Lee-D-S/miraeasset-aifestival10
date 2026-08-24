@@ -8,7 +8,7 @@ from common.config import settings
 from common.fallback import format_fallback_answer
 from common.schemas import AnswerResponse
 from agentic_rag.agents.answer_generator import make_answer_generator
-from agentic_rag.agents.calculation import calculation_agent
+from agentic_rag.agents.calculation import make_calculation_agent
 from agentic_rag.agents.comparison import comparison_agent
 from agentic_rag.agents.event_linker import make_event_linker_agent
 from agentic_rag.agents.fact_extractor import make_fact_extractor_agent
@@ -44,12 +44,13 @@ class AgenticAnswerService:
         search_tool = lambda query: self.retriever.search(query, settings.retrieval_top_k, {})
         self.generator = generator or make_answer_generator(self.chat_client, rag_reasoning=self.rag_reasoning, search_tool=search_tool)
         retrieval_agent = make_retrieval_agent(self.retriever, settings.retrieval_top_k)
-        self.agent_handlers = {"retrieval": retrieval_agent, "comparison": comparison_agent, "calculation": calculation_agent, "event_linker": make_event_linker_agent(self.chat_client), "fact_extractor": make_fact_extractor_agent(self.chat_client)}
+        calculation_handler = make_calculation_agent(self.chat_client)
+        self.agent_handlers = {"retrieval": retrieval_agent, "comparison": comparison_agent, "calculation": calculation_handler, "event_linker": make_event_linker_agent(self.chat_client), "fact_extractor": make_fact_extractor_agent(self.chat_client)}
         self.registry = AgentRegistry([
             AgentSpec("supervisor", "deterministic route coordinator", lambda state: {}, ("retrieval", "comparison", "calculation", "event_linker", "fact_extractor")),
             AgentSpec("retrieval", "direct evidence retrieval", retrieval_agent),
             AgentSpec("comparison", "company comparison", comparison_agent),
-            AgentSpec("calculation", "deterministic financial calculation", calculation_agent),
+            AgentSpec("calculation", "deterministic financial calculation", calculation_handler),
             AgentSpec("event_linker", "event and disclosure linking", self.agent_handlers["event_linker"]),
             AgentSpec("fact_extractor", "evidence fact extraction", self.agent_handlers["fact_extractor"]),
         ])

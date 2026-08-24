@@ -19,6 +19,7 @@ class AgenticState(TypedDict, total=False):
     cited_documents: list[dict[str, Any]]
     facts: list[dict[str, Any]]
     calculations: dict[str, Any]
+    calculation_plan: dict[str, Any]
     comparison_results: list[dict[str, Any]]
     comparison_targets: list[str]
     parallel_documents: Annotated[list[dict[str, Any]], append_values]

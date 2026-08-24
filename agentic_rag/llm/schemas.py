@@ -21,3 +21,15 @@ FACT_EXTRACTION_SCHEMA = {
     "properties": {"facts": {"type": "array"}},
     "required": ["facts"],
 }
+
+CALCULATION_PLAN_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "operation": {"type": "string", "enum": ["add", "subtract", "multiply", "divide", "percentage_change", "cagr", "margin", "ratio", "debt_ratio", "current_ratio", "compare"]},
+        "metric": {"type": "string"},
+        "targets": {"type": "array"},
+        "periods": {"type": "array"},
+        "sub_operations": {"type": "array"},
+    },
+    "required": ["operation"],
+}

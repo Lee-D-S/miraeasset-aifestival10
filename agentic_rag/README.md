@@ -26,6 +26,8 @@ uvicorn agentic_rag.api:app --reload
 - 일반 생성·구조화 호출은 Chat Completions v3의 `HCX-DASH-002`를 기본으로 사용한다.
 - 복합 근거·인용 답변에서만 RAG Reasoning의 승인된 local corpus tool call을 사용한다.
 - 단순 조회·계산·검증은 LLM과 tool call 없이 결정론적으로 처리한다.
+- 계산 질의는 명확하면 deterministic planner, 모호·복합이면 `HCX-DASH-002` 구조화 planner를 사용한다.
+- 실제 계산은 whitelist Python registry만 실행하며 LLM이 만든 Python 코드는 실행하지 않는다.
 - CLOVA API 키가 있으면 기존 JSON 색인의 벡터 차원에 맞춰 Embedding v2로 질문을 임베딩한다.
 - 기존 `rag/`, `langgraph_rag/` orchestration을 import하지 않는다.
 
@@ -44,6 +46,8 @@ $env:AGENTIC_LLM_TEMPERATURE="0.1"
 ```
 
 RAG Reasoning tool call은 registry에 등록된 `local_corpus_search`만 실행한다. 외부 검색이나 실시간 데이터 호출은 하지 않는다.
+
+계산 Agent는 계산 대상·기간·지표·연산을 계산 계획 JSON으로 구조화한 뒤, 원문 근거·단위·기간을 검증하고 등록된 계산 함수로 실행한다. 지원되지 않거나 근거가 부족한 계산은 결과를 생성하지 않고 fallback한다.
 
 로컬 색인 구축:
 

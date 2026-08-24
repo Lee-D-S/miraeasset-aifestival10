@@ -468,9 +468,9 @@ C:\projects\dis-164\agentic_rag\
 - [x] retrieval Agent
 - [x] comparison Agent
 - [x] calculation Agent
-- [ ] calculation planner의 명확·모호 질의 분기
-- [ ] calculation schema·registry·executor·validator 분리
-- [ ] 복합 계산 계획의 실제 graph 연결
+- [x] calculation planner의 명확·모호 질의 분기
+- [x] calculation schema·registry·executor·validator 분리
+- [x] 복합 계산 계획의 실제 graph 연결
 - [x] event_linker Agent
 - [x] fact_extractor Agent
 - [x] answer_generator Agent
@@ -486,10 +486,12 @@ C:\projects\dis-164\agentic_rag\
 - [x] Agent별 provenance 기록
 - [x] 근거 문서 ID와 provenance ID 일치 검증
 - [x] 잘못된 구조화 결과·근거 부족 fallback
-- [ ] 계산 계획 JSON schema와 whitelist 검증
-- [ ] 계산 입력값·공식·결과·근거 provenance
+- [x] 계산 계획 JSON schema와 whitelist 검증
+- [x] 계산 입력값·공식·결과·근거 provenance
 
 완료 기록: `agents/schemas.py`, `deterministic/evidence.py`, `test_schemas.py`, `test_policies.py` 통과.
+
+계산 확장 완료 기록: `calculation_planner.py`, `calculation_schema.py`, `calculation_registry.py`, `calculation.py`, `test_calculation_plans.py`를 연결했다. 명확한 계산은 deterministic planner, 모호한 계산은 조건부 Chat planner, 실제 실행은 whitelist Python registry를 사용한다. 45개 Agentic 테스트가 통과했다.
 
 ### Phase 4 — handoff 및 병렬 fan-out
 
@@ -602,12 +604,12 @@ C:\projects\dis-164\agentic_rag\
 
 ## 다음 구현 순서
 
-1. 조건부 RAG Reasoning client·승인 검색 function·tool 메시지 경로 구현
-2. 실제 PostgreSQL DSN 기반 retriever/indexer 통합 테스트 추가
-3. 실제 corpus 기반 평가 데이터와 Agent별 expected result 추가
-4. 답변 수치·인용·비교 근거 검증 강화
-5. event linker·fact extractor의 실제 HyperCLOVA 구조화 출력 평가
-6. Phase 5, 6, 7, 9, 10의 미완료 항목을 테스트와 함께 완료 처리
+1. 실제 PostgreSQL DSN 기반 retriever/indexer 통합 테스트 실행
+2. 실제 PostgreSQL 색인 end-to-end 실행
+3. 승인된 대회 corpus로 CLOVA segmentation 및 local/PostgreSQL 품질 비교
+4. 실제 corpus 기반 lookup/comparison/calculation 평가
+5. 실제 HyperCLOVA 구조화 출력·RAG Reasoning 인용 품질 평가
+6. 환경 의존 항목을 검증한 뒤 Phase 6, 7, 10 체크박스 갱신
 
 ## 진행 기록 규칙
 
