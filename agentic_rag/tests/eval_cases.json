@@ -2,5 +2,9 @@
   {"id": "lookup", "question": "기업A의 사업 내용은?", "expected": "answer_or_fallback"},
   {"id": "comparison", "question": "기업A와 기업B를 비교해줘", "expected": "comparison"},
   {"id": "calculation", "question": "매출 증가율은?", "expected": "calculation"},
-  {"id": "unsupported", "question": "주가 예측해줘", "expected": "fallback"}
+  {"id": "event", "question": "기업A 공시 사건의 원인은?", "expected": "event_link"},
+  {"id": "ambiguous", "question": "그거 알려줘", "expected": "fact_extraction"},
+  {"id": "unsupported", "question": "주가 예측해줘", "expected": "fallback"},
+  {"id": "external", "question": "최신 뉴스 검색해줘", "expected": "fallback"},
+  {"id": "advice", "question": "기업A를 매수할까?", "expected": "fallback"}
 ]

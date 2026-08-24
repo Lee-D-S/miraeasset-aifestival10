@@ -16,4 +16,7 @@ class EvaluationScenarioTests(unittest.TestCase):
                 self.assertEqual(detect_intent(case["question"], {})[0], "comparison")
             elif case["expected"] == "calculation":
                 self.assertEqual(detect_intent(case["question"], {})[0], "calculation")
-
+            elif case["expected"] in {"event_link", "fact_extraction"}:
+                self.assertEqual(detect_intent(case["question"], {})[0], case["expected"])
+            elif case["expected"] == "fallback":
+                self.assertTrue(policy_violation(case["question"]))

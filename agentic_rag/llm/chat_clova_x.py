@@ -60,14 +60,16 @@ class ChatClovaXClient:
     def _request(self, payload: dict[str, Any], profile: ModelProfile) -> dict[str, Any]:
         self.calls += 1
         started = monotonic()
-        if self.transport is not None:
-            result = self.transport(payload, profile)
-        else:
+        def operation() -> dict[str, Any]:
+            if self.transport is not None:
+                return self.transport(payload, profile)
             if not self.api_host or not self.api_key:
                 raise RuntimeError("CLOVA_API_KEY is not configured")
             request = Request(f"https://{self.api_host}{self.ENDPOINT}/{profile.model}", data=json.dumps(payload, ensure_ascii=False).encode("utf-8"), headers={"Content-Type": "application/json; charset=utf-8", "Authorization": f"Bearer {self.api_key}"}, method="POST")
-            with retry_call(lambda: urlopen(request, timeout=120)) as response:
-                result = json.loads(response.read().decode("utf-8"))
+            with urlopen(request, timeout=120) as response:
+                return json.loads(response.read().decode("utf-8"))
+
+        result = retry_call(operation, attempts=2, base_delay=0.1)
         if result.get("status", {}).get("code") not in (None, "20000"):
             raise RuntimeError(f"Chat Completions request failed: {result.get('status')}")
         self.metrics.append({"model": profile.model, "latency_ms": round((monotonic() - started) * 1000, 2), "usage": result.get("result", {}).get("usage", result.get("usage", {}))})

@@ -529,16 +529,21 @@ C:\projects\dis-164\agentic_rag\
 - [x] 단순 routing 평가 case
 - [x] 비교 routing·병렬 평가 case
 - [x] 계산 routing 평가 case
+- [x] event linking routing 평가 case
+- [x] ambiguous natural-language routing 평가 case
 - [x] unsupported fallback 평가 case
+- [x] external information·investment advice fallback 평가 case
 - [x] Agentic 단위·graph·계약·경계 테스트
+- [x] Chat Completions JSON·cache·retry 평가
+- [x] RAG Reasoning tool call·인용 검증 평가
 - [x] 기존 LangGraph 회귀 테스트
 - [x] 기존 루트 회귀 테스트
 - [ ] 실제 corpus 기반 lookup/comparison/calculation 평가
-- [ ] 실제 HyperCLOVA 오류·timeout 평가
+- [x] fake HyperCLOVA 오류·timeout·retry 평가
 - [ ] 실제 PostgreSQL 평가
 - [ ] provenance·인용·수치 정확도 평가
 
-현재 상태: 자동화된 구조·계약 테스트는 통과했지만 실제 대회 corpus 기반 전체 평가가 남아 있다.
+현재 상태: 자동화된 구조·계약·정책·fake 외부 API 평가와 회귀 테스트는 통과했지만 실제 대회 corpus·실제 PostgreSQL·실제 HyperCLOVA 품질 평가는 남아 있다.
 
 ## 다음 구현 순서
 

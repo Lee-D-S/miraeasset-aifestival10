@@ -53,6 +53,19 @@ class ChatClovaXTests(unittest.TestCase):
         self.assertEqual(profile.model, "HCX-007")
         self.assertEqual(payload["responseFormat"]["type"], "json")
 
+    def test_transport_failure_retries_then_falls_back_or_succeeds(self):
+        attempts = []
+
+        def transport(_payload, _profile):
+            attempts.append(True)
+            if len(attempts) == 1:
+                raise TimeoutError("temporary timeout")
+            return {"message": {"content": "재시도 성공"}}
+
+        client = ChatClovaXClient(transport=transport)
+        self.assertEqual(client.generate_text([{"role": "user", "content": "질문"}]), "재시도 성공")
+        self.assertEqual(len(attempts), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
