@@ -2,7 +2,7 @@ import unittest
 
 from rag.generation.answer_generator import RagAnswerGenerator
 from rag.retrieval.rerank import RerankedResult
-from rag.schemas import RetrievedDocument
+from common.schemas import RetrievedDocument
 
 
 class FakeReasoningClient:

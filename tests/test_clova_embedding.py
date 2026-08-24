@@ -4,7 +4,7 @@ import sys
 
 from rag.clients.embedding import EmbeddingClient
 from rag.clients.segmentation import SegmentationClient
-from rag.config import settings
+from common.config import settings
 from rag.ingestion.pipeline import CorpusScanner
 
 

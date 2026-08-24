@@ -5,7 +5,7 @@ from typing import Any
 
 from rag.clients.rag_reasoning import RagReasoningClient
 from rag.retrieval.rerank import RerankedResult
-from rag.schemas import RetrievedDocument
+from common.schemas import RetrievedDocument
 from rag.generation.tool_schema import SEARCH_TOOL
 
 

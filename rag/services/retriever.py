@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from rag.schemas import RetrievedDocument
+from common.schemas import RetrievedDocument
 
 
 @dataclass
@@ -18,4 +18,3 @@ class Retriever:
             if overlap:
                 ranked.append(document.model_copy(update={"score": min(overlap / max(len(query_terms), 1), 1)}))
         return sorted(ranked, key=lambda item: item.score, reverse=True)[:limit]
-

@@ -1,7 +1,7 @@
 from langgraph_rag.adapters import build_dependencies
 from langgraph_rag.graph import build_graph
 from langgraph_rag.graph import render_mermaid
-from rag.config import settings
+from common.config import settings
 
 
 def main() -> None:

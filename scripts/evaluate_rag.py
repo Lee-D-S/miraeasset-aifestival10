@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from rag.services.answer_service import AnswerService
-from rag.schemas import AnswerResponse
+from common.schemas import AnswerResponse
 
 
 FALLBACK_ANSWER = "제공된 공시 문서에서는 해당 정보를 확인할 수 없습니다."

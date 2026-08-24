@@ -1,7 +1,7 @@
 import argparse
 import json
 
-from rag.config import settings
+from common.config import settings
 from rag.ingestion.pipeline import CorpusScanner
 from rag.services.indexing_service import IndexingService
 from rag.storage.postgres import PostgresStore
@@ -25,4 +25,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

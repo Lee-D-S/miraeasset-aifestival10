@@ -1,7 +1,7 @@
 from typing import Protocol
 
-from rag.config import settings
-from rag.schemas import AnswerResponse
+from common.config import settings
+from common.schemas import AnswerResponse
 
 
 class AnswerService(Protocol):

@@ -2,7 +2,7 @@ import json
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from rag.config import settings
+from common.config import settings
 
 
 class ClovaApiClient:

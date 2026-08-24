@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from rag.clients.reranker import RerankerClient
-from rag.schemas import RetrievedDocument
+from common.schemas import RetrievedDocument
 
 
 @dataclass

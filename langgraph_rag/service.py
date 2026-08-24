@@ -2,8 +2,8 @@ import hashlib
 from langgraph_rag.adapters import build_dependencies
 from langgraph_rag.checkpoint import build_memory_checkpointer
 from langgraph_rag.graph import build_graph
-from rag.config import settings
-from rag.schemas import AnswerResponse
+from common.config import settings
+from common.schemas import AnswerResponse
 
 
 class LangGraphAnswerService:

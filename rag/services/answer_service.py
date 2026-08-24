@@ -1,10 +1,10 @@
 from pathlib import Path
 
-from rag.config import settings
+from common.config import settings
 from rag.generation.answer_generator import RagAnswerGenerator
 from rag.retrieval.rerank import DocumentReranker
 from rag.retrieval.vector_search import VectorRetriever
-from rag.schemas import AnswerResponse, RetrievedDocument
+from common.schemas import AnswerResponse, RetrievedDocument
 from rag.clients.embedding import EmbeddingClient
 from rag.clients.reranker import RerankerClient
 from rag.clients.rag_reasoning import RagReasoningClient

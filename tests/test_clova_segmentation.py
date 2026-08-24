@@ -2,7 +2,7 @@ import argparse
 import json
 import sys
 
-from rag.config import settings
+from common.config import settings
 from rag.ingestion.pipeline import CorpusScanner
 from rag.clients.segmentation import SegmentationClient
 

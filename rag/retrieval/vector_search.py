@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from rag.clients.embedding import EmbeddingClient
 from rag.retrieval.filters import extract_metadata_filters
-from rag.schemas import RetrievedDocument
+from common.schemas import RetrievedDocument
 from rag.storage.postgres import PostgresStore
 
 

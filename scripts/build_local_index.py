@@ -2,7 +2,7 @@ import argparse
 import json
 from datetime import date
 
-from rag.config import settings
+from common.config import settings
 from rag.ingestion.pipeline import CorpusScanner
 from rag.services.fake_embedding import FakeEmbeddingClient
 from rag.storage.local import LocalVectorRow, LocalVectorStore

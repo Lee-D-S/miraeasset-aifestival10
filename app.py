@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 
 from application.factory import build_answer_service
-from rag.config import settings
-from rag.schemas import AnswerResponse
+from common.config import settings
+from common.schemas import AnswerResponse
 
 
 app = FastAPI(title="AI Festival RAG API", version="0.1.0")

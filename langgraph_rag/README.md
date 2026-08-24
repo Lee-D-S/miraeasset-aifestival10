@@ -1,6 +1,6 @@
 # LangGraph RAG 병렬 구현
 
-기존 `rag/`와 `app.py`를 수정하지 않고, 같은 CLOVA 기반 RAG 흐름을 LangGraph의 독립 노드와 조건부 엣지로 구현한 버전입니다.
+공통 `app.py` 진입점에서 선택할 수 있는 CLOVA 기반 RAG 구현입니다. 기존 `rag/`와 동일한 API 계약을 사용하고, LangGraph의 독립 노드와 조건부 엣지로 실행 흐름을 구성합니다.
 
 ## 설치
 

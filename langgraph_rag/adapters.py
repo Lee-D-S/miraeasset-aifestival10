@@ -4,7 +4,7 @@ from typing import Any
 from rag.clients.rag_reasoning import RagReasoningClient
 from rag.retrieval.rerank import DocumentReranker
 from rag.retrieval.vector_search import VectorRetriever
-from rag.schemas import RetrievedDocument
+from common.schemas import RetrievedDocument
 from rag.storage.local import LocalVectorStore
 from rag.storage.postgres import PostgresStore
 
