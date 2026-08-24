@@ -492,7 +492,7 @@ C:\projects\dis-164\agentic_rag\
 
 완료 기록: `agents/schemas.py`, `deterministic/evidence.py`, `test_schemas.py`, `test_policies.py` 통과.
 
-계산 확장 완료 기록: `calculation_planner.py`, `calculation_schema.py`, `calculation_registry.py`, `calculation.py`, `test_calculation_plans.py`를 연결했다. 명확한 계산은 deterministic planner, 모호한 계산은 조건부 Chat planner, 실제 실행은 whitelist Python registry를 사용한다. 45개 Agentic 테스트가 통과했다.
+계산 확장 완료 기록: `calculation_planner.py`, `calculation_schema.py`, `calculation_registry.py`, `calculation_dsl.py`, `calculation.py`, `test_calculation_plans.py`를 연결했다. 명확한 계산은 deterministic planner, 모호한 계산은 조건부 Chat planner, 실제 실행은 whitelist Python registry와 안전한 JSON DSL을 사용한다. Agentic 테스트 46개, LangGraph RAG 10개, 루트 10개가 통과했다.
 
 ### Phase 4 — handoff 및 병렬 fan-out
 
