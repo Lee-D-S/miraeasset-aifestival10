@@ -59,4 +59,6 @@ PostgreSQL 색인 구축:
 python -m agentic_rag.ingestion.cli --source "<DATA_DIR>" --postgres-dsn "$env:POSTGRES_DSN"
 ```
 
+PostgreSQL 통합 테스트는 테스트 전용 DSN을 `AGENTIC_POSTGRES_TEST_DSN`에 설정한 경우에만 실행한다.
+
 비교 질의는 대상별 `Send` fan-out 후 문서 ID 기준으로 결정론적으로 병합한다.

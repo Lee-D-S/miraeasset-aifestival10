@@ -463,7 +463,7 @@ C:\projects\dis-164\agentic_rag\
 - [x] JSON prompt·code fence 제거·로컬 schema 검증·1회 재시도
 - [x] `HCX-007` Structured Outputs 교체 profile
 - [x] 일반 Agent 호출을 새 Chat client로 교체
-- [ ] RAG Reasoning 답변의 source index·문서 ID 대조
+- [x] RAG Reasoning 답변의 source index·문서 ID 대조
 - [ ] 복잡한 결과의 실제 history 요약 품질 평가
 
 완료 기록: `llm/history.py`, `llm/chat_clova_x.py`, `llm/model_profiles.py`, `llm/cache.py`, `test_chat_clova_x.py`, `test_rag_reasoning_tool.py` 통과. 단순 경로 생략, tool provenance, 인용 ID 검증을 완료했다.
@@ -493,7 +493,7 @@ C:\projects\dis-164\agentic_rag\
 - [x] 실패 문서 기록 및 성공 문서 계속 처리
 - [x] deterministic chunk ID 기반 재실행 계약
 - [ ] 실제 CLOVA segmentation을 이용한 corpus 색인 검증
-- [ ] 색인 실패 문서 기록·재시작 복구 검증
+- [x] 색인 실패 문서 기록·재시작 복구 검증
 - [ ] PostgreSQL 색인 end-to-end 검증
 
 현재 상태: 로컬 색인 pipeline·실패 문서 기록·결정론적 재실행 계약은 검증했으나 실제 CLOVA segmentation과 운영 DB 검증은 남아 있다.
@@ -541,9 +541,9 @@ C:\projects\dis-164\agentic_rag\
 - [ ] 실제 corpus 기반 lookup/comparison/calculation 평가
 - [x] fake HyperCLOVA 오류·timeout·retry 평가
 - [ ] 실제 PostgreSQL 평가
-- [ ] provenance·인용·수치 정확도 평가
+- [x] provenance·인용·수치 정확도 평가
 
-현재 상태: 자동화된 구조·계약·정책·fake 외부 API 평가와 회귀 테스트는 통과했지만 실제 대회 corpus·실제 PostgreSQL·실제 HyperCLOVA 품질 평가는 남아 있다.
+현재 상태: 자동화된 구조·계약·정책·fake 외부 API·provenance 평가와 회귀 테스트는 통과했지만 실제 대회 corpus·실제 PostgreSQL·실제 HyperCLOVA 품질 평가는 남아 있다.
 
 ## 다음 구현 순서
 

@@ -32,3 +32,15 @@ class IngestionTests(unittest.TestCase):
             count = build_local_index(str(source), str(output), embedder=DeterministicEmbedding(), failure_log=str(failures))
             self.assertEqual(count, 1)
             self.assertIn("bad.pdf", failures.read_text(encoding="utf-8"))
+
+    def test_rerun_reuses_the_same_chunk_ids(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source"
+            source.mkdir()
+            (source / "doc.txt").write_text("변경 감지 문서", encoding="utf-8")
+            output = Path(directory) / "index.json"
+            build_local_index(str(source), str(output), embedder=DeterministicEmbedding())
+            first_ids = [row["id"] for row in json.loads(output.read_text(encoding="utf-8"))]
+            build_local_index(str(source), str(output), embedder=DeterministicEmbedding())
+            second_ids = [row["id"] for row in json.loads(output.read_text(encoding="utf-8"))]
+            self.assertEqual(first_ids, second_ids)
