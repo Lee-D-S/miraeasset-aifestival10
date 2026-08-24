@@ -683,10 +683,10 @@ C:\projects\dis-164\agentic_rag\
 
 ### Phase 9 추가 구현 완료 기록
 
-- 완료일: 2026-08-24
+- 완료일: 2026-08-25
 - 변경 파일: `agentic_rag/deterministic/alternatives.py`, `agentic_rag/state.py`, `agentic_rag/service.py`, `agentic_rag/tests/test_alternatives.py`
-- 실행한 테스트: `python -m unittest agentic_rag.tests.test_alternatives agentic_rag.tests.test_graph`
-- 테스트 결과: 9개 통과
+- 실행한 테스트: `python -m unittest discover -s agentic_rag/tests`; `python -m unittest discover -s langgraph_rag/tests`; `python -m unittest discover -s tests`
+- 테스트 결과: Agentic RAG 52개 통과·1개 skip, LangGraph RAG 10개 통과, 루트 10개 통과
 - 남은 위험: 실제 대회 corpus에서 metadata 품질과 유사도 품질은 별도 평가 필요
 - 다음 Phase: 전체 회귀 테스트 및 실제 corpus 검증
 

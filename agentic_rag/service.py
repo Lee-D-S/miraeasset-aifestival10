@@ -94,13 +94,26 @@ class AgenticAnswerService:
         valid = valid and bool(result.get("validation", {}).get("valid", False))
         alternatives = result.get("alternative_documents") or {"same_company": [], "same_period": []}
         if not valid:
+            fallback_reason = result.get("fallback_reason") or reason
             try:
                 alternatives = self.alternative_finder.find(question, result.get("metadata") or state["metadata"])
             except Exception:
                 alternatives = {"same_company": [], "same_period": []}
             result["alternative_documents"] = alternatives
+            result.setdefault("provenance", []).append(
+                {
+                    "agent": "fallback",
+                    "reason": fallback_reason,
+                    "alternative_document_ids": [
+                        str(document.get("id", ""))
+                        for group in ("same_company", "same_period")
+                        for document in alternatives.get(group, [])
+                    ],
+                    "direct_evidence": False,
+                }
+            )
             answer = format_fallback_answer(
-                result.get("fallback_reason") or reason,
+                fallback_reason,
                 same_company=alternatives.get("same_company", []),
                 same_period=alternatives.get("same_period", []),
             )
