@@ -14,6 +14,7 @@ class LangGraphAnswerService:
             build_graph(
                 dependencies,
                 max_retries=1,
+                retrieval_limit=settings.retrieval_top_k,
                 rerank_limit=settings.rerank_top_k,
                 checkpointer=build_memory_checkpointer(),
             )

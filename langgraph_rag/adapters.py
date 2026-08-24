@@ -1,15 +1,19 @@
 from pathlib import Path
 from typing import Any
 
-from rag.clients.rag_reasoning import RagReasoningClient
-from rag.retrieval.rerank import DocumentReranker
-from rag.retrieval.vector_search import VectorRetriever
 from common.schemas import RetrievedDocument
-from rag.storage.local import LocalVectorStore
-from rag.storage.postgres import PostgresStore
-from rag.retrieval.alternatives import AlternativeFinder
 
 from langgraph_rag.contracts import GraphDependencies
+from langgraph_rag.runtime import (
+    AlternativeFinder,
+    DocumentReranker,
+    EmbeddingClient,
+    LocalVectorStore,
+    PostgresStore,
+    RagReasoningClient,
+    RerankerClient,
+    VectorRetriever,
+)
 
 
 class ExistingRetrieverAdapter:
@@ -60,9 +64,6 @@ def build_dependencies(settings: Any) -> GraphDependencies | None:
         store = LocalVectorStore.load(settings.local_vector_index)
     else:
         return None
-    from rag.clients.embedding import EmbeddingClient
-    from rag.clients.reranker import RerankerClient
-
     retriever = VectorRetriever(store, EmbeddingClient(), settings.retrieval_top_k)
     return GraphDependencies(
         retriever=ExistingRetrieverAdapter(retriever, settings.retrieval_top_k),

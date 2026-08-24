@@ -2,11 +2,11 @@ from langgraph_rag.contracts import RetrieverPort
 from langgraph_rag.state import GraphState
 
 
-def make_retrieve_node(retriever: RetrieverPort):
+def make_retrieve_node(retriever: RetrieverPort, limit: int = 20):
     def retrieve_node(state: GraphState) -> dict:
         query = state.get("search_query") or state.get("question", "")
         try:
-            documents = retriever.search(query, limit=20)
+            documents = retriever.search(query, limit=limit)
             return {
                 "retrieved_documents": documents,
                 "status": "retrieved",

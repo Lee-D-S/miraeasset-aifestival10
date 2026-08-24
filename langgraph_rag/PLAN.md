@@ -16,6 +16,7 @@ START → retrieve → rerank → generate_answer → evaluate_groundedness
 ## 모듈 원칙
 
 - 기존 `rag/` 구현은 보존하고, 공통 API 진입점인 루트 `app.py`에서 구현체를 선택한다.
+- `langgraph_rag/`는 `rag/`를 import하지 않는다. 임베딩·CLOVA client·Vector Store·검색·리랭킹은 `langgraph_rag/runtime.py`가 소유한다.
 - LangGraph 구현 폴더에는 FastAPI 진입점을 두지 않고 서비스·그래프 구현만 둔다.
 - 공통 설정·응답 DTO는 `common/`을 기준으로 하고, 기존 `rag.config`·`rag.schemas`는 호환 경로로만 유지한다.
 - 각 노드는 다른 노드 모듈을 import하거나 직접 호출하지 않는다.

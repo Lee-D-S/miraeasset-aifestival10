@@ -17,7 +17,7 @@ pip install -r requirements.txt
 uvicorn app:app --reload
 ```
 
-The root `app.py` is the single API entry point. Select the implementation with `RAG_BACKEND=classic` for `rag/` or `RAG_BACKEND=langgraph` for `langgraph_rag/`. Both implementations expose the same `/health` and `/answer` API contract, so a future RAG implementation can be added as another backend without creating another FastAPI entry point.
+The root `app.py` is the single API entry point. Select the implementation with `RAG_BACKEND=classic` for `rag/` or `RAG_BACKEND=langgraph` for `langgraph_rag/`. Both implementations expose the same `/health` and `/answer` API contract, so a future RAG implementation can be added as another backend without creating another FastAPI entry point. The two backends are independently deployable: `langgraph_rag/` does not import `rag/`, and `rag/` does not import `langgraph_rag/`.
 
 Shared settings and API schemas live in `common/`. The `rag/config.py` and `rag/schemas.py` modules remain compatibility import paths for existing code.
 
@@ -61,6 +61,14 @@ python -m scripts.inspect_corpus --source "<DATA_DIR>" --limit 10
 
 `build_index`는 PostgreSQL + pgvector 전체 색인을 위한 확장 경로입니다. 현재 비용을 발생시키지 않는 로컬 검증은 아래의 `build_clova_local_index`를 사용합니다.
 
+LangGraph backend만 배포하거나 `rag/` 없이 색인을 구축해야 하는 경우에는 `scripts/langgraph_*` CLI를 사용합니다. 이 CLI들은 공시 스캔·문서 판독·문단 분할·임베딩·저장을 `langgraph_rag/` 내부 구현으로 처리합니다.
+
+```powershell
+python -m scripts.langgraph_inspect_corpus --source "<DATA_DIR>"
+python -m scripts.langgraph_build_local_index --source "<DATA_DIR>" --limit 1
+python -m scripts.langgraph_build_index --source "<DATA_DIR>" --limit 10
+```
+
 ```powershell
 python -m scripts.build_index --source "<DATA_DIR>" --limit 10
 ```
@@ -69,7 +77,7 @@ python -m scripts.build_index --source "<DATA_DIR>" --limit 10
 
 ### Retrieval structure
 
-`rag/retrieval/vector_search.py`는 질문을 Embedding v2로 변환하고 PostgreSQL pgvector에서 cosine 검색을 수행합니다. `rag/retrieval/rerank.py`는 검색된 상위 chunk를 CLOVA 리랭커에 전달하고 `citedDocuments`를 원래 chunk 메타데이터와 연결합니다. 실제 DB와 CLOVA API가 준비되기 전에는 두 구성요소에 fake 구현을 주입해 로컬 테스트할 수 있습니다.
+각 backend의 검색 모듈은 질문을 Embedding v2로 변환하고 PostgreSQL pgvector 또는 로컬 Vector Store에서 cosine 검색을 수행합니다. `rag/`는 `rag/retrieval/`을 사용하고, `langgraph_rag/`는 자체 `runtime.py`를 사용합니다. 각 구현의 reranker는 검색된 상위 chunk를 CLOVA 리랭커에 전달하고 `citedDocuments`를 원래 chunk 메타데이터와 연결합니다. 실제 DB와 CLOVA API가 준비되기 전에는 fake 구현을 주입해 로컬 테스트할 수 있습니다.
 
 DB 없이 로컬 검색 흐름을 확인하려면 다음 명령을 실행합니다.
 
@@ -146,7 +154,7 @@ GET /answer?question_id=Q-001&question=삼성전자의%202023년%201분기%20사
 
 ### CLOVA client structure
 
-CLOVA Studio API별 구현은 `rag/clients/`에 분리되어 있습니다. 공통 HTTP 인증은 `base.py`가 담당하고, 문단 나누기·임베딩·리랭커·RAG Reasoning은 각각의 client가 담당합니다. 기존 `ClovaClient` facade는 호환성을 위해 남아 있습니다.
+CLOVA Studio API별 구현은 classic backend의 `rag/clients/`와 LangGraph backend의 `langgraph_rag/runtime.py`에 분리되어 있습니다. 각 backend가 공통 HTTP 인증, 임베딩, 리랭커, RAG Reasoning을 독립적으로 소유하므로 한 backend 디렉터리를 제거해도 다른 backend의 런타임은 영향을 받지 않습니다.
 
 ### 답변 품질 평가
 

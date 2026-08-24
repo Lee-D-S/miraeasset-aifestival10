@@ -22,11 +22,12 @@ def build_graph(
     dependencies: GraphDependencies,
     *,
     max_retries: int = 1,
+    retrieval_limit: int = 20,
     rerank_limit: int = 10,
     checkpointer: Any = None,
 ):
     builder = StateGraph(GraphState)
-    builder.add_node("retrieve", make_retrieve_node(dependencies.retriever))
+    builder.add_node("retrieve", make_retrieve_node(dependencies.retriever, retrieval_limit))
     builder.add_node("rerank", make_rerank_node(dependencies.reranker, rerank_limit))
     builder.add_node("generate_answer", make_generate_answer_node(dependencies.llm))
     builder.add_node("evaluate_groundedness", make_evaluate_groundedness_node(dependencies.llm))
