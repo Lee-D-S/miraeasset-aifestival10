@@ -44,6 +44,18 @@ class RagReasoningToolTests(unittest.TestCase):
         self.assertEqual(result["answer"], "[출처: d.pdf] 근거")
         self.assertEqual(calls, [])
 
+    def test_tool_provenance_keeps_calls_documents_and_usage(self):
+        class FakeRag:
+            def generate_grounded_answer(self, *_args):
+                return {"answer": "<doc-1> 근거 답변", "tool_calls": [{"id": "call-1"}], "documents": [{"id": "doc-1"}], "usage": {"totalTokens": 8}}
+
+        generate = make_answer_generator(rag_reasoning=FakeRag(), search_tool=lambda _query: [])
+        result = generate({"intent": "comparison", "normalized_question": "비교", "cited_documents": [{"id": "doc-1", "source": "a.pdf", "text": "근거"}, {"id": "doc-2", "source": "b.pdf", "text": "근거"}], "messages": []})
+        details = result["provenance"][0]["details"]
+        self.assertEqual(details["tool_calls"][0]["id"], "call-1")
+        self.assertEqual(details["tool_document_ids"], ["doc-1"])
+        self.assertEqual(details["usage"]["totalTokens"], 8)
+
     def test_complex_comparison_graph_uses_rag_reasoning_generator(self):
         calls = []
 

@@ -240,10 +240,10 @@ Prompt 개선만으로 해결되지 않는 반복 오류가 확인된 뒤에만 
 - [x] tool call 대상과 인자를 schema로 검증
 - [x] 검색 결과를 문서 ID·원문을 포함한 `role: tool` 메시지로 변환
 - [x] tool 메시지를 포함한 2차 RAG Reasoning 호출로 인용 답변 생성
-- [ ] 최종 인용 source index를 실제 문서 ID와 대조
+- [x] 최종 인용 source index를 실제 문서 ID와 대조
 - [x] 검색 결과 없음·근거 부족·API 실패 시 deterministic fallback
 - [x] 단순 조회·계산 경로에서 RAG Reasoning 호출이 생략되는지 검증
-- [ ] 호출 모델·tool call·문서 ID·인용·토큰 사용량을 provenance에 기록
+- [x] 호출 모델·tool call·문서 ID·인용·토큰 사용량을 provenance에 기록
 
 완료 조건은 “RAG Reasoning client 파일이 존재한다”가 아니라, 복합 인용 질의가 실제 그래프에서 승인된 검색 function과 `tool` 메시지를 거쳐 인용 검증을 통과하는 것이다.
 
@@ -456,7 +456,7 @@ C:\projects\dis-164\agentic_rag\
 - [x] 복합 근거·인용 질의의 RAG Reasoning 조건부 호출
 - [x] 단순 조회·계산·검증 경로의 tool call 생략
 - [x] 승인된 local corpus 검색 function 및 `tool` 메시지 연결
-- [ ] tool 인자·호출 대상·검색 결과 provenance 기록
+- [x] tool 인자·호출 대상·검색 결과 provenance 기록
 - [x] Chat Completions v3 + `HCX-DASH-002` client 연결
 - [x] `ChatModelPort` 형태의 text/json interface 정의
 - [x] model profile·cache·context/token 제한 구조
@@ -466,7 +466,7 @@ C:\projects\dis-164\agentic_rag\
 - [ ] RAG Reasoning 답변의 source index·문서 ID 대조
 - [ ] 복잡한 결과의 실제 history 요약 품질 평가
 
-완료 기록: `llm/history.py`, `llm/chat_clova_x.py`, `llm/model_profiles.py`, `llm/cache.py`, `test_chat_clova_x.py`, `test_rag_reasoning_tool.py` 통과. 인용 source index 및 상세 tool provenance 검증은 남아 있다.
+완료 기록: `llm/history.py`, `llm/chat_clova_x.py`, `llm/model_profiles.py`, `llm/cache.py`, `test_chat_clova_x.py`, `test_rag_reasoning_tool.py` 통과. 단순 경로 생략, tool provenance, 인용 ID 검증을 완료했다.
 
 ### Phase 6 — 검색·색인 인프라
 
@@ -516,13 +516,13 @@ C:\projects\dis-164\agentic_rag\
 - [x] 근거 문서 없는 답변 차단
 - [x] Agent provenance 및 문서 ID 검증
 - [x] 수치 계산 결정론적 처리
-- [ ] 답변의 모든 수치가 원문과 일치하는지 검증
-- [ ] 답변 인용 source 실제 존재 여부 검증
-- [ ] 비교 양쪽 근거 완전성 검증
-- [ ] event linker 원문 대조
-- [ ] fact extractor 원문 대조
+- [x] 답변의 모든 수치가 원문과 일치하는지 검증
+- [x] 답변 인용 source 실제 존재 여부 검증
+- [x] 비교 양쪽 근거 완전성 검증
+- [x] event linker 원문 대조
+- [x] fact extractor 원문 대조
 
-현재 상태: 기본 정책·근거 검증은 구현했지만, 답변 내용 단위의 완전한 groundedness 검증은 남아 있다.
+완료 기록: `deterministic/evidence.py`, `test_policies.py`, `test_rag_reasoning_tool.py` 통과. 답변 수치·source/document ID·comparison·event/fact 원문 검증을 연결했다.
 
 ### Phase 10 — 전체 평가 및 회귀 검증
 
