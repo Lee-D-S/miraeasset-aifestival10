@@ -57,7 +57,7 @@ class AnswerService:
         generated = self.generator.generate(question, lambda query: self.reranker.rerank(
             query,
             self.retriever.search(query, limit=settings.retrieval_top_k)[:settings.rerank_top_k],
-        ))
+        ), initial_documents=reranked.documents)
         final_documents = generated.documents or reranked.documents
         context = self._format_context(final_documents)
 

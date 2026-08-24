@@ -37,7 +37,23 @@ def main() -> None:
         documents = retriever.search(query, limit=args.retrieval_top_k)
         return reranker.rerank(query, documents[: args.rerank_top_k])
 
-    generated = RagAnswerGenerator(RagReasoningClient()).generate(args.question, search)
+    initial_documents = retriever.search(args.question, limit=args.retrieval_top_k)
+    initial_reranked = reranker.rerank(
+        args.question,
+        initial_documents[: args.rerank_top_k],
+    )
+    if not initial_reranked.documents:
+        print(json.dumps(_fallback(
+            args.question,
+            initial_reranked.answer or "由щ옲而ㅻ 寃利앹쓣 ?듦븯??寃곌낵媛 ?놁뒿?덈떎.",
+        ), ensure_ascii=False, indent=2))
+        return
+
+    generated = RagAnswerGenerator(RagReasoningClient()).generate(
+        args.question,
+        search,
+        initial_documents=initial_reranked.documents,
+    )
     if not generated.documents:
         print(json.dumps(_fallback(
             args.question,

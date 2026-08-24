@@ -25,11 +25,26 @@ class RagAnswerGenerator:
         self,
         question: str,
         search: Callable[[str], RerankedResult],
+        initial_documents: list[RetrievedDocument] | None = None,
     ) -> GeneratedAnswer:
+        initial_documents = initial_documents or []
+        initial_context = "\n\n".join(
+            f"[출처: {document.source}]\n{document.text}"
+            for document in initial_documents
+        )
         messages: list[dict[str, Any]] = [
-            {"role": "user", "content": question}
+            {
+                "role": "user",
+                "content": (
+                    f"질문:\n{question}\n\n"
+                    f"초기 검색·리랭킹 공시 문서:\n{initial_context}\n\n"
+                    "아래 공시 문서만 근거로 답변하세요. 근거가 없는 내용은 추측하지 마세요."
+                ),
+            }
         ]
-        all_documents: dict[str, RetrievedDocument] = {}
+        all_documents: dict[str, RetrievedDocument] = {
+            document.id: document for document in initial_documents
+        }
         traces: list[str] = []
 
         for _ in range(self.max_rounds):
