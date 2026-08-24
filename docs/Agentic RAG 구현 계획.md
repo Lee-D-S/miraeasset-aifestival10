@@ -457,10 +457,16 @@ C:\projects\dis-164\agentic_rag\
 - [x] 단순 조회·계산·검증 경로의 tool call 생략
 - [x] 승인된 local corpus 검색 function 및 `tool` 메시지 연결
 - [ ] tool 인자·호출 대상·검색 결과 provenance 기록
+- [x] Chat Completions v3 + `HCX-DASH-002` client 연결
+- [x] `ChatModelPort` 형태의 text/json interface 정의
+- [x] model profile·cache·context/token 제한 구조
+- [x] JSON prompt·code fence 제거·로컬 schema 검증·1회 재시도
+- [x] `HCX-007` Structured Outputs 교체 profile
+- [x] 일반 Agent 호출을 새 Chat client로 교체
 - [ ] RAG Reasoning 답변의 source index·문서 ID 대조
 - [ ] 복잡한 결과의 실제 history 요약 품질 평가
 
-완료 기록: `llm/history.py`, `test_policies.py`, `test_rag_reasoning_tool.py` 통과. 인용 source index 및 상세 tool provenance 검증은 남아 있다.
+완료 기록: `llm/history.py`, `llm/chat_clova_x.py`, `llm/model_profiles.py`, `llm/cache.py`, `test_chat_clova_x.py`, `test_rag_reasoning_tool.py` 통과. 인용 source index 및 상세 tool provenance 검증은 남아 있다.
 
 ### Phase 6 — 검색·색인 인프라
 

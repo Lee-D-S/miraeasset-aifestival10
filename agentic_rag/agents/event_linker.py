@@ -5,6 +5,8 @@ from typing import Any
 from agentic_rag.contracts import AgentResult, Provenance
 from agentic_rag.deterministic.evidence import context_text
 from agentic_rag.llm.prompts import EVENT_LINK_PROMPT
+from agentic_rag.llm.model_profiles import DEFAULT_PROFILE
+from agentic_rag.llm.schemas import EVENT_LINK_SCHEMA
 
 
 def event_linker_agent(state: dict[str, Any]) -> dict[str, Any]:
@@ -24,14 +26,15 @@ def event_linker_agent(state: dict[str, Any]) -> dict[str, Any]:
 
 def make_event_linker_agent(client: Any | None = None):
     def agent(state: dict[str, Any]) -> dict[str, Any]:
-        if client is None:
-            return event_linker_agent(state)
+        deterministic = event_linker_agent(state)
+        if client is None or not state.get("cited_documents") or deterministic.get("linked_events"):
+            return deterministic
         try:
-            parsed = client.generate_json(EVENT_LINK_PROMPT.format(question=state.get("normalized_question", ""), context=context_text(state.get("cited_documents", []))))
-            linked = parsed if isinstance(parsed, list) else parsed.get("events", [])
+            parsed = client.generate_json([{"role": "user", "content": EVENT_LINK_PROMPT.format(question=state.get("normalized_question", ""), context=context_text(state.get("cited_documents", [])))}], schema=EVENT_LINK_SCHEMA, profile=DEFAULT_PROFILE)
+            linked = parsed.get("events", []) if isinstance(parsed, dict) else []
             allowed = {str(item.get("id", "")): item for item in state.get("cited_documents", [])}
             linked = [item for item in linked if str(item.get("document_id", "")) in allowed]
-            return {**event_linker_agent({**state, "normalized_question": ""}), "linked_events": linked, "trace": ["event_linker_llm_used"]}
+            return {**deterministic, "linked_events": linked, "trace": ["event_linker_llm_used"]}
         except Exception:
-            return event_linker_agent(state)
+            return deterministic
     return agent

@@ -5,6 +5,8 @@ from typing import Any
 from agentic_rag.contracts import AgentResult, Provenance
 from agentic_rag.deterministic.evidence import context_text
 from agentic_rag.llm.prompts import FACT_EXTRACTION_PROMPT
+from agentic_rag.llm.model_profiles import DEFAULT_PROFILE
+from agentic_rag.llm.schemas import FACT_EXTRACTION_SCHEMA
 
 
 def fact_extractor_agent(state: dict[str, Any]) -> dict[str, Any]:
@@ -22,14 +24,15 @@ def fact_extractor_agent(state: dict[str, Any]) -> dict[str, Any]:
 
 def make_fact_extractor_agent(client: Any | None = None):
     def agent(state: dict[str, Any]) -> dict[str, Any]:
-        if client is None:
-            return fact_extractor_agent(state)
+        deterministic = fact_extractor_agent(state)
+        if client is None or not state.get("cited_documents") or deterministic.get("facts"):
+            return deterministic
         try:
-            parsed = client.generate_json(FACT_EXTRACTION_PROMPT.format(question=state.get("normalized_question", ""), context=context_text(state.get("cited_documents", []))))
-            facts = parsed if isinstance(parsed, list) else parsed.get("facts", [])
+            parsed = client.generate_json([{"role": "user", "content": FACT_EXTRACTION_PROMPT.format(question=state.get("normalized_question", ""), context=context_text(state.get("cited_documents", [])))}], schema=FACT_EXTRACTION_SCHEMA, profile=DEFAULT_PROFILE)
+            facts = parsed.get("facts", []) if isinstance(parsed, dict) else []
             allowed = {str(item.get("id", "")): item for item in state.get("cited_documents", [])}
             facts = [item for item in facts if str(item.get("document_id", "")) in allowed]
-            return {**fact_extractor_agent({**state, "cited_documents": [{**allowed[item["document_id"]], "text": item.get("fact", "")} for item in facts]}), "facts": facts, "trace": ["fact_extractor_llm_used"]}
+            return {**deterministic, "facts": facts, "trace": ["fact_extractor_llm_used"]}
         except Exception:
-            return fact_extractor_agent(state)
+            return deterministic
     return agent

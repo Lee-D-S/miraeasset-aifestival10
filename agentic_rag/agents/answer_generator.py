@@ -29,7 +29,7 @@ def make_answer_generator(client: Any | None = None, *, rag_reasoning: Any | Non
             answer = "\n".join(f"[출처: {item.get('source', '')}] {item.get('text', '')}" for item in documents[:3])
             mode = "template"
         elif not use_rag_reasoning:
-            answer = client.generate_answer(ANSWER_PROMPT.format(question=state.get("normalized_question", ""), context=context_text(documents)))
+            answer = client.generate_text([{"role": "user", "content": ANSWER_PROMPT.format(question=state.get("normalized_question", ""), context=context_text(documents))}])
             mode = "llm"
         result = AgentResult("answer_generator", "ok" if answer.strip() else "empty", answer=answer, evidence_ids=tuple(str(item.get("id", "")) for item in documents), confidence=0.9 if answer.strip() else 0.0, trace=(f"mode={mode}",))
         provenance = Provenance("answer_generator", state.get("normalized_question", ""), result.evidence_ids, tuple(str(item.get("source", "")) for item in documents), result.confidence, {"mode": mode, "tool_call": mode == "rag_reasoning_tool"})

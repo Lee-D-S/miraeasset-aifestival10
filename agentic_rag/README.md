@@ -23,6 +23,9 @@ uvicorn agentic_rag.api:app --reload
 - 규칙 기반 분류·검색·계산·정책 검증을 우선한다.
 - HyperCLOVA X는 모호한 의도 해석과 근거 기반 자연어 생성에만 사용한다.
 - 규칙 기반 의도 확신도가 낮을 때만 구조화된 HyperCLOVA intent parser를 호출한다.
+- 일반 생성·구조화 호출은 Chat Completions v3의 `HCX-DASH-002`를 기본으로 사용한다.
+- 복합 근거·인용 답변에서만 RAG Reasoning의 승인된 local corpus tool call을 사용한다.
+- 단순 조회·계산·검증은 LLM과 tool call 없이 결정론적으로 처리한다.
 - CLOVA API 키가 있으면 기존 JSON 색인의 벡터 차원에 맞춰 Embedding v2로 질문을 임베딩한다.
 - 기존 `rag/`, `langgraph_rag/` orchestration을 import하지 않는다.
 
@@ -31,6 +34,16 @@ uvicorn agentic_rag.api:app --reload
 ```powershell
 python -m unittest discover -s agentic_rag/tests -v
 ```
+
+기본 일반 LLM profile은 `HCX-DASH-002`이며 다음 환경변수로 조정할 수 있다.
+
+```powershell
+$env:AGENTIC_LLM_MODEL="HCX-DASH-002"
+$env:AGENTIC_LLM_MAX_TOKENS="512"
+$env:AGENTIC_LLM_TEMPERATURE="0.1"
+```
+
+RAG Reasoning tool call은 registry에 등록된 `local_corpus_search`만 실행한다. 외부 검색이나 실시간 데이터 호출은 하지 않는다.
 
 로컬 색인 구축:
 
