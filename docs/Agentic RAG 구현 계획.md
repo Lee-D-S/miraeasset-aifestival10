@@ -233,16 +233,16 @@ Prompt 개선만으로 해결되지 않는 반복 오류가 확인된 뒤에만 
 
 ## 조건부 RAG Reasoning 구현 체크리스트
 
-- [ ] `rag_reasoning_client.py`를 일반 Chat client와 별도 모듈로 구현
-- [ ] 승인된 local corpus 검색 function schema 정의
-- [ ] RAG Reasoning의 1차 function call 응답에서 tool call 추출
-- [ ] Supervisor가 승인한 검색 함수만 실행
-- [ ] tool call 대상과 인자를 registry·schema로 검증
-- [ ] 검색 결과를 문서 ID·원문을 포함한 `role: tool` 메시지로 변환
-- [ ] tool 메시지를 포함한 2차 RAG Reasoning 호출로 인용 답변 생성
+- [x] `rag_reasoning_client.py`를 일반 Chat client와 별도 모듈로 구현
+- [x] 승인된 local corpus 검색 function schema 정의
+- [x] RAG Reasoning의 1차 function call 응답에서 tool call 추출
+- [x] 승인된 검색 함수만 실행
+- [x] tool call 대상과 인자를 schema로 검증
+- [x] 검색 결과를 문서 ID·원문을 포함한 `role: tool` 메시지로 변환
+- [x] tool 메시지를 포함한 2차 RAG Reasoning 호출로 인용 답변 생성
 - [ ] 최종 인용 source index를 실제 문서 ID와 대조
-- [ ] 검색 결과 없음·근거 부족·API 실패 시 deterministic fallback
-- [ ] 단순 조회·계산 경로에서 RAG Reasoning 호출이 생략되는지 검증
+- [x] 검색 결과 없음·근거 부족·API 실패 시 deterministic fallback
+- [x] 단순 조회·계산 경로에서 RAG Reasoning 호출이 생략되는지 검증
 - [ ] 호출 모델·tool call·문서 ID·인용·토큰 사용량을 provenance에 기록
 
 완료 조건은 “RAG Reasoning client 파일이 존재한다”가 아니라, 복합 인용 질의가 실제 그래프에서 승인된 검색 function과 `tool` 메시지를 거쳐 인용 검증을 통과하는 것이다.
@@ -453,14 +453,14 @@ C:\projects\dis-164\agentic_rag\
 - [x] Agent명·역할 metadata 기록
 - [x] LLM 입력 context 제한 구조
 - [x] 단순 결과의 template 전달
-- [ ] 복합 근거·인용 질의의 RAG Reasoning 조건부 호출
-- [ ] 단순 조회·계산·검증 경로의 tool call 생략
-- [ ] 승인된 local corpus 검색 function 및 `tool` 메시지 연결
+- [x] 복합 근거·인용 질의의 RAG Reasoning 조건부 호출
+- [x] 단순 조회·계산·검증 경로의 tool call 생략
+- [x] 승인된 local corpus 검색 function 및 `tool` 메시지 연결
 - [ ] tool 인자·호출 대상·검색 결과 provenance 기록
 - [ ] RAG Reasoning 답변의 source index·문서 ID 대조
 - [ ] 복잡한 결과의 실제 history 요약 품질 평가
 
-완료 기록: `llm/history.py`, `test_policies.py` 통과. RAG Reasoning 조건부 인용 경로는 아직 구현·검증 대상이다.
+완료 기록: `llm/history.py`, `test_policies.py`, `test_rag_reasoning_tool.py` 통과. 인용 source index 및 상세 tool provenance 검증은 남아 있다.
 
 ### Phase 6 — 검색·색인 인프라
 

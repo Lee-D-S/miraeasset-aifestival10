@@ -22,13 +22,14 @@ from agentic_rag.infrastructure.embedding_adapter import ClovaEmbedding
 from agentic_rag.infrastructure.postgres import PostgresVectorRetriever
 from agentic_rag.llm.hyperclova_client import HyperClovaClient
 from agentic_rag.llm.prompts import ANSWER_PROMPT
+from agentic_rag.llm.rag_reasoning_client import RagReasoningClient
 from agentic_rag.registry import AgentRegistry, AgentSpec
 
 
 class AgenticAnswerService:
     REQUEST_TIMEOUT_SECONDS = 300
     MAX_HANDOFFS = 4
-    def __init__(self, *, retriever: Any | None = None, reranker: Any | None = None, generator: Any | None = None) -> None:
+    def __init__(self, *, retriever: Any | None = None, reranker: Any | None = None, generator: Any | None = None, rag_reasoning: Any | None = None) -> None:
         if retriever is not None:
             self.retriever = retriever
         elif settings.postgres_dsn:
@@ -37,7 +38,9 @@ class AgenticAnswerService:
             self.retriever = RetrieverAdapter(LocalVectorRetriever(settings.local_vector_index))
         self.reranker = reranker or ClovaReranker()
         self.intent_client = HyperClovaClient() if settings.clova_api_key else None
-        self.generator = generator or make_answer_generator(self.intent_client)
+        self.rag_reasoning = rag_reasoning or (RagReasoningClient(api_host=settings.clova_api_host, api_key=settings.clova_api_key) if settings.clova_api_key else None)
+        search_tool = lambda query: self.retriever.search(query, settings.retrieval_top_k, {})
+        self.generator = generator or make_answer_generator(self.intent_client, rag_reasoning=self.rag_reasoning, search_tool=search_tool)
         retrieval_agent = make_retrieval_agent(self.retriever, settings.retrieval_top_k)
         self.agent_handlers = {"retrieval": retrieval_agent, "comparison": comparison_agent, "calculation": calculation_agent, "event_linker": make_event_linker_agent(self.intent_client), "fact_extractor": make_fact_extractor_agent(self.intent_client)}
         self.registry = AgentRegistry([
