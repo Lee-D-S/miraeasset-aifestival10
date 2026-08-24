@@ -17,6 +17,7 @@ class AgenticState(TypedDict, total=False):
     selected_agent: str
     retrieved_documents: list[dict[str, Any]]
     cited_documents: list[dict[str, Any]]
+    alternative_documents: dict[str, list[dict[str, Any]]]
     facts: list[dict[str, Any]]
     calculations: dict[str, Any]
     calculation_plan: dict[str, Any]

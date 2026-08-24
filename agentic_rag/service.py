@@ -15,6 +15,7 @@ from agentic_rag.agents.fact_extractor import make_fact_extractor_agent
 from agentic_rag.agents.retrieval import make_retrieval_agent
 from agentic_rag.deterministic.evidence import context_text, validate_evidence
 from agentic_rag.deterministic.metadata import extract_metadata
+from agentic_rag.deterministic.alternatives import AlternativeFinder
 from agentic_rag.graph import build_graph
 from agentic_rag.infrastructure.retrieval import LocalVectorRetriever, RetrieverAdapter
 from agentic_rag.infrastructure.reranker_adapter import ClovaReranker
@@ -38,6 +39,7 @@ class AgenticAnswerService:
             self.retriever = RetrieverAdapter(PostgresVectorRetriever(settings.postgres_dsn, ClovaEmbedding()))
         else:
             self.retriever = RetrieverAdapter(LocalVectorRetriever(settings.local_vector_index))
+        self.alternative_finder = AlternativeFinder(self.retriever, limit=settings.retrieval_top_k)
         self.reranker = reranker or ClovaReranker()
         self.chat_client = ChatClovaXClient(api_host=settings.clova_api_host, api_key=settings.clova_api_key) if settings.clova_api_key else None
         self.rag_reasoning = rag_reasoning or (RagReasoningClient(api_host=settings.clova_api_host, api_key=settings.clova_api_key) if settings.clova_api_key else None)
@@ -72,7 +74,7 @@ class AgenticAnswerService:
 
     def answer(self, question_id: str, question: str) -> AnswerResponse:
         normalized = " ".join((question or "").split())
-        state = {"question_id": question_id, "question": question, "metadata": extract_metadata(normalized, self.retriever.corp_names()), "trace": [], "agent_results": [], "provenance": [], "handoffs": [], "messages": [], "cited_documents": []}
+        state = {"question_id": question_id, "question": question, "metadata": extract_metadata(normalized, self.retriever.corp_names()), "trace": [], "agent_results": [], "provenance": [], "handoffs": [], "messages": [], "cited_documents": [], "alternative_documents": {"same_company": [], "same_period": []}}
         executor = ThreadPoolExecutor(max_workers=1)
         future = executor.submit(self.graph.invoke, state, {"configurable": {"thread_id": f"{question_id}-{hashlib.sha1(question.encode()).hexdigest()[:12]}"}, "recursion_limit": 12})
         try:
@@ -90,7 +92,24 @@ class AgenticAnswerService:
         answer = result.get("answer", "")
         valid, reason = validate_evidence(documents, answer)
         valid = valid and bool(result.get("validation", {}).get("valid", False))
+        alternatives = result.get("alternative_documents") or {"same_company": [], "same_period": []}
         if not valid:
-            answer = format_fallback_answer(result.get("fallback_reason") or reason)
-        trace = " ".join(str(item) for item in result.get("trace", []) if item)
+            try:
+                alternatives = self.alternative_finder.find(question, result.get("metadata") or state["metadata"])
+            except Exception:
+                alternatives = {"same_company": [], "same_period": []}
+            result["alternative_documents"] = alternatives
+            answer = format_fallback_answer(
+                result.get("fallback_reason") or reason,
+                same_company=alternatives.get("same_company", []),
+                same_period=alternatives.get("same_period", []),
+            )
+        trace_items = [str(item) for item in result.get("trace", []) if item]
+        if not valid:
+            trace_items.append(
+                "fallback_alternatives="
+                f"same_company:{len(alternatives.get('same_company', []))},"
+                f"same_period:{len(alternatives.get('same_period', []))}"
+            )
+        trace = " ".join(trace_items)
         return AnswerResponse(question_id=question_id, question=question, retrieved_context=context_text(documents), think_trace=trace, answer=answer)

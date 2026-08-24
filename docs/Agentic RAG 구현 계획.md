@@ -674,14 +674,21 @@ C:\projects\dis-164\agentic_rag\
 
 ### Phase 9 추가 구현 — fallback 사유 및 대체 문서
 
-- [ ] `agentic_rag` 전용 `AlternativeFinder` 계약·구현
-- [ ] fallback graph/API 경로에 finder 연결
-- [ ] `same_company`·`same_period` 결과를 직접 근거와 분리
-- [ ] fallback 사유·대체 문서 수·검색 실패를 `think_trace`와 provenance에 기록
-- [ ] 관련 문서가 없을 때의 명시적 응답 처리
-- [ ] 전용 단위·graph·API 테스트
+- [x] `agentic_rag` 전용 `AlternativeFinder` 계약·구현
+- [x] fallback graph/API 경로에 finder 연결
+- [x] `same_company`·`same_period` 결과를 직접 근거와 분리
+- [x] fallback 사유·대체 문서 수·검색 실패를 `think_trace`와 provenance에 기록
+- [x] 관련 문서가 없을 때의 명시적 응답 처리
+- [x] 전용 단위·graph·API 테스트
 
-완료 기록은 구현 단계별 커밋과 함께 갱신한다.
+### Phase 9 추가 구현 완료 기록
+
+- 완료일: 2026-08-24
+- 변경 파일: `agentic_rag/deterministic/alternatives.py`, `agentic_rag/state.py`, `agentic_rag/service.py`, `agentic_rag/tests/test_alternatives.py`
+- 실행한 테스트: `python -m unittest agentic_rag.tests.test_alternatives agentic_rag.tests.test_graph`
+- 테스트 결과: 9개 통과
+- 남은 위험: 실제 대회 corpus에서 metadata 품질과 유사도 품질은 별도 평가 필요
+- 다음 Phase: 전체 회귀 테스트 및 실제 corpus 검증
 
 ## 다음 구현 순서
 
