@@ -234,6 +234,24 @@ LLM은 Python 코드를 생성하거나 실행하지 않는다. 반환값은 `op
 
 임의 Python expression, `eval`, shell 명령, LLM 생성 코드 실행은 금지한다. 실행 전 지표 존재 여부, 기업·기간 일치, 단위 변환, 분모 0, 누락값, 분기·연간 혼합 여부를 검증하고, 실행 후 입력값·계산식·결과·근거를 재검산해 provenance에 기록한다.
 
+### 확장 계산 DSL/AST 및 미지원 계산 정책
+
+위 목록에 없는 계산도 LLM이 기존 primitive를 조합한 JSON AST/DSL로 표현할 수 있으면 실행한다. LLM은 다음과 같은 계산식을 생성할 수 있지만 Python 소스 코드는 생성하지 않는다.
+
+```json
+{
+  "op": "divide",
+  "args": [
+    {"op": "subtract", "args": [{"variable": "current_assets"}, {"variable": "inventory"}]},
+    {"variable": "current_liabilities"}
+  ]
+}
+```
+
+허용 primitive는 산술(`add`, `subtract`, `multiply`, `divide`, `power`), 통계(`sum`, `average`, `median`, `min`, `max`), 비교(`greater_than`, `less_than`, `rank`, `difference`), 조건(`if`, `threshold`), 기간(`period_change`, `rolling_average`)처럼 registry에 등록된 함수로 확장한다. AST validator는 연산명·인자 수·변수명·중첩 깊이·숫자 타입을 검증하고, executor는 registry 함수만 호출한다.
+
+계산이 기존 primitive 조합으로 표현되지 않거나 필요한 지표·근거가 없으면 임의 코드를 생성·실행하지 않고 `unsupported_calculation` fallback을 반환한다. 새로운 계산 함수를 추가할 때는 registry 함수, schema, 근거 검증, 단위·기간 규칙, 테스트를 함께 추가한다. 별도 sandbox에서의 동적 코드 실행은 초기 구현 범위에 포함하지 않는다.
+
 ## 초기 JSON 처리 방식
 
 `HCX-DASH-002`에서는 초기 단계에 Structured Outputs를 사용하지 않는다.
@@ -472,6 +490,9 @@ C:\projects\dis-164\agentic_rag\
 - [x] calculation planner의 명확·모호 질의 분기
 - [x] calculation schema·registry·executor·validator 분리
 - [x] 복합 계산 계획의 실제 graph 연결
+- [x] JSON AST 기본 validator·executor 연결
+- [ ] 통계·조건·순위·기간 primitive 확장
+- [ ] 미지원 계산 `unsupported_calculation` fallback
 - [x] event_linker Agent
 - [x] fact_extractor Agent
 - [x] answer_generator Agent
@@ -489,6 +510,7 @@ C:\projects\dis-164\agentic_rag\
 - [x] 잘못된 구조화 결과·근거 부족 fallback
 - [x] 계산 계획 JSON schema와 whitelist 검증
 - [x] 계산 입력값·공식·결과·근거 provenance
+- [ ] AST 연산명·인자 수·변수명·중첩 깊이 검증
 
 완료 기록: `agents/schemas.py`, `deterministic/evidence.py`, `test_schemas.py`, `test_policies.py` 통과.
 
