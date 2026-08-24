@@ -200,6 +200,48 @@ tool call은 LLM이 검색 함수를 선택하고, 검색 결과를 `role: tool`
 - 외부 API retry 횟수는 최소화한다.
 - 실패 시 deterministic fallback을 반환한다.
 
+## fallback 사유 및 대체 문서 제공 정책
+
+근거가 부족한 경우에도 답변을 한 줄로 끝내지 않는다. `agentic_rag`는 최종 답변을 만들기 전에 fallback 사유와 대체 문서를 결정론적으로 구성한다.
+
+```text
+근거 검증 실패 또는 정책 차단
+  ↓
+fallback reason code·설명 확정
+  ↓
+agentic_rag 전용 AlternativeFinder
+  ├─ 같은 기업의 다른 기간 문서
+  └─ 같은 기간의 유사·다른 기업 문서
+  ↓
+대체 문서 정렬·중복 제거
+  ↓
+사유 + 참고 문서 + 직접 근거가 아님을 명시한 fallback 답변
+```
+
+- fallback에는 `정책 차단`, `기업·기간·문서 유형 불일치`, `검색 결과 없음`, `관련성 부족`, `필수 수치 누락`, `외부 API timeout·실패` 중 가능한 구체적인 사유를 포함한다.
+- 같은 기업의 다른 기간 자료와 같은 기간의 유사·다른 기업 자료를 승인된 local corpus에서만 검색한다.
+- 대체 문서는 원 질문의 직접 근거로 사용하지 않으며, 답변에 참고 자료임을 명시한다.
+- 대체 문서 검색은 LLM이나 외부 검색을 사용하지 않고 metadata filter, score, source/chunk ID로 처리한다.
+- 결과는 문서 ID·기간·source를 기준으로 중복 제거하고 결정론적으로 정렬한다.
+- 대체 문서가 없을 때도 “현재 색인에서 확인 가능한 관련 참고 자료가 없음”을 명시한다.
+- `alternative_documents`는 공유 상태와 응답 trace에 기록하되 `retrieved_context`의 직접 근거 목록과 분리한다.
+
+구현 계약:
+
+- `AlternativeFinder`는 `agentic_rag` 내부에 소유하며 `retriever.search()`와 `corp_names()` 같은 공개 adapter 계약만 사용한다.
+- 기존 `rag/`와 `langgraph_rag/`의 fallback·finder 구현을 직접 import하지 않는다.
+- Finder 결과는 `same_company`, `same_period` 두 영역과 문서 ID·source·period·score를 포함한다.
+- fallback formatter는 `reason`, `same_company`, `same_period`를 받아 사유와 참고 문서를 함께 출력한다.
+- finder 실패는 fallback 자체를 실패시키지 않고 빈 대체 문서와 trace로 안전하게 처리한다.
+
+완료 조건:
+
+- [ ] 모든 fallback 경로에서 구체적인 사유가 출력된다.
+- [ ] 같은 기업 다른 기간·같은 기간 다른 기업 문서 탐색이 실제 graph/API 경로에서 호출된다.
+- [ ] 대체 문서가 직접 근거로 오인되지 않도록 응답과 상태에서 분리된다.
+- [ ] 정렬·중복 제거·finder 실패·대체 문서 없음 테스트가 통과한다.
+- [ ] 대체 문서 정책과 실행 결과가 이 문서에 기록된다.
+
 ## 계산 Agent 정책
 
 계산 Agent는 특정 재무 항목과 증감률만 처리하는 고정 정규식 계산기가 아니다. 사용자 질의의 계산 대상·기간·지표·연산 순서는 다양할 수 있으므로, LLM은 계산 계획만 구조화하고 실제 계산은 안전한 Python registry가 수행한다.
@@ -601,6 +643,11 @@ C:\projects\dis-164\agentic_rag\
 - [x] 비교 양쪽 근거 완전성 검증
 - [x] event linker 원문 대조
 - [x] fact extractor 원문 대조
+- [ ] fallback 사유 code·설명 생성
+- [ ] 같은 기업 다른 기간 대체 문서 탐색
+- [ ] 같은 기간 유사·다른 기업 대체 문서 탐색
+- [ ] 대체 문서 정렬·중복 제거 및 직접 근거 분리
+- [ ] 대체 문서가 포함된 fallback 응답 테스트
 
 완료 기록: `deterministic/evidence.py`, `test_policies.py`, `test_rag_reasoning_tool.py` 통과. 답변 수치·source/document ID·comparison·event/fact 원문 검증을 연결했다.
 
@@ -624,6 +671,17 @@ C:\projects\dis-164\agentic_rag\
 - [x] provenance·인용·수치 정확도 평가
 
 현재 상태: 자동화된 구조·계약·정책·fake 외부 API·provenance 평가와 회귀 테스트는 통과했지만 실제 대회 corpus·실제 PostgreSQL·실제 HyperCLOVA 품질 평가는 남아 있다.
+
+### Phase 9 추가 구현 — fallback 사유 및 대체 문서
+
+- [ ] `agentic_rag` 전용 `AlternativeFinder` 계약·구현
+- [ ] fallback graph/API 경로에 finder 연결
+- [ ] `same_company`·`same_period` 결과를 직접 근거와 분리
+- [ ] fallback 사유·대체 문서 수·검색 실패를 `think_trace`와 provenance에 기록
+- [ ] 관련 문서가 없을 때의 명시적 응답 처리
+- [ ] 전용 단위·graph·API 테스트
+
+완료 기록은 구현 단계별 커밋과 함께 갱신한다.
 
 ## 다음 구현 순서
 
