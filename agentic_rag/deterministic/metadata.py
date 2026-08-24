@@ -1,5 +1,6 @@
 import re
 from collections.abc import Iterable
+from typing import Any
 
 _PERIOD_BY_QUARTER = {"1": "03", "2": "06", "3": "09", "4": "12"}
 
@@ -8,13 +9,17 @@ def normalize_question(question: str) -> str:
     return " ".join(str(question or "").replace("\u200b", " ").split())
 
 
-def extract_metadata(question: str, corp_names: Iterable[str] = ()) -> dict[str, str]:
+def extract_metadata(question: str, corp_names: Iterable[str] = ()) -> dict[str, Any]:
     normalized = normalize_question(question)
     filters: dict[str, str] = {}
-    for name in sorted({item.strip() for item in corp_names if item and item.strip()}, key=len, reverse=True):
+    candidates = sorted({item.strip() for item in corp_names if item and item.strip()}, key=len, reverse=True)
+    matched = [name for name in candidates if name in normalized]
+    for name in matched:
         if name in normalized:
             filters["corp_name"] = name
             break
+    if len(matched) > 1:
+        filters["comparison_targets"] = matched
     quarter = re.search(r"(20\d{2})\s*년\s*([1-4])\s*분기", normalized)
     year = re.search(r"(20\d{2})\s*년", normalized)
     if quarter:

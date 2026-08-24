@@ -1,29 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal
 
 Intent = Literal["lookup", "comparison", "calculation", "event_link", "fact_extraction", "unsupported"]
-
-
-class AgenticState(TypedDict, total=False):
-    question_id: str
-    question: str
-    normalized_question: str
-    intent: Intent
-    intent_confidence: float
-    metadata: dict[str, str]
-    selected_agent: str
-    retrieved_documents: list[dict[str, Any]]
-    cited_documents: list[dict[str, Any]]
-    facts: list[dict[str, Any]]
-    calculations: dict[str, Any]
-    answer: str
-    fallback_reason: str
-    handoffs: list[dict[str, Any]]
-    trace: list[str]
-    status: str
-    error: str
 
 
 @dataclass(frozen=True)
@@ -46,3 +26,34 @@ class AgentResult:
     confidence: float = 0.0
     trace: tuple[str, ...] = ()
 
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "agent": self.agent,
+            "status": self.status,
+            "answer": self.answer,
+            "facts": list(self.facts),
+            "calculations": dict(self.calculations),
+            "evidence_ids": list(self.evidence_ids),
+            "confidence": self.confidence,
+            "trace": list(self.trace),
+        }
+
+
+@dataclass(frozen=True)
+class Provenance:
+    agent: str
+    question: str
+    document_ids: tuple[str, ...] = ()
+    sources: tuple[str, ...] = ()
+    confidence: float = 0.0
+    details: dict[str, Any] | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "agent": self.agent,
+            "question": self.question,
+            "document_ids": list(self.document_ids),
+            "sources": list(self.sources),
+            "confidence": self.confidence,
+            "details": self.details or {},
+        }

@@ -19,7 +19,7 @@ uvicorn app:app --reload
 
 The root `app.py` is the single API entry point. Select the implementation with `RAG_BACKEND=classic` for `rag/`, `RAG_BACKEND=langgraph` for `langgraph_rag/`, or `RAG_BACKEND=agentic` for `agentic_rag/`. All implementations expose the same `/health` and `/answer` API contract. The new agentic backend owns its orchestration and does not import the existing RAG graphs.
 
-Shared settings and API schemas live in `common/`. The `rag/config.py` and `rag/schemas.py` modules remain compatibility import paths for existing code.
+Shared settings and API schemas live in `common/`. The `rag/config.py` and `rag/schemas.py` modules remain compatibility import paths for existing code. `agentic_rag/` owns its own orchestration and specialized Agent nodes.
 
 ### Endpoints
 

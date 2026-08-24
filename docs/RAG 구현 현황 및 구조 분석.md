@@ -310,4 +310,4 @@ uvicorn app:app --reload
 python -m unittest discover -s agentic_rag/tests -v
 ```
 
-현재 Agentic RAG는 새 backend의 구조·계약·fallback 검증을 위한 초기 구현이다. 낮은 확신도 질의에는 HyperCLOVA 구조화 intent parser를 선택적으로 호출하며, CLOVA API 키가 있으면 질문 임베딩에도 Embedding v2를 사용한다. 기업 비교의 병렬 fan-out, PostgreSQL 전용 adapter, 실제 corpus 품질 평가는 후속 작업이다.
+Agentic RAG는 새 backend의 구조·계약·fallback 검증을 위해 추가되었고, 낮은 확신도 질의에는 HyperCLOVA 구조화 intent parser를 선택적으로 호출한다. retrieval·comparison·calculation·event_linker·fact_extractor·answer_generator는 각각 독립 handler와 LangGraph node를 가진다. 비교 질의는 `Send` fan-out 후 결정론적으로 병합하며, AgentResult/provenance schema, 메시지 history 정책, timeout/retry, local/PostgreSQL adapter, ingestion CLI, 수치·인용 근거 검증을 포함한다. 실제 PostgreSQL 연결과 대회 corpus 품질 평가는 별도 검증 대상으로 남아 있다.

@@ -1,6 +1,7 @@
 import json
 from typing import Any, Protocol
 from urllib.request import Request, urlopen
+from agentic_rag.infrastructure.retry import retry_call
 
 
 class RerankerPort(Protocol):
@@ -32,7 +33,7 @@ class ClovaReranker:
                 headers={"Content-Type": "application/json; charset=utf-8", "Authorization": f"Bearer {settings.clova_api_key}"},
                 method="POST",
             )
-            with urlopen(request, timeout=120) as response:
+            with retry_call(lambda: urlopen(request, timeout=120)) as response:
                 body = json.loads(response.read().decode("utf-8"))
             cited_ids = [str(item.get("id", "")) for item in body.get("result", {}).get("citedDocuments", [])]
             by_id = {str(item.get("id", "")): item for item in documents}

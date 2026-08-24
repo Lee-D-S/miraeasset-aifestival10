@@ -1,36 +1,54 @@
 from __future__ import annotations
 
 import hashlib
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from typing import Any
 
 from common.config import settings
 from common.fallback import format_fallback_answer
 from common.schemas import AnswerResponse
+from agentic_rag.agents.answer_generator import make_answer_generator
+from agentic_rag.agents.calculation import calculation_agent
+from agentic_rag.agents.comparison import comparison_agent
+from agentic_rag.agents.event_linker import make_event_linker_agent
+from agentic_rag.agents.fact_extractor import make_fact_extractor_agent
+from agentic_rag.agents.retrieval import make_retrieval_agent
 from agentic_rag.deterministic.evidence import context_text, validate_evidence
 from agentic_rag.deterministic.metadata import extract_metadata
 from agentic_rag.graph import build_graph
 from agentic_rag.infrastructure.retrieval import LocalVectorRetriever, RetrieverAdapter
 from agentic_rag.infrastructure.reranker_adapter import ClovaReranker
+from agentic_rag.infrastructure.embedding_adapter import ClovaEmbedding
+from agentic_rag.infrastructure.postgres import PostgresVectorRetriever
 from agentic_rag.llm.hyperclova_client import HyperClovaClient
 from agentic_rag.llm.prompts import ANSWER_PROMPT
 from agentic_rag.registry import AgentRegistry, AgentSpec
 
 
 class AgenticAnswerService:
+    REQUEST_TIMEOUT_SECONDS = 300
+    MAX_HANDOFFS = 4
     def __init__(self, *, retriever: Any | None = None, reranker: Any | None = None, generator: Any | None = None) -> None:
-        self.retriever = retriever or RetrieverAdapter(LocalVectorRetriever(settings.local_vector_index))
+        if retriever is not None:
+            self.retriever = retriever
+        elif settings.postgres_dsn:
+            self.retriever = RetrieverAdapter(PostgresVectorRetriever(settings.postgres_dsn, ClovaEmbedding()))
+        else:
+            self.retriever = RetrieverAdapter(LocalVectorRetriever(settings.local_vector_index))
         self.reranker = reranker or ClovaReranker()
-        self.generator = generator or self._default_generator
+        self.intent_client = HyperClovaClient() if settings.clova_api_key else None
+        self.generator = generator or make_answer_generator(self.intent_client)
+        retrieval_agent = make_retrieval_agent(self.retriever, settings.retrieval_top_k)
+        self.agent_handlers = {"retrieval": retrieval_agent, "comparison": comparison_agent, "calculation": calculation_agent, "event_linker": make_event_linker_agent(self.intent_client), "fact_extractor": make_fact_extractor_agent(self.intent_client)}
         self.registry = AgentRegistry([
             AgentSpec("supervisor", "deterministic route coordinator", lambda state: {}, ("retrieval", "comparison", "calculation", "event_linker", "fact_extractor")),
-            AgentSpec("retrieval", "direct evidence retrieval", lambda state: {}),
-            AgentSpec("comparison", "company comparison", lambda state: {}),
-            AgentSpec("calculation", "deterministic financial calculation", lambda state: {}),
-            AgentSpec("event_linker", "event and disclosure linking", lambda state: {}),
-            AgentSpec("fact_extractor", "evidence fact extraction", lambda state: {}),
+            AgentSpec("retrieval", "direct evidence retrieval", retrieval_agent),
+            AgentSpec("comparison", "company comparison", comparison_agent),
+            AgentSpec("calculation", "deterministic financial calculation", calculation_agent),
+            AgentSpec("event_linker", "event and disclosure linking", self.agent_handlers["event_linker"]),
+            AgentSpec("fact_extractor", "evidence fact extraction", self.agent_handlers["fact_extractor"]),
         ])
-        self.intent_client = HyperClovaClient() if settings.clova_api_key else None
-        self.graph = build_graph(retriever=self.retriever, reranker=self.reranker, generator=self.generator, registry=self.registry, intent_client=self._intent_prompt if self.intent_client else None, retrieval_limit=settings.retrieval_top_k, rerank_limit=settings.rerank_top_k)
+        self.graph = build_graph(retriever=self.retriever, reranker=self.reranker, generator=self.generator, registry=self.registry, agent_handlers=self.agent_handlers, intent_client=self._intent_prompt if self.intent_client else None, retrieval_limit=settings.retrieval_top_k, rerank_limit=settings.rerank_top_k)
 
     def _intent_prompt(self, question: str):
         from agentic_rag.llm.prompts import INTENT_PROMPT
@@ -48,14 +66,24 @@ class AgenticAnswerService:
 
     def answer(self, question_id: str, question: str) -> AnswerResponse:
         normalized = " ".join((question or "").split())
-        state = {"question_id": question_id, "question": question, "metadata": extract_metadata(normalized, self.retriever.corp_names()), "trace": []}
+        state = {"question_id": question_id, "question": question, "metadata": extract_metadata(normalized, self.retriever.corp_names()), "trace": [], "agent_results": [], "provenance": [], "handoffs": [], "messages": [], "cited_documents": []}
+        executor = ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(self.graph.invoke, state, {"configurable": {"thread_id": f"{question_id}-{hashlib.sha1(question.encode()).hexdigest()[:12]}"}, "recursion_limit": 12})
         try:
-            result = self.graph.invoke(state, config={"configurable": {"thread_id": f"{question_id}-{hashlib.sha1(question.encode()).hexdigest()[:12]}"}, "recursion_limit": 12})
+            result = future.result(timeout=self.REQUEST_TIMEOUT_SECONDS)
+            if len(result.get("handoffs", [])) > self.MAX_HANDOFFS:
+                raise RuntimeError("handoff limit exceeded")
+        except TimeoutError:
+            future.cancel()
+            result = {**state, "fallback_reason": "요청 처리 시간이 제한 시간을 초과했습니다.", "trace": ["request_timeout"], "cited_documents": [], "answer": ""}
         except Exception as exc:
             result = {**state, "fallback_reason": f"처리 중 오류가 발생했습니다: {exc}", "trace": ["graph_error"], "cited_documents": [], "answer": ""}
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
         documents = result.get("cited_documents", [])
         answer = result.get("answer", "")
         valid, reason = validate_evidence(documents, answer)
+        valid = valid and bool(result.get("validation", {}).get("valid", False))
         if not valid:
             answer = format_fallback_answer(result.get("fallback_reason") or reason)
         trace = " ".join(str(item) for item in result.get("trace", []) if item)

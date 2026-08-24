@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from urllib.request import Request, urlopen
+from agentic_rag.infrastructure.retry import retry_call
 from typing import Any
 
 class HyperClovaClient:
@@ -23,7 +24,7 @@ class HyperClovaClient:
             headers={"Content-Type": "application/json; charset=utf-8", "Authorization": f"Bearer {settings.clova_api_key}"},
             method="POST",
         )
-        with urlopen(request, timeout=120) as response:
+        with retry_call(lambda: urlopen(request, timeout=120)) as response:
             body = json.loads(response.read().decode("utf-8"))
         if body.get("status", {}).get("code") != "20000":
             raise RuntimeError(f"HyperCLOVA request failed: {body.get('status')}")

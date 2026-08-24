@@ -6,6 +6,7 @@ import math
 from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
+from agentic_rag.infrastructure.retry import retry_call
 
 
 class LocalVectorRetriever:
@@ -24,7 +25,8 @@ class LocalVectorRetriever:
         scored = []
         for row in self.rows:
             metadata = row.get("metadata", {})
-            if filters and any(value and str(metadata.get(key, "")) != value and (key != "document_type" or value not in str(metadata.get(key, ""))) for key, value in filters.items()):
+            allowed_filters = {key: value for key, value in (filters or {}).items() if key in {"corp_name", "corp_code", "document_type", "report_period", "source_group"}}
+            if allowed_filters and any(value and str(metadata.get(key, "")) != value and (key != "document_type" or value not in str(metadata.get(key, ""))) for key, value in allowed_filters.items()):
                 continue
             score = self._cosine(query_vector, row.get("embedding", []))
             scored.append({"id": str(row.get("id", "")), "source": str(row.get("source_path", row.get("source", ""))), "text": str(row.get("text", "")), "score": max(0.0, min(1.0, score)), "metadata": metadata})
@@ -48,7 +50,7 @@ class LocalVectorRetriever:
                     headers={"Content-Type": "application/json; charset=utf-8", "Authorization": f"Bearer {settings.clova_api_key}"},
                     method="POST",
                 )
-                with urlopen(request, timeout=120) as response:
+                with retry_call(lambda: urlopen(request, timeout=120)) as response:
                     body = json.loads(response.read().decode("utf-8"))
                 vector = body.get("result", {}).get("embedding", [])
                 if vector:

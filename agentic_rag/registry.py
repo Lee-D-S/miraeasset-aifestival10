@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Callable
 
-from agentic_rag.contracts import AgenticState
+from agentic_rag.state import AgenticState
 
 
 @dataclass(frozen=True)
@@ -37,4 +37,3 @@ class AgentRegistry:
         spec = self.get(source)
         if target not in spec.allowed_targets:
             raise ValueError(f"Agent {source!r} cannot hand off to {target!r}")
-

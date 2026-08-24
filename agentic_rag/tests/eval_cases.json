@@ -1,0 +1,6 @@
+[
+  {"id": "lookup", "question": "기업A의 사업 내용은?", "expected": "answer_or_fallback"},
+  {"id": "comparison", "question": "기업A와 기업B를 비교해줘", "expected": "comparison"},
+  {"id": "calculation", "question": "매출 증가율은?", "expected": "calculation"},
+  {"id": "unsupported", "question": "주가 예측해줘", "expected": "fallback"}
+]

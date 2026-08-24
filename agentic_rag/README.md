@@ -1,6 +1,6 @@
 # Agentic RAG
 
-`langgraph_rag/`를 수정하지 않고 추가한 Supervisor 참조형 LangGraph backend다. 에이전트 registry, 구조화 handoff, 결정론적 라우팅, 근거 검증을 포함한다.
+`langgraph_rag/`를 수정하지 않고 추가한 Supervisor 참조형 LangGraph backend다. 에이전트 registry, 구조화 handoff, 전문 Agent node, provenance, 결정론적 라우팅, 근거 검증을 포함한다.
 
 ## 실행
 
@@ -31,3 +31,17 @@ uvicorn agentic_rag.api:app --reload
 ```powershell
 python -m unittest discover -s agentic_rag/tests -v
 ```
+
+로컬 색인 구축:
+
+```powershell
+python -m agentic_rag.ingestion.cli --source "<DATA_DIR>" --output "test_data/agentic_rag_local.json"
+```
+
+PostgreSQL 색인 구축:
+
+```powershell
+python -m agentic_rag.ingestion.cli --source "<DATA_DIR>" --postgres-dsn "$env:POSTGRES_DSN"
+```
+
+비교 질의는 대상별 `Send` fan-out 후 문서 ID 기준으로 결정론적으로 병합한다.
