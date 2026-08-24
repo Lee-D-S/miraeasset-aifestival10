@@ -121,7 +121,7 @@ RAG Reasoning API는 `agentic_rag`에서 전면 제거하지 않는다. 다만 �
 | intent parser | 규칙 기반 | 불확실할 때 Chat Completions v3 + `HCX-DASH-002` |
 | retrieval | deterministic 검색 | 사용하지 않음 |
 | comparison | deterministic 정렬·비교 | 의미 정렬이 불명확할 때 `HCX-DASH-002` |
-| calculation | Python 계산 | 사용하지 않음 |
+| calculation | 계산 계획이 명확하면 Python 실행 | 모호·복합 계산 계획만 `HCX-DASH-002`로 구조화 |
 | event linker | deterministic 후보 연결 | 모호할 때 `HCX-DASH-002` |
 | fact extractor | 검색 문서 기반 추출 | 구조화 추출이 불충분할 때 `HCX-DASH-002` |
 | answer generator | 템플릿 전달 | 복합 근거·인용 필요 시 RAG Reasoning API |
@@ -200,6 +200,40 @@ tool call은 LLM이 검색 함수를 선택하고, 검색 결과를 `role: tool`
 - 외부 API retry 횟수는 최소화한다.
 - 실패 시 deterministic fallback을 반환한다.
 
+## 계산 Agent 정책
+
+계산 Agent는 특정 재무 항목과 증감률만 처리하는 고정 정규식 계산기가 아니다. 사용자 질의의 계산 대상·기간·지표·연산 순서는 다양할 수 있으므로, LLM은 계산 계획만 구조화하고 실제 계산은 안전한 Python registry가 수행한다.
+
+```text
+자연어 계산 질의
+  ↓
+계산 계획 생성
+  ├─ 명확한 질의 → deterministic 계획
+  └─ 모호·복합 질의 → HCX-DASH-002 구조화 출력
+  ↓
+계산 계획 schema·whitelist 검증
+  ↓
+지표·기업·기간 검색
+  ↓
+단위·기간·근거 검증
+  ↓
+등록된 Python 계산 함수 실행
+  ↓
+재검산·provenance 기록
+```
+
+LLM은 Python 코드를 생성하거나 실행하지 않는다. 반환값은 `operation`, `targets`, `metric`, `periods`, `sub_operations`를 포함하는 계산 계획 JSON이다. 명확한 계산은 LLM 없이 바로 실행하고, 모호하거나 복합적인 계산만 일반 Chat Completions로 계획을 구조화한다.
+
+허용 연산은 registry에 등록한다.
+
+- 기본 연산: `add`, `subtract`, `multiply`, `divide`
+- 변화율: `absolute_change`, `percentage_change`, `cagr`
+- 비율: `margin`, `ratio`, `debt_ratio`, `current_ratio`
+- 집계·비교: `sum`, `average`, `min`, `max`, `rank`, 기업 간 차이
+- 복합 연산: 허용된 연산으로만 구성된 AST 또는 계산 DSL
+
+임의 Python expression, `eval`, shell 명령, LLM 생성 코드 실행은 금지한다. 실행 전 지표 존재 여부, 기업·기간 일치, 단위 변환, 분모 0, 누락값, 분기·연간 혼합 여부를 검증하고, 실행 후 입력값·계산식·결과·근거를 재검산해 provenance에 기록한다.
+
 ## 초기 JSON 처리 방식
 
 `HCX-DASH-002`에서는 초기 단계에 Structured Outputs를 사용하지 않는다.
@@ -265,10 +299,15 @@ C:\projects\dis-164\agentic_rag\
 │  ├─ comparison.py
 │  ├─ event_linker.py
 │  ├─ fact_extractor.py
+│  ├─ calculation_planner.py
+│  ├─ calculation_validator.py
+│  ├─ calculation_executor.py
 │  └─ answer_generator.py
 ├─ deterministic\
 │  ├─ metadata.py
 │  ├─ calculations.py
+│  ├─ calculation_registry.py
+│  ├─ calculation_schema.py
 │  ├─ evidence.py
 │  └─ policy.py
 ├─ llm\
@@ -350,6 +389,13 @@ C:\projects\dis-164\agentic_rag\
 - 최소 히스토리와 전체 히스토리 모드 검증
 - 병렬 검색 결과의 결정적 병합
 - 기업 비교·기간 비교·재무 계산 테스트
+- 명확한 계산 질의의 LLM 없는 실행 테스트
+- 모호·복합 계산 질의의 구조화 계산 계획 테스트
+- 계산 계획 schema·whitelist·AST 검증 테스트
+- 영업이익률·순이익률·부채비율·CAGR·기업 비교 계산 테스트
+- 단위 불일치·기간 불일치·누락값·0으로 나누기·분기/연간 혼합 테스트
+- 임의 Python 코드·`eval`·외부 명령 실행 거부 테스트
+- 계산 입력값·공식·결과·근거 provenance 테스트
 - 근거 부족·외부 정보 요청·투자 조언 요청 fallback 테스트
 - HyperCLOVA X 실패 및 timeout 테스트
 - 단순 경로에서 RAG Reasoning endpoint가 호출되지 않는지 검사
@@ -377,7 +423,9 @@ C:\projects\dis-164\agentic_rag\
 - 기본 일반 LLM 모델은 `HCX-DASH-002`다.
 - RAG Reasoning API는 `agentic_rag`에서 제거하지 않고, 인용 중심 복합 답변 경로에서만 조건부 호출된다.
 - 일반 LLM이 필요한 Agent만 조건부로 호출된다.
-- 검색·계산·검증은 LLM 없이 동작한다.
+- 검색·실제 계산·검증은 LLM 없이 동작한다.
+- 계산 대상과 계획 해석이 필요한 경우에만 계산 planner가 일반 LLM을 조건부 호출한다.
+- 계산 실행은 whitelist Python 연산과 검증된 계산 DSL만 사용한다.
 - JSON 출력 실패 시 안전한 deterministic fallback이 동작한다.
 - `HCX-007`로 profile만 교체해 Structured Outputs 품질 모드로 전환할 수 있다.
 - fine-tuning 없이 전체 시스템이 실행된다.
@@ -385,6 +433,8 @@ C:\projects\dis-164\agentic_rag\
 - tool call은 registry에 등록된 승인 검색 함수로만 실행된다.
 - 단순 조회·계산·검증 경로에서는 tool call이 발생하지 않는다.
 - 복합 인용 답변에서는 tool call과 `role: tool` 결과가 provenance에 남는다.
+- 명확한 계산은 LLM 없이, 모호·복합 계산은 구조화 planner를 거쳐 실행된다.
+- 계산은 whitelist Python 함수 또는 안전한 계산 DSL만 실행한다.
 - 기존 `rag/`, `langgraph_rag/`는 수정되지 않는다.
 
 ## 구현 진행 현황
@@ -418,6 +468,9 @@ C:\projects\dis-164\agentic_rag\
 - [x] retrieval Agent
 - [x] comparison Agent
 - [x] calculation Agent
+- [ ] calculation planner의 명확·모호 질의 분기
+- [ ] calculation schema·registry·executor·validator 분리
+- [ ] 복합 계산 계획의 실제 graph 연결
 - [x] event_linker Agent
 - [x] fact_extractor Agent
 - [x] answer_generator Agent
@@ -433,6 +486,8 @@ C:\projects\dis-164\agentic_rag\
 - [x] Agent별 provenance 기록
 - [x] 근거 문서 ID와 provenance ID 일치 검증
 - [x] 잘못된 구조화 결과·근거 부족 fallback
+- [ ] 계산 계획 JSON schema와 whitelist 검증
+- [ ] 계산 입력값·공식·결과·근거 provenance
 
 완료 기록: `agents/schemas.py`, `deterministic/evidence.py`, `test_schemas.py`, `test_policies.py` 통과.
 
