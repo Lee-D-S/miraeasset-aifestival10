@@ -17,7 +17,7 @@ pip install -r requirements.txt
 uvicorn app:app --reload
 ```
 
-The root `app.py` is the single API entry point. Select the implementation with `RAG_BACKEND=classic` for `rag/` or `RAG_BACKEND=langgraph` for `langgraph_rag/`. Both implementations expose the same `/health` and `/answer` API contract, so a future RAG implementation can be added as another backend without creating another FastAPI entry point. The two backends are independently deployable: `langgraph_rag/` does not import `rag/`, and `rag/` does not import `langgraph_rag/`.
+The root `app.py` is the single API entry point. Select the implementation with `RAG_BACKEND=classic` for `rag/`, `RAG_BACKEND=langgraph` for `langgraph_rag/`, or `RAG_BACKEND=agentic` for `agentic_rag/`. All implementations expose the same `/health` and `/answer` API contract. The new agentic backend owns its orchestration and does not import the existing RAG graphs.
 
 Shared settings and API schemas live in `common/`. The `rag/config.py` and `rag/schemas.py` modules remain compatibility import paths for existing code.
 

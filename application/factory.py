@@ -19,7 +19,11 @@ def build_answer_service(backend: str | None = None) -> AnswerService:
         from langgraph_rag.service import LangGraphAnswerService
 
         return LangGraphAnswerService()
+    if selected in {"agentic", "agentic_rag"}:
+        from agentic_rag.service import AgenticAnswerService
+
+        return AgenticAnswerService()
     raise ValueError(
         f"Unsupported RAG_BACKEND={selected!r}. "
-        "Use 'classic' or 'langgraph'."
+        "Use 'classic', 'langgraph', or 'agentic'."
     )

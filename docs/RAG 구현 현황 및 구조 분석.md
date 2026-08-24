@@ -297,3 +297,17 @@ python -m scripts.langgraph_search_local_index "질문"
 - 실행 명령
 - 테스트 결과
 - 대회 요구사항과 관련된 안전성·fallback 정책
+
+## Supervisor 참조형 Agentic RAG
+
+`agentic_rag/`는 기존 `langgraph_rag/`를 수정하지 않고 추가한 세 번째 backend다. `langgraph-supervisor-py`의 직접 의존성은 추가하지 않았으며, 명시적 agent registry, handoff 대상 검증, 구조화된 결과, provenance, 최소 히스토리라는 설계 원칙만 반영했다.
+
+처리 흐름은 규칙 기반 정규화·정책 검증·의도 분류 후 검색과 근거 검증을 수행하고, 필요한 경우에만 HyperCLOVA X로 답변을 생성한다. 현재 구현의 로컬 검색 어댑터는 기존 JSON 색인 형식을 읽으며, 기존 backend orchestration에는 의존하지 않는다.
+
+```powershell
+$env:RAG_BACKEND="agentic"
+uvicorn app:app --reload
+python -m unittest discover -s agentic_rag/tests -v
+```
+
+현재 Agentic RAG는 새 backend의 구조·계약·fallback 검증을 위한 초기 구현이다. 낮은 확신도 질의에는 HyperCLOVA 구조화 intent parser를 선택적으로 호출하며, CLOVA API 키가 있으면 질문 임베딩에도 Embedding v2를 사용한다. 기업 비교의 병렬 fan-out, PostgreSQL 전용 adapter, 실제 corpus 품질 평가는 후속 작업이다.
