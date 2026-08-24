@@ -7,6 +7,7 @@ from agentic_rag.agents.calculation_planner import make_calculation_planner
 from agentic_rag.contracts import AgentResult, Provenance
 from agentic_rag.deterministic.calculation_registry import execute_operation
 from agentic_rag.deterministic.calculation_schema import validate_calculation_plan
+from agentic_rag.deterministic.calculation_dsl import evaluate_expression
 
 
 METRIC_LABELS = {
@@ -56,6 +57,15 @@ def _execute_plan(plan: dict[str, Any], documents: list[dict[str, Any]]) -> tupl
     operation = str(plan["operation"])
     metric = str(plan.get("metric", "revenue"))
     evidence: list[str] = []
+    if operation == "formula":
+        variables: dict[str, float] = {}
+        for variable in METRIC_LABELS:
+            values = extract_metric_values(documents, variable)
+            if values:
+                variables[variable] = values[0]["value"]
+                evidence.append(values[0]["document_id"])
+        result = evaluate_expression(plan.get("expression", {}), variables)
+        return {"operation": operation, "expression": plan["expression"], "variables": variables, "formula": "json_ast", "result": result}, tuple(dict.fromkeys(evidence))
     if operation in {"margin", "debt_ratio", "current_ratio", "ratio"}:
         numerator_metric = {"margin": metric, "debt_ratio": "liabilities", "current_ratio": "current_assets"}.get(operation, metric)
         denominator_metric = {"margin": "revenue", "debt_ratio": "equity", "current_ratio": "current_liabilities"}.get(operation, "revenue")
@@ -90,7 +100,7 @@ def make_calculation_agent(client: Any | None = None):
         question = state.get("normalized_question", state.get("question", ""))
         plan, planner_source = planner(question)
         if plan is None:
-            calculations = {"error": "계산 방법을 안전하게 구조화하지 못했습니다."}
+            calculations = {"error_code": "unsupported_calculation", "error": "계산 방법을 안전하게 구조화하지 못했습니다."}
             evidence_ids: tuple[str, ...] = ()
             confidence = 0.0
             status = "insufficient"
@@ -109,7 +119,8 @@ def make_calculation_agent(client: Any | None = None):
                 confidence = 0.9
                 status = "ok"
             except (TypeError, ValueError, ZeroDivisionError) as error:
-                calculations = {"error": str(error), "plan": plan}
+                message = str(error)
+                calculations = {"error_code": "unsupported_calculation" if "허용되지 않은" in message else "calculation_error", "error": message, "plan": plan}
                 evidence_ids = ()
                 confidence = 0.2
                 status = "insufficient"

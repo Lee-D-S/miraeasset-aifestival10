@@ -491,8 +491,8 @@ C:\projects\dis-164\agentic_rag\
 - [x] calculation schema·registry·executor·validator 분리
 - [x] 복합 계산 계획의 실제 graph 연결
 - [x] JSON AST 기본 validator·executor 연결
-- [ ] 통계·조건·순위·기간 primitive 확장
-- [ ] 미지원 계산 `unsupported_calculation` fallback
+- [x] 통계·조건·순위·기간 primitive 확장
+- [x] 미지원 계산 `unsupported_calculation` fallback
 - [x] event_linker Agent
 - [x] fact_extractor Agent
 - [x] answer_generator Agent
@@ -510,11 +510,11 @@ C:\projects\dis-164\agentic_rag\
 - [x] 잘못된 구조화 결과·근거 부족 fallback
 - [x] 계산 계획 JSON schema와 whitelist 검증
 - [x] 계산 입력값·공식·결과·근거 provenance
-- [ ] AST 연산명·인자 수·변수명·중첩 깊이 검증
+- [x] AST 연산명·인자 수·변수명·중첩 깊이 검증
 
 완료 기록: `agents/schemas.py`, `deterministic/evidence.py`, `test_schemas.py`, `test_policies.py` 통과.
 
-계산 확장 완료 기록: `calculation_planner.py`, `calculation_schema.py`, `calculation_registry.py`, `calculation_dsl.py`, `calculation.py`, `test_calculation_plans.py`를 연결했다. 명확한 계산은 deterministic planner, 모호한 계산은 조건부 Chat planner, 실제 실행은 whitelist Python registry와 안전한 JSON DSL을 사용한다. Agentic 테스트 46개, LangGraph RAG 10개, 루트 10개가 통과했다.
+계산 확장 완료 기록: `calculation_planner.py`, `calculation_schema.py`, `calculation_registry.py`, `calculation_dsl.py`, `calculation.py`, `test_calculation_plans.py`를 연결했다. 명확한 계산은 deterministic planner, 모호한 계산은 조건부 Chat planner, 실제 실행은 whitelist Python registry와 안전한 JSON DSL을 사용한다. 통계·조건·순위·기간 primitive와 `unsupported_calculation` fallback을 검증했다. Agentic 테스트 49개, LangGraph RAG 10개, 루트 10개가 통과했다.
 
 ### Phase 4 — handoff 및 병렬 fan-out
 

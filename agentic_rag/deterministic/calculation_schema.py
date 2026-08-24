@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 
-ALLOWED_OPERATIONS = {"add", "subtract", "multiply", "divide", "percentage_change", "cagr", "margin", "ratio", "debt_ratio", "current_ratio", "compare"}
+ALLOWED_OPERATIONS = {"add", "subtract", "multiply", "divide", "percentage_change", "cagr", "margin", "ratio", "debt_ratio", "current_ratio", "compare", "formula"}
 ALLOWED_METRICS = {"revenue", "operating_income", "net_income", "assets", "liabilities", "equity", "current_assets", "current_liabilities"}
 
 
@@ -25,4 +25,6 @@ def validate_calculation_plan(plan: Any) -> tuple[bool, str]:
     sub_operations = plan.get("sub_operations", [])
     if sub_operations and (not isinstance(sub_operations, list) or not all(str(item) in ALLOWED_OPERATIONS or str(item).endswith("_lookup") for item in sub_operations)):
         return False, "허용되지 않은 하위 계산 연산입니다."
+    if operation == "formula" and not isinstance(plan.get("expression"), dict):
+        return False, "formula 계산에는 expression AST가 필요합니다."
     return True, "계산 계획이 확인되었습니다."

@@ -28,6 +28,36 @@ class CalculationPlanTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             evaluate_expression({"op": "eval", "args": [{"value": 1}, {"value": 2}]})
 
+    def test_statistics_condition_and_rank_primitives(self):
+        self.assertEqual(execute_operation("median", [1, 9, 3]), 3)
+        self.assertEqual(execute_operation("average", [2, 4]), 3)
+        self.assertEqual(execute_operation("greater_than", [4, 3]), 1.0)
+        self.assertEqual(execute_operation("rank", [5, 10, 5, 2]), 2.0)
+        self.assertEqual(execute_operation("period_change", [100, 120]), 20.0)
+        self.assertEqual(evaluate_expression({"op": "if", "args": [{"op": "greater_than", "args": [{"value": 4}, {"value": 3}]}, {"value": 10}, {"value": 0}]}), 10.0)
+
+    def test_formula_plan_executes_retrieved_variables_only(self):
+        agent = make_calculation_agent()
+        result = agent({"normalized_question": "복합 계산", "calculation_plan": {}, "cited_documents": [{"id": "d1", "source": "d.pdf", "text": "매출 100 영업이익 20"}]})
+        self.assertEqual(result["agent_results"][0]["status"], "insufficient")
+
+        class FakeChat:
+            def generate_json(self, *_args, **_kwargs):
+                return {"operation": "formula", "expression": {"op": "divide", "args": [{"variable": "operating_income"}, {"variable": "revenue"}]}}
+
+        result = make_calculation_agent(FakeChat())({"normalized_question": "이익을 매출로 나눈 값", "cited_documents": [{"id": "d1", "source": "d.pdf", "text": "매출 100 영업이익 20"}]})
+        self.assertEqual(result["calculations"]["result"], 0.2)
+
+    def test_unsupported_formula_falls_back_without_code_execution(self):
+        class FakeChat:
+            def generate_json(self, *_args, **_kwargs):
+                return {"operation": "formula", "expression": {"op": "eval", "args": [{"value": 1}, {"value": 2}]}}
+
+        result = make_calculation_agent(FakeChat())({"normalized_question": "알 수 없는 계산", "cited_documents": [{"id": "d1", "source": "d.pdf", "text": "매출 100 영업이익 20"}]})
+        self.assertEqual(result["agent_results"][0]["status"], "insufficient")
+        self.assertEqual(result["calculations"]["error_code"], "unsupported_calculation")
+        self.assertIn("허용되지 않은", result["calculations"]["error"])
+
     def test_invalid_plan_is_rejected(self):
         valid, reason = validate_calculation_plan({"operation": "eval", "metric": "revenue"})
         self.assertFalse(valid)
