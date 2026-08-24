@@ -7,6 +7,7 @@ from rag.retrieval.vector_search import VectorRetriever
 from common.schemas import RetrievedDocument
 from rag.storage.local import LocalVectorStore
 from rag.storage.postgres import PostgresStore
+from rag.retrieval.alternatives import AlternativeFinder
 
 from langgraph_rag.contracts import GraphDependencies
 
@@ -42,6 +43,14 @@ class ExistingLlmAdapter:
         return self.client.generate(messages, tools)
 
 
+class ExistingAlternativeFinderAdapter:
+    def __init__(self, finder: AlternativeFinder) -> None:
+        self.finder = finder
+
+    def find(self, question: str) -> dict[str, list[dict[str, Any]]]:
+        return self.finder.find(question).as_dict()
+
+
 def build_dependencies(settings: Any) -> GraphDependencies | None:
     if not settings.clova_api_key:
         return None
@@ -59,4 +68,5 @@ def build_dependencies(settings: Any) -> GraphDependencies | None:
         retriever=ExistingRetrieverAdapter(retriever, settings.retrieval_top_k),
         reranker=ExistingRerankerAdapter(DocumentReranker(RerankerClient())),
         llm=ExistingLlmAdapter(RagReasoningClient()),
+        alternative_finder=ExistingAlternativeFinderAdapter(AlternativeFinder(retriever)),
     )

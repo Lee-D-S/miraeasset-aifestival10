@@ -15,9 +15,13 @@ class LlmPort(Protocol):
     def generate(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> dict[str, Any]: ...
 
 
+class AlternativeFinderPort(Protocol):
+    def find(self, question: str) -> dict[str, list[dict[str, Any]]]: ...
+
+
 @dataclass(frozen=True)
 class GraphDependencies:
     retriever: RetrieverPort
     reranker: RerankerPort
     llm: LlmPort
-
+    alternative_finder: AlternativeFinderPort | None = None

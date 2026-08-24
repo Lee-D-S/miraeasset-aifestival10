@@ -86,6 +86,9 @@ class LocalVectorStore:
     def __len__(self) -> int:
         return len(self.rows)
 
+    def list_corp_names(self) -> list[str]:
+        return sorted({str(row.metadata.get("corp_name", "")) for row in self.rows.values() if row.metadata.get("corp_name")})
+
     @staticmethod
     def _cosine_similarity(left: list[float], right: list[float]) -> float:
         if len(left) != len(right):

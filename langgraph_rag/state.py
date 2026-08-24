@@ -15,6 +15,8 @@ class GraphState(TypedDict, total=False):
     answer: str
     reranker_answer: str
     suggested_queries: list[str]
+    alternative_documents: dict[str, list[dict[str, Any]]]
+    fallback_reason: str
     groundedness: str
     evaluation_reason: str
     retry_count: int

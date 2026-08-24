@@ -55,3 +55,5 @@ python -m unittest discover -s langgraph_rag/tests -v
 ```
 
 Reranker contract: retrieval can return up to `RAG_RETRIEVAL_TOP_K` candidates, but the reranker receives only `RAG_RERANK_TOP_K`. The selected `cited_documents` are passed to both answer generation and groundedness evaluation. If reranking returns no documents, the graph falls back without generating an uncited answer.
+
+Fallbacks include the reason the exact request failed and, when available, separate reference candidates for the same company in another period or a similar company in the same period. These references are not used as evidence for the original answer.

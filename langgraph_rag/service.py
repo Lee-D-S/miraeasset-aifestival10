@@ -3,6 +3,7 @@ from langgraph_rag.adapters import build_dependencies
 from langgraph_rag.checkpoint import build_memory_checkpointer
 from langgraph_rag.graph import build_graph
 from common.config import settings
+from common.fallback import format_fallback_answer
 from common.schemas import AnswerResponse
 
 
@@ -50,8 +51,12 @@ class LangGraphAnswerService:
             for document in documents
         )
         answer = result.get("answer", "")
-        if result.get("status") == "fallback" or not answer:
-            answer = "제공된 공시 문서에서는 해당 정보를 확인할 수 없습니다."
+        if not answer:
+            answer = format_fallback_answer(
+                result.get("fallback_reason")
+                or result.get("evaluation_reason")
+                or "답변 생성 결과가 비어 있습니다."
+            )
         return self._response(
             question_id,
             question,

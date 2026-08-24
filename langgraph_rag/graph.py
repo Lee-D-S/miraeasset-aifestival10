@@ -4,7 +4,7 @@ from langgraph.graph import END, START, StateGraph
 
 from langgraph_rag.contracts import GraphDependencies
 from langgraph_rag.nodes.evaluate_groundedness import make_evaluate_groundedness_node
-from langgraph_rag.nodes.fallback import fallback_node
+from langgraph_rag.nodes.fallback import make_fallback_node
 from langgraph_rag.nodes.finalize import finalize_node
 from langgraph_rag.nodes.generate_answer import make_generate_answer_node
 from langgraph_rag.nodes.rerank import make_rerank_node
@@ -31,7 +31,7 @@ def build_graph(
     builder.add_node("generate_answer", make_generate_answer_node(dependencies.llm))
     builder.add_node("evaluate_groundedness", make_evaluate_groundedness_node(dependencies.llm))
     builder.add_node("rewrite_query", make_rewrite_query_node(dependencies.llm))
-    builder.add_node("fallback", fallback_node)
+    builder.add_node("fallback", make_fallback_node(dependencies.alternative_finder))
     builder.add_node("finalize", finalize_node)
 
     builder.add_edge(START, "retrieve")

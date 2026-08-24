@@ -13,6 +13,7 @@ def make_rerank_node(reranker: RerankerPort, limit: int = 10):
                 "reranker_answer": result["answer"],
                 "suggested_queries": result["suggested_queries"],
                 "status": "reranked",
+                "fallback_reason": "" if result["documents"] else "검색된 문서 중 질문과 관련성이 충분한 문서를 리랭커가 선택하지 못했습니다.",
                 "trace": [f"cited={len(result['documents'])}"],
             }
         except Exception as error:

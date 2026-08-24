@@ -140,7 +140,9 @@ python -m scripts.run_clova_local_rag "삼성전자의 2023년 1분기 공시 �
 GET /answer?question_id=Q-001&question=삼성전자의%202023년%201분기%20사업%20내용은%20무엇인가요?
 ```
 
-`/answer`는 검색 결과가 없거나 리랭커가 관련 문서를 선택하지 못하면 근거 없는 답변을 생성하지 않고, `retrieved_context`를 비우고 다음 문구를 반환합니다: `제공된 공시 문서에서는 해당 정보를 확인할 수 없습니다.`
+`/answer`는 검색 결과가 없거나 리랭커가 관련 문서를 선택하지 못하면 근거 없는 답변을 생성하지 않고, `retrieved_context`를 비운 fallback 응답을 반환합니다.
+
+정확한 문서가 없을 때는 실패 이유를 함께 반환하고, 가능하면 같은 기업의 다른 기간 자료나 같은 기간의 유사 기업 자료를 참고 자료로 안내합니다. 참고 자료는 원 질문의 근거로 사용하지 않으며 `retrieved_context`에도 포함하지 않습니다. 자세한 계약은 [docs/fallback_recommendations.md](docs/fallback_recommendations.md)를 참고하세요.
 
 ### CLOVA client structure
 

@@ -212,3 +212,9 @@ class PostgresStore:
                 cursor.execute(query, parameters)
                 columns = [description.name for description in cursor.description]
                 return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+    def list_corp_names(self) -> list[str]:
+        with self.connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT DISTINCT corp_name FROM documents WHERE corp_name <> '' ORDER BY corp_name")
+                return [str(row[0]) for row in cursor.fetchall()]
