@@ -557,3 +557,14 @@ C:\projects\dis-164\agentic_rag\
 ## 진행 기록 규칙
 
 각 단계의 `[x]`는 코드가 존재한다는 의미가 아니라 실제 graph 호출, 실패 경로, 자동화 테스트, 기존 backend 회귀 검증이 모두 끝났다는 의미로 사용한다.
+
+## 환경 의존 검증 보류 기록
+
+기준일: 2026-08-24
+
+- `AGENTIC_POSTGRES_TEST_DSN`: 미설정
+- `POSTGRES_DSN`: 미설정
+- `CLOVA_API_KEY`: 미설정
+- `RAG_SOURCE_ROOT`: 미설정
+
+현재 환경에서는 PostgreSQL/pgvector 실제 통합·end-to-end 색인, 실제 CLOVA segmentation, 대회 corpus 품질 평가를 실행할 수 없다. 해당 항목은 fake contract·skip 가능한 통합 테스트 경계까지만 구현했으며, 실제 환경변수와 승인 corpus가 제공된 뒤 실행하고 `[x]`로 갱신한다.
