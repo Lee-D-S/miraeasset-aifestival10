@@ -1,6 +1,6 @@
 # Reranker usage contract
 
-This document records the reranker behavior shared by the original `rag/` implementation and the independent `langgraph_app/` implementation.
+This document records the reranker behavior shared by the original `rag/` implementation and the independent `langgraph_rag/` implementation.
 
 ## Intended contract
 
@@ -12,7 +12,7 @@ This document records the reranker behavior shared by the original `rag/` implem
 
 ## Findings and corrections
 
-### `langgraph_app/`
+### `langgraph_rag/`
 
 The node called the reranker with every retrieved document, so the configured rerank limit was not enforced. Also, `generate_answer` did not include `cited_documents` in its prompt; the evaluator saw the documents, but the answer model did not. Both issues are fixed. The graph now passes `settings.rerank_top_k` into the node and injects the selected documents into each answer attempt, including after query rewriting.
 

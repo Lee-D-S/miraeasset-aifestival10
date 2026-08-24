@@ -11,9 +11,8 @@ class ImportBoundaryTests(unittest.TestCase):
             imports = [node for node in ast.walk(tree) if isinstance(node, (ast.Import, ast.ImportFrom))]
             for node in imports:
                 imported = ast.unparse(node)
-                self.assertNotIn("langgraph_app.nodes.", imported, path.name)
+            self.assertNotIn("langgraph_rag.nodes.", imported, path.name)
 
 
 if __name__ == "__main__":
     unittest.main()
-

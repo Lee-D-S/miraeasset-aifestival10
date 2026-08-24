@@ -1,4 +1,4 @@
-from langgraph_app.state import GraphState
+from langgraph_rag.state import GraphState
 
 
 def fallback_node(state: GraphState) -> dict:
@@ -7,4 +7,3 @@ def fallback_node(state: GraphState) -> dict:
         "status": "fallback",
         "trace": [state.get("error") or "fallback"],
     }
-

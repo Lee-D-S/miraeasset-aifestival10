@@ -1,5 +1,5 @@
-from langgraph_app.contracts import LlmPort
-from langgraph_app.state import GraphState
+from langgraph_rag.contracts import LlmPort
+from langgraph_rag.state import GraphState
 
 
 def make_generate_answer_node(llm: LlmPort):

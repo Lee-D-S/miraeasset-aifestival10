@@ -1,8 +1,8 @@
 import json
 import re
 
-from langgraph_app.contracts import LlmPort
-from langgraph_app.state import GraphState
+from langgraph_rag.contracts import LlmPort
+from langgraph_rag.state import GraphState
 
 
 def _parse_evaluation(content: str) -> tuple[str, str]:

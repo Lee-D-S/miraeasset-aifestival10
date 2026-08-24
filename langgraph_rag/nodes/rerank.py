@@ -1,5 +1,5 @@
-from langgraph_app.contracts import RerankerPort
-from langgraph_app.state import GraphState
+from langgraph_rag.contracts import RerankerPort
+from langgraph_rag.state import GraphState
 
 
 def make_rerank_node(reranker: RerankerPort, limit: int = 10):

@@ -1,7 +1,7 @@
 import hashlib
-from langgraph_app.adapters import build_dependencies
-from langgraph_app.checkpoint import build_memory_checkpointer
-from langgraph_app.graph import build_graph
+from langgraph_rag.adapters import build_dependencies
+from langgraph_rag.checkpoint import build_memory_checkpointer
+from langgraph_rag.graph import build_graph
 from rag.config import settings
 from rag.schemas import AnswerResponse
 

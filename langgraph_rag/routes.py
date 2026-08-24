@@ -1,6 +1,6 @@
 from typing import Literal
 
-from langgraph_app.state import GraphState
+from langgraph_rag.state import GraphState
 
 
 def route_after_retrieve(state: GraphState) -> Literal["has_documents", "no_documents"]:
@@ -18,4 +18,3 @@ def route_after_evaluation(state: GraphState) -> Literal["finalize", "rewrite_qu
     if groundedness == "not_grounded" and state.get("retry_count", 0) < state.get("max_retries", 1):
         return "rewrite_query"
     return "retry_or_fallback"
-

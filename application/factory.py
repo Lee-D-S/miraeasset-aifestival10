@@ -16,7 +16,7 @@ def build_answer_service(backend: str | None = None) -> AnswerService:
 
         return ClassicAnswerService()
     if selected in {"langgraph", "langgraph_rag"}:
-        from langgraph_app.service import LangGraphAnswerService
+        from langgraph_rag.service import LangGraphAnswerService
 
         return LangGraphAnswerService()
     raise ValueError(

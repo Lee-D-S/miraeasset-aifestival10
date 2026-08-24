@@ -1,7 +1,7 @@
 import unittest
 
 from application.factory import build_answer_service
-from langgraph_app.service import LangGraphAnswerService
+from langgraph_rag.service import LangGraphAnswerService
 from rag.services.answer_service import AnswerService as ClassicAnswerService
 
 

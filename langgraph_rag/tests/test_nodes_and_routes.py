@@ -1,10 +1,10 @@
 import unittest
 
-from langgraph_app.routes import (
+from langgraph_rag.routes import (
     route_after_evaluation,
     route_after_retrieve,
 )
-from langgraph_app.nodes.evaluate_groundedness import _parse_evaluation
+from langgraph_rag.nodes.evaluate_groundedness import _parse_evaluation
 
 
 class RouteTests(unittest.TestCase):

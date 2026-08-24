@@ -30,7 +30,7 @@ uvicorn app:app --reload
 ## 그래프 시각화
 
 ```powershell
-python -m langgraph_app.render_graph
+python -m langgraph_rag.render_graph
 ```
 
 Mermaid 그래프를 표준 출력으로 확인할 수 있습니다.
@@ -51,7 +51,7 @@ retrieve → rerank → generate_answer → evaluate_groundedness
 외부 CLOVA API를 호출하지 않는 fake 의존성 테스트입니다.
 
 ```powershell
-python -m unittest discover -s langgraph_app/tests -v
+python -m unittest discover -s langgraph_rag/tests -v
 ```
 
 Reranker contract: retrieval can return up to `RAG_RETRIEVAL_TOP_K` candidates, but the reranker receives only `RAG_RERANK_TOP_K`. The selected `cited_documents` are passed to both answer generation and groundedness evaluation. If reranking returns no documents, the graph falls back without generating an uncited answer.

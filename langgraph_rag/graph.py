@@ -2,20 +2,20 @@ from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 
-from langgraph_app.contracts import GraphDependencies
-from langgraph_app.nodes.evaluate_groundedness import make_evaluate_groundedness_node
-from langgraph_app.nodes.fallback import fallback_node
-from langgraph_app.nodes.finalize import finalize_node
-from langgraph_app.nodes.generate_answer import make_generate_answer_node
-from langgraph_app.nodes.rerank import make_rerank_node
-from langgraph_app.nodes.retrieve import make_retrieve_node
-from langgraph_app.nodes.rewrite_query import make_rewrite_query_node
-from langgraph_app.routes import (
+from langgraph_rag.contracts import GraphDependencies
+from langgraph_rag.nodes.evaluate_groundedness import make_evaluate_groundedness_node
+from langgraph_rag.nodes.fallback import fallback_node
+from langgraph_rag.nodes.finalize import finalize_node
+from langgraph_rag.nodes.generate_answer import make_generate_answer_node
+from langgraph_rag.nodes.rerank import make_rerank_node
+from langgraph_rag.nodes.retrieve import make_retrieve_node
+from langgraph_rag.nodes.rewrite_query import make_rewrite_query_node
+from langgraph_rag.routes import (
     route_after_evaluation,
     route_after_retrieve,
     route_after_rerank,
 )
-from langgraph_app.state import GraphState
+from langgraph_rag.state import GraphState
 
 
 def build_graph(

@@ -8,7 +8,7 @@ from rag.schemas import RetrievedDocument
 from rag.storage.local import LocalVectorStore
 from rag.storage.postgres import PostgresStore
 
-from langgraph_app.contracts import GraphDependencies
+from langgraph_rag.contracts import GraphDependencies
 
 
 class ExistingRetrieverAdapter:
@@ -60,4 +60,3 @@ def build_dependencies(settings: Any) -> GraphDependencies | None:
         reranker=ExistingRerankerAdapter(DocumentReranker(RerankerClient())),
         llm=ExistingLlmAdapter(RagReasoningClient()),
     )
-

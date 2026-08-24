@@ -1,5 +1,5 @@
-from langgraph_app.contracts import RetrieverPort
-from langgraph_app.state import GraphState
+from langgraph_rag.contracts import RetrieverPort
+from langgraph_rag.state import GraphState
 
 
 def make_retrieve_node(retriever: RetrieverPort):
@@ -12,4 +12,3 @@ def make_retrieve_node(retriever: RetrieverPort):
             return {"retrieved_documents": [], "status": "error", "error": str(error), "trace": ["retrieve_error"]}
 
     return retrieve_node
-
