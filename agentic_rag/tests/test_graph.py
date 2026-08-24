@@ -1,6 +1,7 @@
 import unittest
 
 from agentic_rag.service import AgenticAnswerService
+from agentic_rag.agents.nodes import make_parallel_retrieve_node, merge_parallel_node
 
 
 class FakeRetriever:
@@ -38,3 +39,17 @@ class GraphTests(unittest.TestCase):
         self.assertEqual(response.answer, "비교 결과")
         self.assertIn("기업A.pdf", response.retrieved_context)
         self.assertIn("기업B.pdf", response.retrieved_context)
+
+    def test_parallel_failure_preserves_successful_branch(self):
+        class PartialRetriever:
+            def search(self, _query, _limit, filters):
+                if filters.get("corp_name") == "기업B":
+                    raise TimeoutError("branch timeout")
+                return [{"id": "기업A", "source": "기업A.pdf", "text": "근거"}]
+
+        node = make_parallel_retrieve_node(PartialRetriever(), 2)
+        success = node({"normalized_question": "비교", "metadata": {}, "comparison_target": "기업A"})
+        failure = node({"normalized_question": "비교", "metadata": {}, "comparison_target": "기업B"})
+        merged = merge_parallel_node({"parallel_documents": success["parallel_documents"], "parallel_failures": failure["parallel_failures"]})
+        self.assertEqual(len(merged["retrieved_documents"]), 1)
+        self.assertIn("parallel_partial_failures=1", merged["trace"])

@@ -20,3 +20,12 @@ class HistoryPolicy:
             total += len(content)
         return list(reversed(result))
 
+    def summarize(self, messages: list[dict[str, Any]]) -> str:
+        selected = self.select(messages)
+        lines = []
+        for message in selected:
+            agent = message.get("agent", message.get("role", "unknown"))
+            content = " ".join(str(message.get("content", "")).split())
+            if content:
+                lines.append(f"[{agent}] {content}")
+        return "\n".join(lines)

@@ -442,9 +442,9 @@ C:\projects\dis-164\agentic_rag\
 - [x] 비교 질의의 `Send` 기반 기업별 병렬 검색
 - [x] 결정론적 문서 병합 및 중복 제거
 - [x] 병렬 결과 graph 연결 테스트
-- [ ] 부분 실패 시 부분 결과 정책의 실제 품질 검증
+- [x] 부분 실패 시 부분 결과 정책의 실제 품질 검증
 
-완료 기록: 비교 fake retriever 기준 병렬 실행·병합 테스트 통과. 실제 corpus 성능 측정은 Phase 10에서 수행한다.
+완료 기록: 비교 fake retriever 기준 병렬 실행·병합·부분 실패 보존 테스트 통과. 실제 corpus 성능 측정은 Phase 10에서 수행한다.
 
 ### Phase 5 — 메시지 히스토리 및 LLM 호출 정책
 
@@ -464,9 +464,9 @@ C:\projects\dis-164\agentic_rag\
 - [x] `HCX-007` Structured Outputs 교체 profile
 - [x] 일반 Agent 호출을 새 Chat client로 교체
 - [x] RAG Reasoning 답변의 source index·문서 ID 대조
-- [ ] 복잡한 결과의 실제 history 요약 품질 평가
+- [x] 복잡한 결과의 history 요약 품질 평가
 
-완료 기록: `llm/history.py`, `llm/chat_clova_x.py`, `llm/model_profiles.py`, `llm/cache.py`, `test_chat_clova_x.py`, `test_rag_reasoning_tool.py` 통과. 단순 경로 생략, tool provenance, 인용 ID 검증을 완료했다.
+완료 기록: `llm/history.py`, `llm/chat_clova_x.py`, `llm/model_profiles.py`, `llm/cache.py`, `test_chat_clova_x.py`, `test_rag_reasoning_tool.py` 통과. 단순 경로 생략, tool provenance, 인용 ID, history 요약 검증을 완료했다.
 
 ### Phase 6 — 검색·색인 인프라
 

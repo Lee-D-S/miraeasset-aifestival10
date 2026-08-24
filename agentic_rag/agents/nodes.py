@@ -55,8 +55,11 @@ def make_parallel_retrieve_node(retriever: Any, limit: int):
         filters = {key: value for key, value in state.get("metadata", {}).items() if key in {"corp_name", "corp_code", "document_type", "report_period", "source_group"}}
         if target:
             filters["corp_name"] = target
-        documents = retriever.search(state.get("normalized_question", ""), limit, filters)
-        return {"parallel_documents": documents, "trace": [f"parallel_target={target}:documents={len(documents)}"]}
+        try:
+            documents = retriever.search(state.get("normalized_question", ""), limit, filters)
+            return {"parallel_documents": documents, "trace": [f"parallel_target={target}:documents={len(documents)}"]}
+        except Exception as error:
+            return {"parallel_documents": [], "parallel_failures": [{"target": target, "error": type(error).__name__}], "trace": [f"parallel_target={target}:failed"]}
     return node
 
 
@@ -65,7 +68,11 @@ def merge_parallel_node(state: dict[str, Any]) -> dict[str, Any]:
     for document in state.get("parallel_documents", []):
         unique[str(document.get("id", ""))] = document
     documents = [unique[key] for key in sorted(unique)]
-    return {"retrieved_documents": documents, "trace": [f"parallel_merged={len(documents)}"]}
+    failures = state.get("parallel_failures", [])
+    trace = [f"parallel_merged={len(documents)}"]
+    if failures:
+        trace.append(f"parallel_partial_failures={len(failures)}")
+    return {"retrieved_documents": documents, "trace": trace}
 
 
 def retrieve_node(retriever: Any, limit: int):

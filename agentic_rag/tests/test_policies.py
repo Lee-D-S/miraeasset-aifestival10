@@ -11,6 +11,12 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(len(HistoryPolicy("minimal", max_messages=3).select(messages)), 3)
         self.assertEqual(len(HistoryPolicy("full").select(messages)), 10)
 
+    def test_history_summary_keeps_agent_metadata_and_context_limit(self):
+        messages = [{"role": "assistant", "agent": "comparison", "content": "기업A와 기업B의 비교 근거"}, {"role": "assistant", "agent": "answer_generator", "content": "최종 요약"}]
+        summary = HistoryPolicy("full", max_chars=100).summarize(messages)
+        self.assertIn("[comparison]", summary)
+        self.assertIn("[answer_generator]", summary)
+
     def test_provenance_validation_rejects_unknown_evidence(self):
         valid, reason = validate_agent_outputs([{"id": "known"}], [{"agent": "fact_extractor", "status": "ok", "confidence": 0.8, "evidence_ids": ["missing"], "trace": []}], [{"agent": "fact_extractor"}])
         self.assertFalse(valid)

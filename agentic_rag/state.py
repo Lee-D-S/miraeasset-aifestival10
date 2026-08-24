@@ -22,6 +22,7 @@ class AgenticState(TypedDict, total=False):
     comparison_results: list[dict[str, Any]]
     comparison_targets: list[str]
     parallel_documents: Annotated[list[dict[str, Any]], append_values]
+    parallel_failures: Annotated[list[dict[str, str]], append_values]
     comparison_target: str
     linked_events: list[dict[str, Any]]
     agent_results: Annotated[list[dict[str, Any]], append_values]
