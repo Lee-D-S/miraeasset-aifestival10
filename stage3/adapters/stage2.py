@@ -6,6 +6,34 @@ from typing import Any
 from stage3.contracts import Stage2Bundle, Stage3Document
 
 
+_STAGE2_METADATA_FIELDS = (
+    "chunk_id",
+    "corp_name",
+    "corp_code",
+    "stock_code",
+    "listed_name",
+    "industry",
+    "sector",
+    "doc_group",
+    "doc_subtype",
+    "report_nm",
+    "rcept_no",
+    "rcept_dt",
+    "flr_nm",
+    "base_year",
+    "base_month",
+    "is_correction",
+    "file_path",
+    "file_format",
+    "n_files",
+    "section_name",
+    "chunk_type",
+    "raw_json_content",
+    "report_period",
+    "basis",
+)
+
+
 def _as_mapping(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, Mapping) else {}
 
@@ -16,6 +44,17 @@ def _as_spans(value: Any) -> list[dict[str, Any]]:
     return [_as_mapping(item) for item in value if isinstance(item, Mapping)]
 
 
+def _first_present(mapping: Mapping[str, Any], keys: tuple[str, ...], default: Any = "") -> Any:
+    for key in keys:
+        if key not in mapping or mapping[key] is None:
+            continue
+        value = mapping[key]
+        if isinstance(value, str) and not value.strip():
+            continue
+        return value
+    return default
+
+
 def adapt_stage2_document(document: Mapping[str, Any]) -> Stage3Document:
     """Normalize one Stage2 document while preserving unknown metadata."""
 
@@ -23,32 +62,14 @@ def adapt_stage2_document(document: Mapping[str, Any]) -> Stage3Document:
     metadata = _as_mapping(raw.get("metadata"))
     # Some Stage2 candidates may expose metadata at the top level.  Preserve
     # it as a fallback without overriding an explicit nested value.
-    for key in (
-        "corp_name",
-        "corp_code",
-        "stock_code",
-        "doc_group",
-        "doc_subtype",
-        "report_nm",
-        "rcept_no",
-        "rcept_dt",
-        "flr_nm",
-        "base_year",
-        "base_month",
-        "is_correction",
-        "file_path",
-        "file_format",
-        "n_files",
-        "report_period",
-        "basis",
-    ):
+    for key in _STAGE2_METADATA_FIELDS:
         if key not in metadata and key in raw:
             metadata[key] = raw[key]
 
-    identifier = raw.get("id", raw.get("doc_id", raw.get("document_id", "")))
-    source = raw.get("source", raw.get("source_path", raw.get("file_path", "")))
-    text = raw.get("text", raw.get("content", raw.get("doc", "")))
-    score = raw.get("score", raw.get("similarity", raw.get("rank_score")))
+    identifier = _first_present(raw, ("id", "doc_id", "document_id", "chunk_id"))
+    source = _first_present(raw, ("source", "source_path", "file_path"))
+    text = _first_present(raw, ("text", "content", "doc", "text_content", "page_content"))
+    score = _first_present(raw, ("score", "similarity", "rank_score"), default=None)
     try:
         normalized_score = float(score) if score is not None else None
     except (TypeError, ValueError):

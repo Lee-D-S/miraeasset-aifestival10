@@ -112,6 +112,40 @@ class Stage2AdapterTests(unittest.TestCase):
         self.assertEqual([document.id for document in bundle.documents], ["with-span"])
         self.assertEqual(bundle.documents[0].evidence_spans[0]["text"], "근거 span")
 
+    def test_accepts_actual_stage2_chunk_aliases_and_metadata(self):
+        bundle = adapt_stage2_bundle(
+            {
+                "documents": [
+                    {
+                        "chunk_id": "20260331000001_4",
+                        "text_content": "2025년 연결 매출액 100억원",
+                        "raw_json_content": None,
+                        "corp_name": "삼성전자",
+                        "rcept_no": "20260331000001",
+                        "base_year": 2025,
+                        "base_month": 12,
+                        "section_name": "재무에 관한 사항",
+                        "chunk_type": "text",
+                    }
+                ]
+            }
+        )
+
+        document = bundle.documents[0]
+        self.assertEqual(document.id, "20260331000001_4")
+        self.assertEqual(document.text, "2025년 연결 매출액 100억원")
+        self.assertEqual(document.metadata["rcept_no"], "20260331000001")
+        self.assertEqual(document.metadata["section_name"], "재무에 관한 사항")
+        self.assertEqual(document.metadata["chunk_type"], "text")
+
+    def test_page_content_is_an_actual_stage2_document_alias(self):
+        bundle = adapt_stage2_bundle(
+            [{"chunk_id": "chunk-1", "page_content": "검색된 청크 본문"}]
+        )
+
+        self.assertEqual(bundle.documents[0].id, "chunk-1")
+        self.assertEqual(bundle.documents[0].text, "검색된 청크 본문")
+
 
 if __name__ == "__main__":
     unittest.main()
