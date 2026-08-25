@@ -95,6 +95,13 @@ events = link_events(bundle.effective_documents(), intent)
 
 계산과 비교는 검색 score가 아니라 정규화된 Fact 값으로 수행한다. 계산 Registry는 whitelist 연산만 실행하며, 기간·단위·연결/별도 기준이 맞지 않으면 결과 대신 오류 상태와 근거를 반환한다.
 
+정정공시는 Stage1 `correction_mode`에 따라 원본만, 최신 정정본 우선, 또는 전체
+chain으로 처리한다. 정정 chain은 기업·공시 그룹·세부 유형·기준 기간·정정
+표시를 기준으로 묶고, 정정 사유·변경 전후 항목이 없으면 `insufficient_evidence`
+경고를 남긴다. 계약 체결·해지 연결은 metadata의 원공시 접수번호 또는 원문
+식별자를 먼저 사용한다. 이 정보가 없으면 기업·계약명·상대방·금액·계약일을
+정확히 비교하며, 부분 문자열만 같은 문서는 연결하지 않는다.
+
 증감률·CAGR은 Intent가 지정한 기간의 Fact만 선택한다. 비교·순위는
 `companies` 또는 `sector_members`를 모두 요구하고 동일 기간·기준·통화의 값만
 정렬한다. KRW 단위처럼 변환 가능한 단위는 canonical 값으로 맞추지만, 통화가
