@@ -13,6 +13,31 @@ class ApiTests(unittest.TestCase):
         )
         self.assertEqual(app.service.__class__.__name__, "Stage3Service")
 
+    def test_non_ok_route_does_not_call_stage2_provider(self):
+        calls = {"count": 0}
+
+        def stage2_provider(_intent):
+            calls["count"] += 1
+            raise AssertionError("Stage2 must not run for a non-processable Stage1 route")
+
+        app = create_app(
+            stage1_provider=lambda question: {
+                "raw_question": question,
+                "normalized_question": question,
+                "route": "need_clarify",
+                "intent": "unknown",
+                "reject_reason": "ambiguous_corp",
+                "clarify_message": "기업을 확인해 주세요.",
+            },
+            stage2_provider=stage2_provider,
+        )
+
+        response = app.answer("Q-CLARIFY", "삼성의 매출은?")
+
+        self.assertEqual(calls["count"], 0)
+        self.assertEqual(response["question_id"], "Q-CLARIFY")
+        self.assertIn("명확하지", response["answer"])
+
     def test_provider_boundary_allows_two_retries(self):
         calls = {"count": 0}
 

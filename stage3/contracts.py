@@ -133,8 +133,21 @@ class Stage3Intent:
     manifest_filter: dict[str, Any] = field(default_factory=dict)
     companies: list[str] = field(default_factory=list)
     sector: str | None = None
+    sector_members: list[str] = field(default_factory=list)
+    ambiguous_mentions: list[Any] = field(default_factory=list)
+    unknown_entities: list[Any] = field(default_factory=list)
+    # Stage1 currently emits labels such as "high"/"low"; keep the value
+    # unchanged so a future numeric confidence does not change the boundary.
+    metric_confidence: Any = None
+    allow_pdf_html: bool | None = None
+    doc_count: int | None = None
+    availability: str | None = None
     assumptions: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    missing_slots: list[str] = field(default_factory=list)
+    reject_reason: str | None = None
+    clarify_message: str | None = None
+    llm_used: bool | None = None
     source: dict[str, Any] = field(default_factory=dict, repr=False)
 
     @property
@@ -154,8 +167,19 @@ class Stage3Intent:
             "manifest_filter": dict(self.manifest_filter),
             "companies": list(self.companies),
             "sector": self.sector,
+            "sector_members": list(self.sector_members),
+            "ambiguous_mentions": list(self.ambiguous_mentions),
+            "unknown_entities": list(self.unknown_entities),
+            "metric_confidence": self.metric_confidence,
+            "allow_pdf_html": self.allow_pdf_html,
+            "doc_count": self.doc_count,
+            "availability": self.availability,
             "assumptions": list(self.assumptions),
             "warnings": list(self.warnings),
+            "missing_slots": list(self.missing_slots),
+            "reject_reason": self.reject_reason,
+            "clarify_message": self.clarify_message,
+            "llm_used": self.llm_used,
         }
 
 
@@ -167,6 +191,35 @@ def _list_of_strings(value: Any) -> list[str]:
 
 def _mapping(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, Mapping) else {}
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_bool(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "1", "yes"}:
+            return True
+        if lowered in {"false", "0", "no"}:
+            return False
+    return None
+
+
+def _list_preserving_items(value: Any) -> list[Any]:
+    if not isinstance(value, (list, tuple)):
+        return []
+    return [item for item in value if item is not None]
 
 
 def adapt_stage1_intent(intent: Mapping[str, Any], *, question: str | None = None) -> Stage3Intent:
@@ -201,7 +254,18 @@ def adapt_stage1_intent(intent: Mapping[str, Any], *, question: str | None = Non
         manifest_filter=_mapping(source.get("manifest_filter")),
         companies=companies,
         sector=str(source["sector"]) if source.get("sector") is not None else None,
+        sector_members=_list_of_strings(source.get("sector_members")),
+        ambiguous_mentions=_list_preserving_items(source.get("ambiguous_mentions")),
+        unknown_entities=_list_preserving_items(source.get("unknown_entities")),
+        metric_confidence=source.get("metric_confidence"),
+        allow_pdf_html=_optional_bool(source.get("allow_pdf_html")),
+        doc_count=_optional_int(source.get("doc_count")),
+        availability=str(source["availability"]) if source.get("availability") is not None else None,
         assumptions=_list_of_strings(source.get("assumptions")),
         warnings=_list_of_strings(source.get("warnings")),
+        missing_slots=_list_of_strings(source.get("missing_slots")),
+        reject_reason=str(source["reject_reason"]) if source.get("reject_reason") is not None else None,
+        clarify_message=str(source["clarify_message"]) if source.get("clarify_message") is not None else None,
+        llm_used=_optional_bool(source.get("llm_used")),
         source=source,
     )

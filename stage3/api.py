@@ -14,6 +14,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from stage3.service import Stage3Service
+from stage3.adapters.stage1 import adapt_stage1_intent
 
 
 Stage1Provider = Callable[[str], Mapping[str, Any]]
@@ -33,7 +34,8 @@ class Stage3Application:
         for _attempt in range(3):
             try:
                 stage1_intent = self.stage1_provider(question)
-                stage2_result = self.stage2_provider(stage1_intent)
+                normalized_intent = adapt_stage1_intent(stage1_intent, question=question)
+                stage2_result = {} if not normalized_intent.is_processable else self.stage2_provider(stage1_intent)
                 return self.service.answer(question_id=question_id, question=question, stage1_intent=stage1_intent, stage2_result=stage2_result)
             except Exception as error:  # noqa: BLE001 - retry boundary
                 last_error = error

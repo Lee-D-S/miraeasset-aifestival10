@@ -14,6 +14,18 @@ intent = adapt_stage1_intent(stage1_intent_dict, question=question)
 
 `route`가 `ok`가 아닌 경우 Stage3는 검색·계산·답변 생성을 진행하지 않고 한계 또는 차단 결과를 반환해야 한다.
 
+Stage3는 `raw_question`, `normalized_question`, `intent`, `route`, `corps`,
+`sector`, `sector_members`, `metric`, `metric_confidence`, `basis`, `time`,
+`correction_mode`, `allow_pdf_html`, `manifest_filter`, `doc_count`,
+`availability`, `assumptions`, `warnings`, `missing_slots`, `reject_reason`,
+`clarify_message`, `llm_used`를 Stage1 원본과 함께 보존한다. `manifest_filter`는
+Stage3가 다시 만들지 않는다. `route`가 `ok`가 아니면 API 경계에서 Stage2
+provider를 호출하지 않는다.
+
+Stage1이 정의한 metric key는 `stage3/metric_registry.py`의
+`STAGE1_METRICS`에서 관리한다. 이 registry는 질의를 재분류하지 않고, 후속 Fact
+추출기가 Stage1 metric에 맞는 공시 필드를 선택할 때 사용한다.
+
 ## Stage2 입력
 
 ```python
