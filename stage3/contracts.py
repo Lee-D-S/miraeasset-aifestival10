@@ -8,6 +8,49 @@ Stage3Route = Literal["ok", "need_clarify", "unanswerable", "unsafe"]
 
 
 @dataclass(frozen=True)
+class Stage3Document:
+    """Stage2 document shape consumed by Stage3."""
+
+    id: str
+    source: str
+    text: str
+    score: float | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    evidence_spans: list[dict[str, Any]] = field(default_factory=list)
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "source": self.source,
+            "text": self.text,
+            "score": self.score,
+            "metadata": dict(self.metadata),
+            "evidence_spans": [dict(span) for span in self.evidence_spans],
+        }
+
+
+@dataclass(frozen=True)
+class Stage2Bundle:
+    """Normalized Stage2 output, independent of the final upstream schema."""
+
+    documents: list[Stage3Document] = field(default_factory=list)
+    cited_documents: list[Stage3Document] = field(default_factory=list)
+    retrieval_trace: list[str] = field(default_factory=list)
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    def effective_documents(self) -> list[Stage3Document]:
+        return list(self.cited_documents or self.documents)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "documents": [document.to_dict() for document in self.documents],
+            "cited_documents": [document.to_dict() for document in self.cited_documents],
+            "retrieval_trace": list(self.retrieval_trace),
+        }
+
+
+@dataclass(frozen=True)
 class Stage3Intent:
     """Normalized contract consumed by the Stage3 pipeline."""
 
