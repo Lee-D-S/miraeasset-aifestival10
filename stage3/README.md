@@ -95,6 +95,13 @@ events = link_events(bundle.effective_documents(), intent)
 
 계산과 비교는 검색 score가 아니라 정규화된 Fact 값으로 수행한다. 계산 Registry는 whitelist 연산만 실행하며, 기간·단위·연결/별도 기준이 맞지 않으면 결과 대신 오류 상태와 근거를 반환한다.
 
+증감률·CAGR은 Intent가 지정한 기간의 Fact만 선택한다. 비교·순위는
+`companies` 또는 `sector_members`를 모두 요구하고 동일 기간·기준·통화의 값만
+정렬한다. KRW 단위처럼 변환 가능한 단위는 canonical 값으로 맞추지만, 통화가
+다르거나 단위·기간·기준이 없으면 계산하지 않는다. 비중과 영업이익률은
+Stage1의 주 지표 Fact와 같은 기업·기간의 매출액 Fact를 분자·분모로 사용한다.
+계산 결과에는 산식·입력 Fact의 기간·단위·기준·통화·문서 ID를 함께 저장한다.
+
 ## Supervisor와 제출 응답
 
 ```python

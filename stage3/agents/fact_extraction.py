@@ -59,8 +59,13 @@ def _evidence(text: str, start: int, end: int) -> str:
     return text[left:right].strip()
 
 
-def _metric_pattern(metric: str | None) -> tuple[str, ...]:
-    return numeric_labels_for(metric)
+def _metric_pattern(metric: str | None, question: str = "") -> tuple[str, ...]:
+    labels = list(numeric_labels_for(metric))
+    if any(word in question for word in ("비중", "비율", "마진", "영업이익률")):
+        labels.extend(numeric_labels_for("revenue"))
+    if "영업이익률" in question or "마진" in question:
+        labels.extend(numeric_labels_for("operating_profit"))
+    return tuple(dict.fromkeys(labels))
 
 
 def _parse_numeric(value: str) -> float:
@@ -139,7 +144,7 @@ def extract_facts(documents: Iterable[Stage3Document], intent: Stage3Intent) -> 
     """Extract grounded numeric and date facts from Stage2 evidence text."""
 
     facts: list[Stage3Fact] = []
-    labels = _metric_pattern(intent.metric)
+    labels = _metric_pattern(intent.metric, intent.normalized_question)
     label_pattern = "|".join(re.escape(label) for label in sorted(labels, key=len, reverse=True)) or r"(?!)"
     numeric_pattern = re.compile(rf"(?P<label>{label_pattern})[^\d\-△▲]*(?P<value>{NUMBER_PATTERN})\s*(?P<unit>{UNIT_PATTERN}|단위)?")
     for document in documents:
