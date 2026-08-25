@@ -1,0 +1,31 @@
+{
+  "documents": [
+    {
+      "chunk_id": "20260331000001_4",
+      "text_content": "2025년 연결 매출액 100억원",
+      "raw_json_content": null,
+      "corp_name": "삼성전자",
+      "corp_code": "00126380",
+      "stock_code": "005930",
+      "listed_name": "삼성전자",
+      "industry": "IT",
+      "sector": "반도체·전자부품",
+      "doc_group": "periodic",
+      "doc_subtype": "annual",
+      "report_nm": "사업보고서 (2025.12)",
+      "rcept_no": "20260331000001",
+      "rcept_dt": "20260331",
+      "flr_nm": "삼성전자",
+      "base_year": 2025,
+      "base_month": 12,
+      "is_correction": false,
+      "file_path": "raw/periodic/삼성전자/20260331000001_annual_2025_12",
+      "file_format": "xml",
+      "n_files": 1,
+      "section_name": "재무에 관한 사항",
+      "chunk_type": "text"
+    }
+  ],
+  "cited_documents": [],
+  "retrieval_trace": ["rdb_candidates=1", "vector_results=1"]
+}

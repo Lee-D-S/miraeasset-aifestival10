@@ -1,11 +1,27 @@
 from __future__ import annotations
 
+import json
 import unittest
+from pathlib import Path
 
 from stage3.adapters.stage2 import adapt_stage2_bundle
 
 
 class Stage2AdapterTests(unittest.TestCase):
+    def test_loads_actual_stage2_flat_payload_fixture(self):
+        fixture_path = Path(__file__).parent / "fixtures" / "stage2_actual_payload.json"
+        payload = json.loads(fixture_path.read_text(encoding="utf-8"))
+
+        bundle = adapt_stage2_bundle(payload)
+        document = bundle.documents[0]
+
+        self.assertEqual(document.id, "20260331000001_4")
+        self.assertEqual(document.text, "2025년 연결 매출액 100억원")
+        self.assertEqual(document.metadata["doc_group"], "periodic")
+        self.assertEqual(document.metadata["base_year"], 2025)
+        self.assertIn("raw_json_content", document.metadata)
+        self.assertEqual(bundle.retrieval_trace, ["rdb_candidates=1", "vector_results=1"])
+
     def test_normalizes_standard_stage2_bundle_and_preserves_manifest_metadata(self):
         bundle = adapt_stage2_bundle(
             {
@@ -145,6 +161,11 @@ class Stage2AdapterTests(unittest.TestCase):
 
         self.assertEqual(bundle.documents[0].id, "chunk-1")
         self.assertEqual(bundle.documents[0].text, "검색된 청크 본문")
+
+    def test_string_stage2_context_is_not_treated_as_evidence_document(self):
+        bundle = adapt_stage2_bundle("--- [검색 결과 1] ---\n검색된 청크 본문")
+
+        self.assertEqual(bundle.documents, [])
 
 
 if __name__ == "__main__":
