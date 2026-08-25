@@ -67,6 +67,16 @@ response = service.answer(
 
 `Stage3Service`는 Stage1 route를 먼저 확인한 뒤 Fact·계산·비교·사건 Agent 결과를 통합하고 답변을 작성한다. 최종 `response`는 대회 제출 형식의 5개 문자열 필드로 변환된다. HyperCLOVA X client를 주입하면 답변 생성에 사용하고, client가 없으면 근거 기반 결정론적 템플릿으로 fallback한다.
 
+실제 HTTP 경계는 Stage2 최종 계약을 고정하지 않도록 provider 주입 방식으로 제공한다.
+
+```python
+from stage3.api import create_app
+
+app = create_app(stage1_provider=parse_stage1, stage2_provider=retrieve_stage2)
+```
+
+`GET /answer`는 인증 헤더 없이 호출되며, provider 오류는 최초 호출 후 최대 2회 재시도한다. 세 번 모두 실패하면 503을 반환한다.
+
 ## 테스트
 
 ```powershell
@@ -76,4 +86,5 @@ python -m unittest stage3.tests.test_fact_extraction -v
 python -m unittest stage3.tests.test_calculation_comparison -v
 python -m unittest stage3.tests.test_event_linker -v
 python -m unittest stage3.tests.test_service_and_api -v
+python -m unittest stage3.tests.test_api -v
 ```
