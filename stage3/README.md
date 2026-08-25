@@ -37,10 +37,26 @@ facts, warnings = normalize_facts(facts, intent)
 
 추출 결과는 지표·원값·단위·정규화값·기간·연결/별도 기준·기업·문서 ID·근거 구간을 보존한다. 계산에 사용할 값은 `normalized_value`를 사용하며, 기간·기준이 불명확하면 경고를 남긴다.
 
+## 계산·비교·사건 연결
+
+```python
+from stage3.agents.calculation import calculate_facts
+from stage3.agents.comparison import compare_facts
+from stage3.agents.event_linker import link_events
+
+calculation = calculate_facts(facts, intent)
+comparison = compare_facts(facts, intent)
+events = link_events(bundle.effective_documents(), intent)
+```
+
+계산과 비교는 검색 score가 아니라 정규화된 Fact 값으로 수행한다. 계산 Registry는 whitelist 연산만 실행하며, 기간·단위·연결/별도 기준이 맞지 않으면 결과 대신 오류 상태와 근거를 반환한다.
+
 ## 테스트
 
 ```powershell
 python -m unittest stage3.tests.test_stage1_adapter -v
 python -m unittest stage3.tests.test_stage2_adapter -v
 python -m unittest stage3.tests.test_fact_extraction -v
+python -m unittest stage3.tests.test_calculation_comparison -v
+python -m unittest stage3.tests.test_event_linker -v
 ```
