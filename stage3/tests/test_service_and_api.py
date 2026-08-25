@@ -133,6 +133,40 @@ class Stage3ServiceTests(unittest.TestCase):
         self.assertIn("periodic_2025_samsung", result["retrieved_context"])
         self.assertIn("1000", result["answer"])
 
+    def test_actual_stage2_flat_payload_reaches_fact_and_citation(self):
+        stage1_path = Path(__file__).parent / "fixtures" / "stage1_intents.json"
+        stage2_path = Path(__file__).parent / "fixtures" / "stage2_actual_payload.json"
+        stage1_intent = json.loads(stage1_path.read_text(encoding="utf-8"))["lookup"]
+        stage2_result = json.loads(stage2_path.read_text(encoding="utf-8"))
+
+        result = Stage3Service().process(
+            question=stage1_intent["raw_question"],
+            stage1_intent=stage1_intent,
+            stage2_result=stage2_result,
+        )
+
+        self.assertTrue(result.facts)
+        self.assertEqual(result.facts[0]["document_id"], "20260331000001_4")
+        self.assertTrue(any(item["document_id"] == "20260331000001_4" for item in result.citations))
+        self.assertIn("2025년 연결 매출액 100억원", result.citations[0]["evidence"])
+
+    def test_string_stage2_result_stays_insufficient_evidence(self):
+        result = Stage3Service().process(
+            question="삼성전자의 2025년 연결기준 매출액은?",
+            stage1_intent={
+                "route": "ok",
+                "intent": "lookup",
+                "metric": "revenue",
+                "basis": "연결",
+                "time": {"years": [2025], "base_months": [12]},
+            },
+            stage2_result="--- [검색 결과 1] ---\n2025년 연결 매출액 100억원",
+        )
+
+        self.assertEqual(result.status, "insufficient_evidence")
+        self.assertEqual(result.facts, [])
+        self.assertEqual(result.citations, [])
+
 
 if __name__ == "__main__":
     unittest.main()
