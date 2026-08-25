@@ -51,6 +51,22 @@ events = link_events(bundle.effective_documents(), intent)
 
 계산과 비교는 검색 score가 아니라 정규화된 Fact 값으로 수행한다. 계산 Registry는 whitelist 연산만 실행하며, 기간·단위·연결/별도 기준이 맞지 않으면 결과 대신 오류 상태와 근거를 반환한다.
 
+## Supervisor와 제출 응답
+
+```python
+from stage3.service import Stage3Service
+
+service = Stage3Service()
+response = service.answer(
+    question_id="Q-001",
+    question=question,
+    stage1_intent=stage1_intent,
+    stage2_result=stage2_result,
+)
+```
+
+`Stage3Service`는 Stage1 route를 먼저 확인한 뒤 Fact·계산·비교·사건 Agent 결과를 통합하고 답변을 작성한다. 최종 `response`는 대회 제출 형식의 5개 문자열 필드로 변환된다. HyperCLOVA X client를 주입하면 답변 생성에 사용하고, client가 없으면 근거 기반 결정론적 템플릿으로 fallback한다.
+
 ## 테스트
 
 ```powershell
@@ -59,4 +75,5 @@ python -m unittest stage3.tests.test_stage2_adapter -v
 python -m unittest stage3.tests.test_fact_extraction -v
 python -m unittest stage3.tests.test_calculation_comparison -v
 python -m unittest stage3.tests.test_event_linker -v
+python -m unittest stage3.tests.test_service_and_api -v
 ```

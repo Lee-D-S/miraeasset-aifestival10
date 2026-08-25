@@ -91,6 +91,34 @@ class Stage3Fact:
 
 
 @dataclass(frozen=True)
+class Stage3Result:
+    status: str
+    answer: str = ""
+    facts: list[dict[str, Any]] = field(default_factory=list)
+    calculations: list[dict[str, Any]] = field(default_factory=list)
+    comparison_results: list[dict[str, Any]] = field(default_factory=list)
+    linked_events: list[dict[str, Any]] = field(default_factory=list)
+    citations: list[dict[str, Any]] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    provenance: list[dict[str, Any]] = field(default_factory=list)
+    trace: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "status": self.status,
+            "answer": self.answer,
+            "facts": list(self.facts),
+            "calculations": list(self.calculations),
+            "comparison_results": list(self.comparison_results),
+            "linked_events": list(self.linked_events),
+            "citations": list(self.citations),
+            "warnings": list(self.warnings),
+            "provenance": list(self.provenance),
+            "trace": list(self.trace),
+        }
+
+
+@dataclass(frozen=True)
 class Stage3Intent:
     """Normalized contract consumed by the Stage3 pipeline."""
 
