@@ -69,6 +69,50 @@ class FactExtractionTests(unittest.TestCase):
         self.assertTrue(any(item.table_context.get("row_label") == "연결조정 후" for item in revenue_facts))
         self.assertTrue(all(item.currency == "KRW" for item in revenue_facts))
 
+    def test_stage1_total_assets_splits_balance_sheet_fact_metrics(self):
+        intent = adapt_stage1_intent({
+            "route": "ok",
+            "intent": "lookup",
+            "metric": "total_assets",
+            "basis": "연결",
+            "time": {"years": [2025], "base_months": [12]},
+        })
+        bundle = adapt_stage2_bundle([{
+            "id": "balance-sheet",
+            "text": "2025년 연결 자산총계 100억원 부채총계 40억원 자본총계 60억원",
+            "metadata": {"corp_name": "기업A", "report_period": "2025-12"},
+        }])
+        facts = extract_facts(bundle.documents, intent)
+        self.assertEqual({item.metric for item in facts if item.kind == "numeric"}, {"assets", "liabilities", "equity"})
+
+    def test_extracts_supply_contract_fields_and_amount(self):
+        intent = adapt_stage1_intent({"route": "ok", "intent": "list", "metric": "supply_contract"})
+        bundle = adapt_stage2_bundle([{
+            "id": "contract-1",
+            "text": "체결계약명 2500kVA 배전변압기 등 3,500대 계약금액(원) 97,000,000,000 계약상대방 Hyundai Electric America Corporation 판매·공급지역 미국",
+            "metadata": {"corp_name": "HD현대일렉트릭", "report_period": "2023-01"},
+        }])
+        facts = extract_facts(bundle.documents, intent)
+        contract_name = next(item for item in facts if item.label == "contract_name")
+        amount = next(item for item in facts if item.kind == "numeric" and item.label == "계약금액(원)")
+        counterparty = next(item for item in facts if item.label == "counterparty")
+        self.assertTrue(str(contract_name.value).startswith("2500kVA"))
+        self.assertEqual(amount.value, 97000000000.0)
+        self.assertEqual(amount.unit, "원")
+        self.assertEqual(counterparty.value, "Hyundai Electric America Corporation")
+
+    def test_extracts_text_section_fact_for_rnd(self):
+        intent = adapt_stage1_intent({"route": "ok", "intent": "lookup", "metric": "rnd"})
+        bundle = adapt_stage2_bundle([{
+            "id": "rnd-1",
+            "text": "연구개발 당사는 차세대 제품을 개발하고 있다.",
+            "metadata": {"corp_name": "기업A", "report_period": "2025"},
+        }])
+        facts = extract_facts(bundle.documents, intent)
+        text_fact = next(item for item in facts if item.kind == "text")
+        self.assertEqual(text_fact.metric, "rnd")
+        self.assertIn("연구개발", text_fact.value)
+
 
 if __name__ == "__main__":
     unittest.main()

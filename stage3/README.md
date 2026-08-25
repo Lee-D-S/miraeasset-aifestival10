@@ -26,6 +26,15 @@ Stage1이 정의한 metric key는 `stage3/metric_registry.py`의
 `STAGE1_METRICS`에서 관리한다. 이 registry는 질의를 재분류하지 않고, 후속 Fact
 추출기가 Stage1 metric에 맞는 공시 필드를 선택할 때 사용한다.
 
+재무 숫자 Fact는 `revenue`, `operating_profit`, `net_income`, `capex`와
+`total_assets` 계열을 처리한다. `total_assets` 계열은 원문 라벨에 따라
+`assets`, `liabilities`, `equity`, `ratio`로 분리한다. `supply_contract`,
+`contract_termination`, `facility_investment`, `fundraising`,
+`major_shareholding`은 유형별 field Fact를 추가하고, `business_overview`,
+`investment_plan`, `mgmt_judgement`, `rnd`, `dividend`, `employees`,
+`shareholders`, `litigation`, `restructuring`, `treasury_stock`은 근거 section
+Fact로 저장한다. 모든 Fact는 문서 ID·출처·근거를 함께 가진다.
+
 ## Stage2 입력
 
 ```python

@@ -23,6 +23,16 @@ class Stage1AdapterTests(unittest.TestCase):
         self.assertEqual(adapted["lookup"].source, fixtures["lookup"])
         self.assertTrue({"revenue", "capex", "supply_contract"}.issubset(STAGE1_METRICS))
 
+    def test_registry_contains_every_stage1_metric(self):
+        expected = {
+            "revenue", "operating_profit", "net_income", "total_assets", "capex",
+            "supply_contract", "contract_termination", "facility_investment",
+            "mgmt_judgement", "fundraising", "treasury_stock", "restructuring",
+            "major_shareholding", "business_overview", "investment_plan", "rnd",
+            "dividend", "employees", "shareholders", "litigation",
+        }
+        self.assertEqual(set(STAGE1_METRICS), expected)
+
     def test_preserves_full_stage1_lookup_contract(self):
         raw_intent = {
             "raw_question": "삼성전자의 2025년 연결기준 매출액은?",

@@ -5,20 +5,20 @@ from typing import Iterable
 
 from stage3.contracts import Stage3Document, Stage3Fact, Stage3Intent
 from stage3.deterministic.normalization import UNIT_MULTIPLIERS, normalize_number
+from stage3.metric_registry import (
+    METRIC_SPECS,
+    fact_metric_for_label,
+    field_labels_for,
+    numeric_labels_for,
+    section_labels_for,
+)
 from stage3.parsing.structured import parse_structured_evidence
 
 
 METRIC_LABELS: dict[str, tuple[str, ...]] = {
-    "revenue": ("매출액", "매출"),
-    "operating_income": ("영업이익",),
-    "net_income": ("당기순이익", "순이익"),
-    "assets": ("자산총계", "총자산"),
-    "liabilities": ("부채총계", "총부채"),
-    "equity": ("자본총계", "총자본"),
-    "current_assets": ("유동자산",),
-    "current_liabilities": ("유동부채",),
-    "capex": ("설비투자", "시설투자", "신규시설투자"),
-    "funding": ("조달금액", "자금조달", "발행금액"),
+    metric: tuple(spec.get("numeric_labels", ()))
+    for metric, spec in METRIC_SPECS.items()
+    if spec.get("numeric_labels")
 }
 
 ALL_LABELS = tuple(dict.fromkeys(label for labels in METRIC_LABELS.values() for label in labels))
@@ -60,9 +60,7 @@ def _evidence(text: str, start: int, end: int) -> str:
 
 
 def _metric_pattern(metric: str | None) -> tuple[str, ...]:
-    if metric and metric in METRIC_LABELS:
-        return METRIC_LABELS[metric]
-    return ALL_LABELS
+    return numeric_labels_for(metric)
 
 
 def _parse_numeric(value: str) -> float:
@@ -83,12 +81,66 @@ def _fact_currency(unit: str, context: dict, metadata: dict) -> str | None:
     return None
 
 
+def _field_segments(
+    text: str,
+    field_labels: dict[str, tuple[str, ...]],
+    boundary_labels: tuple[str, ...] = (),
+) -> list[tuple[str, str]]:
+    aliases: list[tuple[str, str]] = []
+    for field, labels in field_labels.items():
+        aliases.extend((label, field) for label in labels)
+    if not aliases:
+        return []
+    all_labels = list({label for label, _field in aliases} | set(boundary_labels))
+    label_pattern = "|".join(re.escape(label) for label in sorted(all_labels, key=len, reverse=True))
+    alias_to_field = dict(aliases)
+    matches = list(re.finditer(rf"(?P<label>{label_pattern})\s*[:：]?", text))
+    segments: list[tuple[str, str]] = []
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        value = text[match.end():end].strip(" |\t\r\n:：-")
+        value = re.sub(r"\s+", " ", value).strip()
+        if value and match.group("label") in alias_to_field:
+            segments.append((alias_to_field[match.group("label")], value))
+    return segments
+
+
+def _text_fact(
+    *,
+    metric: str,
+    label: str,
+    value: str,
+    document: Stage3Document,
+    metadata: dict,
+    company: Any,
+    intent: Stage3Intent,
+    evidence: str,
+    kind: str,
+) -> Stage3Fact:
+    return Stage3Fact(
+        metric=metric,
+        label=label,
+        value=value,
+        raw_value=value,
+        unit="",
+        normalized_value=value,
+        period=_period(evidence, metadata),
+        basis=_basis(evidence, metadata, intent),
+        company=str(company) if company else None,
+        document_id=document.id,
+        source=document.source,
+        evidence=evidence,
+        confidence=0.8,
+        kind=kind,
+    )
+
+
 def extract_facts(documents: Iterable[Stage3Document], intent: Stage3Intent) -> list[Stage3Fact]:
     """Extract grounded numeric and date facts from Stage2 evidence text."""
 
     facts: list[Stage3Fact] = []
     labels = _metric_pattern(intent.metric)
-    label_pattern = "|".join(re.escape(label) for label in sorted(labels, key=len, reverse=True))
+    label_pattern = "|".join(re.escape(label) for label in sorted(labels, key=len, reverse=True)) or r"(?!)"
     numeric_pattern = re.compile(rf"(?P<label>{label_pattern})[^\d\-△▲]*(?P<value>{NUMBER_PATTERN})\s*(?P<unit>{UNIT_PATTERN}|단위)?")
     for document in documents:
         structured = parse_structured_evidence(document.text or "")
@@ -110,7 +162,11 @@ def extract_facts(documents: Iterable[Stage3Document], intent: Stage3Intent) -> 
                 raw_literal = match.group("value").strip()
                 raw_value = _parse_numeric(raw_literal)
                 unit = match.group("unit") or str(context.get("unit") or "")
-                metric = next((key for key, values in METRIC_LABELS.items() if match.group("label") in values), intent.metric or "unknown")
+                if not unit and "원" in match.group("label"):
+                    unit = "원"
+                if not unit and ("%" in match.group("label") or "비율" in match.group("label") or "율" in match.group("label")):
+                    unit = "%"
+                metric = fact_metric_for_label(match.group("label"), intent.metric)
                 evidence = source_text.strip() if context else _evidence(text, match.start(), match.end())
                 period = context.get("period_label") or _period(evidence, metadata) or _period(text, metadata)
                 basis = context.get("basis") or _basis(evidence, metadata, intent)
@@ -141,6 +197,48 @@ def extract_facts(documents: Iterable[Stage3Document], intent: Stage3Intent) -> 
                 elif fact.confidence > numeric_facts[existing_index].confidence:
                     numeric_facts[existing_index] = fact
         facts.extend(numeric_facts)
+        field_specs = field_labels_for(intent.metric)
+        field_sources = [text]
+        field_sources.extend(table.rendered_text for table in structured.tables)
+        seen_fields: set[tuple[str, str]] = set()
+        for field_source in field_sources:
+            for field, value in _field_segments(field_source, field_specs, numeric_labels_for(intent.metric)):
+                key = (field, value)
+                if key in seen_fields:
+                    continue
+                seen_fields.add(key)
+                facts.append(
+                    _text_fact(
+                        metric=intent.metric or "unknown",
+                        label=field,
+                        value=value,
+                        document=document,
+                        metadata=metadata,
+                        company=company,
+                        intent=intent,
+                        evidence=value,
+                        kind="field",
+                    )
+                )
+        section_labels = section_labels_for(intent.metric)
+        for section_label in section_labels:
+            section_start = text.find(section_label)
+            if section_start < 0:
+                continue
+            section_evidence = text[section_start:section_start + 240].strip()
+            facts.append(
+                _text_fact(
+                    metric=intent.metric or "unknown",
+                    label=section_label,
+                    value=section_evidence,
+                    document=document,
+                    metadata=metadata,
+                    company=company,
+                    intent=intent,
+                    evidence=section_evidence,
+                    kind="text",
+                )
+            )
         for match in DATE_PATTERN.finditer(text):
             evidence = _evidence(text, match.start(), match.end())
             facts.append(Stage3Fact(
