@@ -157,3 +157,41 @@ python -m unittest stage3.tests.test_event_linker -v
 python -m unittest stage3.tests.test_service_and_api -v
 python -m unittest stage3.tests.test_api -v
 ```
+
+## Actual Stage2 boundary
+
+The Stage2 preprocessing output uses `chunk_id` for the chunk identifier and
+`text_content` for the chunk body. Chroma document outputs may expose the body
+as `page_content`. The Stage3 adapter accepts all of these aliases:
+
+```text
+ID: id, doc_id, document_id, chunk_id
+Body: text, content, doc, text_content, page_content
+Source: source, source_path, file_path
+```
+
+Stage2 metadata such as `rcept_no`, `rcept_dt`, `base_year`, `base_month`,
+`doc_group`, `doc_subtype`, `is_correction`, `section_name`, `chunk_type`, and
+`raw_json_content` is preserved for Fact extraction and citations.
+
+Stage3 requires a stable document or chunk ID and body text (or an evidence
+span). A string-only Stage2 context does not contain a stable ID or metadata,
+so it is not converted into a document and produces `insufficient_evidence`.
+Stage3 never reconstructs IDs from that string and never reruns Stage2 search
+or reranking.
+
+The integrated application injects a structured Stage2 provider from outside
+the standalone Stage3 package:
+
+```python
+from stage3.api import create_app
+
+app = create_app(
+    stage1_provider=parse_stage1,
+    stage2_provider=retrieve_stage2,
+)
+```
+
+The provider must return a mapping with `documents` (or a supported alias),
+where each usable item contains a stable ID and body text. Stage3 itself does
+not import Stage2's database, Chroma, LangGraph, or embedding dependencies.
