@@ -68,6 +68,8 @@ class Stage3Fact:
     span_end: int | None = None
     confidence: float = 0.0
     kind: str = "numeric"
+    currency: str | None = None
+    table_context: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -87,6 +89,8 @@ class Stage3Fact:
             "span_end": self.span_end,
             "confidence": self.confidence,
             "kind": self.kind,
+            "currency": self.currency,
+            "table_context": dict(self.table_context),
         }
 
 

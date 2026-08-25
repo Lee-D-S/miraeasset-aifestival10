@@ -5,6 +5,7 @@ from typing import Iterable
 
 from stage3.contracts import Stage3Document, Stage3Fact, Stage3Intent
 from stage3.deterministic.normalization import UNIT_MULTIPLIERS, normalize_number
+from stage3.parsing.structured import parse_structured_evidence
 
 
 METRIC_LABELS: dict[str, tuple[str, ...]] = {
@@ -21,8 +22,8 @@ METRIC_LABELS: dict[str, tuple[str, ...]] = {
 }
 
 ALL_LABELS = tuple(dict.fromkeys(label for labels in METRIC_LABELS.values() for label in labels))
-UNIT_PATTERN = r"조원|십억원|억원|백만원|천만원|만원|천원|원"
-NUMBER_PATTERN = r"-?\d[\d,]*(?:\.\d+)?"
+UNIT_PATTERN = r"조원|십억원|억원|백만원|천만원|만원|천원|원|%"
+NUMBER_PATTERN = r"(?:△|▲|-)?\s*\d[\d,]*(?:\.\d+)?"
 DATE_PATTERN = re.compile(r"(?:20\d{2}년\s*\d{1,2}월\s*\d{1,2}일?|20\d{2}[-./]\s*\d{1,2}[-./]\s*\d{1,2}|20\d{2}년\s*(?:[1-4]분기|상반기|하반기|연간)|20\d{2}년(?!\s*\d{1,2}월))")
 
 
@@ -64,39 +65,82 @@ def _metric_pattern(metric: str | None) -> tuple[str, ...]:
     return ALL_LABELS
 
 
+def _parse_numeric(value: str) -> float:
+    cleaned = value.replace(",", "").replace(" ", "")
+    negative = cleaned.startswith(("△", "▲", "-"))
+    cleaned = cleaned.lstrip("△▲-")
+    number = float(cleaned)
+    return -number if negative else number
+
+
+def _fact_currency(unit: str, context: dict, metadata: dict) -> str | None:
+    if context.get("currency"):
+        return str(context["currency"])
+    if metadata.get("currency"):
+        return str(metadata["currency"])
+    if unit in UNIT_MULTIPLIERS and unit not in {"", "%"}:
+        return "KRW"
+    return None
+
+
 def extract_facts(documents: Iterable[Stage3Document], intent: Stage3Intent) -> list[Stage3Fact]:
     """Extract grounded numeric and date facts from Stage2 evidence text."""
 
     facts: list[Stage3Fact] = []
     labels = _metric_pattern(intent.metric)
     label_pattern = "|".join(re.escape(label) for label in sorted(labels, key=len, reverse=True))
-    numeric_pattern = re.compile(rf"(?P<label>{label_pattern})[^\d-]*(?P<value>{NUMBER_PATTERN})\s*(?P<unit>{UNIT_PATTERN}|단위)?")
+    numeric_pattern = re.compile(rf"(?P<label>{label_pattern})[^\d\-△▲]*(?P<value>{NUMBER_PATTERN})\s*(?P<unit>{UNIT_PATTERN}|단위)?")
     for document in documents:
-        text = document.text or ""
+        structured = parse_structured_evidence(document.text or "")
+        text = structured.text
         metadata = document.metadata
         company = metadata.get("corp_name") or (intent.companies[0] if len(intent.companies) == 1 else None)
-        for match in numeric_pattern.finditer(text):
-            raw_value = float(match.group("value").replace(",", ""))
-            unit = match.group("unit") or ""
-            metric = next((key for key, values in METRIC_LABELS.items() if match.group("label") in values), intent.metric or "unknown")
-            evidence = _evidence(text, match.start(), match.end())
-            facts.append(Stage3Fact(
-                metric=metric,
-                label=match.group("label"),
-                value=raw_value,
-                raw_value=raw_value,
-                unit=unit,
-                normalized_value=normalize_number(raw_value, unit),
-                period=_period(evidence, metadata) or _period(text, metadata),
-                basis=_basis(evidence, metadata, intent),
-                company=str(company) if company else None,
-                document_id=document.id,
-                source=document.source,
-                evidence=evidence,
-                span_start=match.start(),
-                span_end=match.end(),
-                confidence=0.9 if unit else 0.7,
-            ))
+        numeric_sources: list[tuple[str, dict]] = [(text, {})]
+        for cell in structured.numeric_cells:
+            numeric_sources.append(
+                (
+                    f"{cell.get('row_label', '')} | {cell.get('column_label', '')} | {cell.get('value', '')}",
+                    cell,
+                )
+            )
+        numeric_facts: list[Stage3Fact] = []
+        numeric_index: dict[tuple[str, str, str, str | None, str], int] = {}
+        for source_text, context in numeric_sources:
+            for match in numeric_pattern.finditer(source_text):
+                raw_literal = match.group("value").strip()
+                raw_value = _parse_numeric(raw_literal)
+                unit = match.group("unit") or str(context.get("unit") or "")
+                metric = next((key for key, values in METRIC_LABELS.items() if match.group("label") in values), intent.metric or "unknown")
+                evidence = source_text.strip() if context else _evidence(text, match.start(), match.end())
+                period = context.get("period_label") or _period(evidence, metadata) or _period(text, metadata)
+                basis = context.get("basis") or _basis(evidence, metadata, intent)
+                fact = Stage3Fact(
+                    metric=metric,
+                    label=match.group("label"),
+                    value=raw_value,
+                    raw_value=raw_literal,
+                    unit=unit,
+                    normalized_value=normalize_number(raw_value, unit),
+                    period=period,
+                    basis=basis,
+                    company=str(company) if company else None,
+                    document_id=document.id,
+                    source=document.source,
+                    evidence=evidence,
+                    span_start=None if context else match.start(),
+                    span_end=None if context else match.end(),
+                    confidence=0.95 if context else (0.9 if unit else 0.7),
+                    currency=_fact_currency(unit, context, metadata),
+                    table_context=dict(context),
+                )
+                key = (document.id, metric, match.group("label"), period, raw_literal)
+                existing_index = numeric_index.get(key)
+                if existing_index is None:
+                    numeric_index[key] = len(numeric_facts)
+                    numeric_facts.append(fact)
+                elif fact.confidence > numeric_facts[existing_index].confidence:
+                    numeric_facts[existing_index] = fact
+        facts.extend(numeric_facts)
         for match in DATE_PATTERN.finditer(text):
             evidence = _evidence(text, match.start(), match.end())
             facts.append(Stage3Fact(

@@ -52,6 +52,16 @@ class Stage3ServiceTests(unittest.TestCase):
         self.assertEqual(result.status, "success")
         self.assertEqual(result.comparison_results[0]["top"]["company"], "기업B")
 
+    def test_pdf_path_only_result_requires_stage2_text(self):
+        service = Stage3Service()
+        result = service.process(
+            question="기업A의 2025년 매출액은?",
+            stage1_intent={"route": "ok", "intent": "lookup", "metric": "revenue", "basis": "연결", "time": {"years": [2025], "base_months": [12]}},
+            stage2_result={"documents": [{"id": "pdf-only", "source": "report.pdf", "text": "", "metadata": {"file_format": "pdf", "file_path": "raw/report.pdf"}}]},
+        )
+        self.assertEqual(result.status, "insufficient_evidence")
+        self.assertIn("pdf-only: pdf_text_required", result.warnings)
+
 
 if __name__ == "__main__":
     unittest.main()

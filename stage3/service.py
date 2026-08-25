@@ -40,7 +40,7 @@ class Stage3Service:
             comparisons.append(compare_facts(facts, intent))
         events = link_events(documents, intent) if intent.intent in {"exists", "event_link", "change"} or any(word in intent.normalized_question for word in ("계약", "해지", "정정", "후속")) else []
         citations = self._citations(documents, facts, calculations, comparisons, events)
-        warnings = list(intent.warnings) + normalization_warnings
+        warnings = list(intent.warnings) + normalization_warnings + self._document_warnings(documents)
         answer, mode = self.answer_writer.write(question=question, intent=intent, facts=facts, calculations=calculations, comparisons=comparisons, events=events, citations=citations, warnings=warnings)
         status = "success" if documents and (facts or comparisons or events) else "insufficient_evidence"
         result = Stage3Result(
@@ -71,6 +71,19 @@ class Stage3Service:
             "unanswerable": "제공된 공시 코퍼스에서 확인할 수 없는 질문입니다.",
             "unsafe": "공시 근거만으로 답변할 수 없는 요청입니다.",
         }.get(route, "제공된 공시에서 확인할 수 없습니다.")
+
+    @staticmethod
+    def _document_warnings(documents: list[Any]) -> list[str]:
+        warnings: list[str] = []
+        for document in documents:
+            file_format = str(document.metadata.get("file_format", "")).lower()
+            span_text = any(
+                str(span.get("text", span.get("content", span.get("evidence", "")))).strip()
+                for span in document.evidence_spans
+            )
+            if "pdf" in file_format and not document.text.strip() and not span_text:
+                warnings.append(f"{document.id}: pdf_text_required")
+        return warnings
 
     @staticmethod
     def _citations(documents: list[Any], facts: list[Any], calculations: list[dict[str, Any]], comparisons: list[dict[str, Any]], events: list[dict[str, Any]]) -> list[dict[str, Any]]:

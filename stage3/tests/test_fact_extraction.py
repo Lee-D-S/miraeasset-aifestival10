@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 import unittest
 
 from stage3.adapters.stage1 import adapt_stage1_intent
@@ -52,6 +53,21 @@ class FactExtractionTests(unittest.TestCase):
         normalized, warnings = normalize_facts(facts, self.intent)
         self.assertTrue(normalized)
         self.assertTrue(any("단위" in warning for warning in warnings))
+
+    def test_extracts_table_context_unit_and_delta_from_structured_evidence(self):
+        fixture = Path(__file__).parent / "fixtures" / "samsung_dart.xml"
+        bundle = adapt_stage2_bundle([{
+            "id": "samsung-xml",
+            "source": "samsung.xml",
+            "text": fixture.read_text(encoding="utf-8"),
+            "metadata": {"corp_name": "삼성전자", "report_period": "2025-12"},
+        }])
+        facts = extract_facts(bundle.documents, self.intent)
+        revenue_facts = [item for item in facts if item.metric == "revenue"]
+        self.assertEqual({item.value for item in revenue_facts}, {1000.0, -120.0})
+        self.assertTrue(all(item.unit == "억원" for item in revenue_facts))
+        self.assertTrue(any(item.table_context.get("row_label") == "연결조정 후" for item in revenue_facts))
+        self.assertTrue(all(item.currency == "KRW" for item in revenue_facts))
 
 
 if __name__ == "__main__":

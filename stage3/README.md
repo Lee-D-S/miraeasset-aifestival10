@@ -61,6 +61,17 @@ facts, warnings = normalize_facts(facts, intent)
 
 추출 결과는 지표·원값·단위·정규화값·기간·연결/별도 기준·기업·문서 ID·근거 구간을 보존한다. 계산에 사용할 값은 `normalized_value`를 사용하며, 기간·기준이 불명확하면 경고를 남긴다.
 
+본문이 DART XML이면 `xml.etree.ElementTree`, HTML이면 `html.parser.HTMLParser`로
+표를 읽는다. `<TABLE>/<TR>/<TD>/<TH>/<TU>`와 HTML `table/tr/td/th/span`을
+지원하며 `colspan`·`rowspan`, 별도 단위 행, `연결조정 전·후`, `△` 음수 표기를
+구조화한다. 금액 표는 KRW 단위를 정규화하고 USD 같은 외화는 `currency`를
+분리해 보존하며 환율을 임의로 적용하지 않는다. 표 Fact에는 행·열·단위·기간
+context도 남긴다.
+
+Stage2가 PDF 경로만 전달하고 본문 또는 evidence span을 전달하지 않으면 Stage3는
+PDF를 직접 파싱하지 않고 `pdf_text_required` 경고와 `insufficient_evidence`
+상태를 반환한다.
+
 ## 계산·비교·사건 연결
 
 ```python
