@@ -52,9 +52,28 @@ class AnswerWriter:
         return self._template(intent, facts, calculations, comparisons, events, citations, warnings), "deterministic_template"
 
     @staticmethod
+    def deterministic(
+        *,
+        intent: Stage3Intent,
+        facts: list[Stage3Fact],
+        calculations: list[dict[str, Any]],
+        comparisons: list[dict[str, Any]],
+        events: list[dict[str, Any]],
+        citations: list[dict[str, Any]],
+        warnings: list[str],
+    ) -> str:
+        """Render the local fallback without calling an external model."""
+
+        return AnswerWriter._template(intent, facts, calculations, comparisons, events, citations, warnings)
+
+    @staticmethod
     def _template(intent: Stage3Intent, facts: list[Stage3Fact], calculations: list[dict[str, Any]], comparisons: list[dict[str, Any]], events: list[dict[str, Any]], citations: list[dict[str, Any]], warnings: list[str]) -> str:
         if not facts and not comparisons and not events:
             return "제공된 공시에서 질문에 필요한 근거를 확인할 수 없습니다."
+        if calculations and not any(item.get("status") == "ok" for item in calculations):
+            return "계산에 필요한 기간·단위·기준을 공시 근거에서 확인할 수 없습니다."
+        if comparisons and not any(item.get("status") == "ok" for item in comparisons):
+            return "비교에 필요한 동일 기간·단위·기준의 공시 근거를 확인할 수 없습니다."
         sections: list[str] = []
         if comparisons and comparisons[0].get("status") == "ok":
             top = comparisons[0]["top"]

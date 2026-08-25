@@ -3,7 +3,9 @@ from __future__ import annotations
 import unittest
 
 from stage3.service import Stage3Service
+from stage3.contracts import Stage3Result, adapt_stage1_intent
 from stage3.validation import validate_submission_response
+from stage3.validation import validate_stage3_result
 
 
 class Stage3ServiceTests(unittest.TestCase):
@@ -61,6 +63,38 @@ class Stage3ServiceTests(unittest.TestCase):
         )
         self.assertEqual(result.status, "insufficient_evidence")
         self.assertIn("pdf-only: pdf_text_required", result.warnings)
+
+    def test_unverified_hyperclova_answer_is_replaced_by_deterministic_fallback(self):
+        class HallucinatingClient:
+            def generate_text(self, _messages):
+                return "매출액은 999억원입니다."
+
+        service = Stage3Service(answer_client=HallucinatingClient())
+        result = service.process(
+            question="기업A의 2025년 매출액은?",
+            stage1_intent={"route": "ok", "intent": "lookup", "metric": "revenue", "basis": "연결", "time": {"years": [2025], "base_months": [12]}},
+            stage2_result={"documents": [{"id": "grounded", "text": "2025년 연결 매출액 100억원", "metadata": {"corp_name": "기업A", "report_period": "2025-12", "basis": "연결"}}]},
+        )
+        self.assertEqual(result.status, "insufficient_evidence")
+        self.assertIn("100", result.answer)
+        self.assertNotIn("999", result.answer)
+        self.assertIn("validation_failed", result.trace)
+
+    def test_validator_recomputes_calculation_and_rejects_tampered_result(self):
+        intent = adapt_stage1_intent({"route": "ok", "intent": "calc", "metric": "revenue", "basis": "연결"})
+        result = Stage3Result(
+            status="success",
+            answer="증감률은 99%입니다.",
+            facts=[
+                {"document_id": "old", "value": 100, "raw_value": "100", "normalized_value": 100, "period": "2024-12", "basis": "연결", "unit": "억원"},
+                {"document_id": "new", "value": 120, "raw_value": "120", "normalized_value": 120, "period": "2025-12", "basis": "연결", "unit": "억원"},
+            ],
+            calculations=[{"status": "ok", "operation": "percentage_change", "inputs": [{"value": 100, "period": "2024-12"}, {"value": 120, "period": "2025-12"}], "result": 99, "evidence_ids": ["old", "new"]}],
+            citations=[{"document_id": "old"}, {"document_id": "new"}],
+        )
+        valid, warnings = validate_stage3_result(result, intent)
+        self.assertFalse(valid)
+        self.assertTrue(any("재검증 실패" in warning for warning in warnings))
 
 
 if __name__ == "__main__":

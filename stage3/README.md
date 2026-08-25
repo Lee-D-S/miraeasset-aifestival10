@@ -125,6 +125,13 @@ response = service.answer(
 
 `Stage3Service`는 Stage1 route를 먼저 확인한 뒤 Fact·계산·비교·사건 Agent 결과를 통합하고 답변을 작성한다. 최종 `response`는 대회 제출 형식의 5개 문자열 필드로 변환된다. HyperCLOVA X client를 주입하면 답변 생성에 사용하고, client가 없으면 근거 기반 결정론적 템플릿으로 fallback한다.
 
+답변 검증기는 Fact의 문서 ID·citation, 계산 입력과 산식을 재검사하고 답변의
+숫자를 Fact·계산 결과와 대조한다. 검증에 실패한 HyperCLOVA X 답변은 사용하지
+않고 deterministic fallback으로 교체한다. citation의 `evidence`는 연결된 Fact
+근거와 Stage2 evidence span을 우선 사용하며, 외부 제출 응답은
+`question_id`, `question`, `retrieved_context`, `think_trace`, `answer` 5개
+문자열 필드만 반환한다.
+
 실제 HTTP 경계는 외부 웹 프레임워크 없이 Python 표준 라이브러리로 제공하며, Stage2 최종 계약을 고정하지 않도록 provider 주입 방식으로 제공한다.
 
 ```python

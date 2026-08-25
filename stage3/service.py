@@ -40,9 +40,13 @@ class Stage3Service:
             comparisons.append(compare_facts(facts, intent))
         events = link_events(documents, intent) if intent.intent in {"exists", "event_link", "change"} or any(word in intent.normalized_question for word in ("계약", "해지", "정정", "후속")) else []
         citations = self._citations(documents, facts, calculations, comparisons, events)
-        warnings = list(intent.warnings) + normalization_warnings + self._document_warnings(documents)
+        event_warnings = [str(event["warning"]) for event in events if event.get("warning")]
+        warnings = list(intent.warnings) + normalization_warnings + self._document_warnings(documents) + event_warnings
         answer, mode = self.answer_writer.write(question=question, intent=intent, facts=facts, calculations=calculations, comparisons=comparisons, events=events, citations=citations, warnings=warnings)
-        status = "success" if documents and (facts or comparisons or events) else "insufficient_evidence"
+        failed_calculation = bool(calculations) and not any(item.get("status") == "ok" for item in calculations)
+        failed_comparison = bool(comparisons) and not any(item.get("status") == "ok" for item in comparisons)
+        usable_analysis = bool(facts or events or any(item.get("status") == "ok" for item in calculations + comparisons))
+        status = "success" if documents and usable_analysis and not failed_calculation and not failed_comparison else "insufficient_evidence"
         result = Stage3Result(
             status=status,
             answer=answer,
@@ -57,7 +61,38 @@ class Stage3Service:
         )
         valid, validation_warnings = validate_stage3_result(result, intent)
         if not valid:
-            result = Stage3Result(**{**result.to_dict(), "status": "insufficient_evidence", "warnings": [*result.warnings, *validation_warnings], "trace": [*result.trace, "validation_failed"]})
+            combined_warnings = [*result.warnings, *validation_warnings]
+            fallback_answer = answer
+            fallback_mode = mode
+            if mode == "hyperclova_x":
+                fallback_answer = self.answer_writer.deterministic(
+                    intent=intent,
+                    facts=facts,
+                    calculations=calculations,
+                    comparisons=comparisons,
+                    events=events,
+                    citations=citations,
+                    # Do not echo the rejected model text or validator
+                    # diagnostics into the user-facing fallback answer.
+                    warnings=warnings,
+                )
+                fallback_mode = "deterministic_fallback"
+            result = Stage3Result(**{
+                **result.to_dict(),
+                "status": "insufficient_evidence",
+                "answer": fallback_answer,
+                "warnings": combined_warnings,
+                "provenance": [{"agent": "stage3_supervisor", "documents": [document.id for document in documents], "answer_mode": fallback_mode}],
+                "trace": [*result.trace, "validation_failed", f"answer_mode={fallback_mode}"],
+            })
+            fallback_valid, fallback_warnings = validate_stage3_result(result, intent)
+            if not fallback_valid:
+                result = Stage3Result(**{
+                    **result.to_dict(),
+                    "answer": "제공된 공시 근거만으로 답변을 검증할 수 없습니다.",
+                    "warnings": [*result.warnings, *fallback_warnings],
+                    "trace": [*result.trace, "fallback_validation_failed"],
+                })
         return result
 
     def answer(self, *, question_id: str, question: str, stage1_intent: Mapping[str, Any], stage2_result: Any) -> dict[str, str]:
@@ -94,7 +129,26 @@ class Stage3Service:
             used.update(map(str, comparison.get("evidence_ids", [])))
         for event in events:
             used.update(map(str, event.get("source_ids", [])))
-        return [
-            {"document_id": document.id, "source": document.source, "evidence": document.text, "metadata": document.metadata}
-            for document in documents if document.id in used
-        ]
+        evidence_by_id: dict[str, list[str]] = {}
+        for fact in facts:
+            if fact.document_id in used and fact.evidence:
+                evidence_by_id.setdefault(fact.document_id, []).append(fact.evidence)
+        for document in documents:
+            if document.id not in used:
+                continue
+            for span in document.evidence_spans:
+                value = span.get("text", span.get("content", span.get("evidence", "")))
+                if str(value).strip():
+                    evidence_by_id.setdefault(document.id, []).append(str(value).strip())
+        citations: list[dict[str, Any]] = []
+        for document in documents:
+            if document.id not in used:
+                continue
+            snippets = list(dict.fromkeys(evidence_by_id.get(document.id, [])))
+            citations.append({
+                "document_id": document.id,
+                "source": document.source,
+                "evidence": "\n".join(snippets) if snippets else document.text,
+                "metadata": document.metadata,
+            })
+        return citations
