@@ -3,9 +3,45 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
-from agentic_rag.deterministic.calculation_registry import execute_operation
-
 from stage3.contracts import Stage3Fact, Stage3Intent
+
+
+def execute_operation(operation: str, arguments: list[float], *, periods: float | None = None) -> float:
+    """Small stdlib-only whitelist kept inside the standalone Stage3 package."""
+
+    if operation == "percentage_change":
+        if len(arguments) != 2 or arguments[0] == 0:
+            raise ValueError("percentage_change requires a non-zero old value")
+        return (arguments[1] - arguments[0]) / abs(arguments[0]) * 100
+    if operation == "cagr":
+        if len(arguments) != 2 or periods is None or arguments[0] <= 0 or periods <= 0:
+            raise ValueError("CAGR requires positive old value and period")
+        return ((arguments[1] / arguments[0]) ** (1 / periods) - 1) * 100
+    if operation == "ratio":
+        if len(arguments) != 2 or arguments[1] == 0:
+            raise ValueError("ratio requires a non-zero denominator")
+        return arguments[0] / arguments[1]
+    if operation == "margin":
+        return execute_operation("ratio", arguments) * 100
+    if operation == "sum":
+        return sum(arguments)
+    if operation == "average":
+        if not arguments:
+            raise ValueError("average requires values")
+        return sum(arguments) / len(arguments)
+    if operation == "min":
+        return min(arguments)
+    if operation == "max":
+        return max(arguments)
+    if operation == "add" and len(arguments) == 2:
+        return arguments[0] + arguments[1]
+    if operation == "subtract" and len(arguments) == 2:
+        return arguments[0] - arguments[1]
+    if operation == "multiply" and len(arguments) == 2:
+        return arguments[0] * arguments[1]
+    if operation == "divide" and len(arguments) == 2 and arguments[1] != 0:
+        return arguments[0] / arguments[1]
+    raise ValueError(f"Unsupported calculation operation: {operation}")
 
 
 def numeric_facts(facts: Iterable[Stage3Fact], *, metric: str | None = None) -> list[Stage3Fact]:

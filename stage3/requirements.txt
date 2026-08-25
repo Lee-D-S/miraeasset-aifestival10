@@ -1,0 +1,2 @@
+# Stage3 uses only the Python standard library.
+# Integration-specific dependencies, such as a HyperCLOVA X client, are injected by the host application.
