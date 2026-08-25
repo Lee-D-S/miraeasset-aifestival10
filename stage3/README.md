@@ -37,6 +37,18 @@ documents = bundle.effective_documents()
 
 Stage2의 최종 문서 계약이 확정되기 전까지 `adapt_stage2_bundle()`이 필드 차이를 흡수한다. Stage3는 검색·rerank를 수행하지 않고 전달받은 문서와 근거 구간만 사용한다.
 
+문서 목록은 `documents`, `retrieved_documents`, `results`, 인용 목록은
+`cited_documents`, `citedDocuments` alias를 지원한다. 문서 ID·본문·출처·점수와
+근거 span도 각각 계획된 alias에서 표준 필드로 변환한다. 인용 문서가 있으면
+`effective_documents()`가 인용 문서를 우선 반환한다. ID가 없는 문서는 근거로
+사용하지 않으며, 본문이 없더라도 텍스트가 있는 evidence span은 보존한다.
+
+중첩 `metadata`를 우선하고 top-level의 `corp_name`, `corp_code`, `doc_group`,
+`doc_subtype`, `report_nm`, `rcept_no`, `rcept_dt`, `flr_nm`, `base_year`,
+`base_month`, `is_correction`, `file_path`, `file_format`, `n_files`,
+`report_period`, `basis`를 누락 시 fallback으로 채운다. 그 외 입력 필드는
+어댑터의 `raw`에 남긴다.
+
 ## Fact 추출과 정규화
 
 ```python

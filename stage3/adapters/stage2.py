@@ -23,7 +23,25 @@ def adapt_stage2_document(document: Mapping[str, Any]) -> Stage3Document:
     metadata = _as_mapping(raw.get("metadata"))
     # Some Stage2 candidates may expose metadata at the top level.  Preserve
     # it as a fallback without overriding an explicit nested value.
-    for key in ("corp_name", "corp_code", "stock_code", "doc_group", "doc_subtype", "report_nm", "rcept_dt", "base_year", "base_month", "is_correction", "report_period", "basis"):
+    for key in (
+        "corp_name",
+        "corp_code",
+        "stock_code",
+        "doc_group",
+        "doc_subtype",
+        "report_nm",
+        "rcept_no",
+        "rcept_dt",
+        "flr_nm",
+        "base_year",
+        "base_month",
+        "is_correction",
+        "file_path",
+        "file_format",
+        "n_files",
+        "report_period",
+        "basis",
+    ):
         if key not in metadata and key in raw:
             metadata[key] = raw[key]
 
@@ -50,7 +68,16 @@ def adapt_stage2_document(document: Mapping[str, Any]) -> Stage3Document:
 def _documents(value: Any) -> list[Stage3Document]:
     if not isinstance(value, Iterable) or isinstance(value, (str, bytes, Mapping)):
         return []
-    return [adapt_stage2_document(item) for item in value if isinstance(item, Mapping)]
+    documents: list[Stage3Document] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        document = adapt_stage2_document(item)
+        # A document without an upstream identifier cannot be cited or tied
+        # to a Fact, so it is kept out of the Stage3 evidence boundary.
+        if document.id.strip():
+            documents.append(document)
+    return documents
 
 
 def adapt_stage2_bundle(result: Any) -> Stage2Bundle:
