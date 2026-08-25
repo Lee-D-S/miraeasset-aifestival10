@@ -25,9 +25,22 @@ documents = bundle.effective_documents()
 
 Stage2의 최종 문서 계약이 확정되기 전까지 `adapt_stage2_bundle()`이 필드 차이를 흡수한다. Stage3는 검색·rerank를 수행하지 않고 전달받은 문서와 근거 구간만 사용한다.
 
+## Fact 추출과 정규화
+
+```python
+from stage3.agents.fact_extraction import extract_facts
+from stage3.deterministic.normalization import normalize_facts
+
+facts = extract_facts(bundle.effective_documents(), intent)
+facts, warnings = normalize_facts(facts, intent)
+```
+
+추출 결과는 지표·원값·단위·정규화값·기간·연결/별도 기준·기업·문서 ID·근거 구간을 보존한다. 계산에 사용할 값은 `normalized_value`를 사용하며, 기간·기준이 불명확하면 경고를 남긴다.
+
 ## 테스트
 
 ```powershell
 python -m unittest stage3.tests.test_stage1_adapter -v
 python -m unittest stage3.tests.test_stage2_adapter -v
+python -m unittest stage3.tests.test_fact_extraction -v
 ```

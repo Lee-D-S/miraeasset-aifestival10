@@ -51,6 +51,46 @@ class Stage2Bundle:
 
 
 @dataclass(frozen=True)
+class Stage3Fact:
+    metric: str
+    label: str
+    value: float | str
+    raw_value: float | str
+    unit: str
+    normalized_value: float | str | None
+    period: str | None
+    basis: str | None
+    company: str | None
+    document_id: str
+    source: str
+    evidence: str
+    span_start: int | None = None
+    span_end: int | None = None
+    confidence: float = 0.0
+    kind: str = "numeric"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "metric": self.metric,
+            "label": self.label,
+            "value": self.value,
+            "raw_value": self.raw_value,
+            "unit": self.unit,
+            "normalized_value": self.normalized_value,
+            "period": self.period,
+            "basis": self.basis,
+            "company": self.company,
+            "document_id": self.document_id,
+            "source": self.source,
+            "evidence": self.evidence,
+            "span_start": self.span_start,
+            "span_end": self.span_end,
+            "confidence": self.confidence,
+            "kind": self.kind,
+        }
+
+
+@dataclass(frozen=True)
 class Stage3Intent:
     """Normalized contract consumed by the Stage3 pipeline."""
 
