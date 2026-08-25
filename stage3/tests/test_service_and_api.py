@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 import unittest
 
 from stage3.service import Stage3Service
@@ -95,6 +97,41 @@ class Stage3ServiceTests(unittest.TestCase):
         valid, warnings = validate_stage3_result(result, intent)
         self.assertFalse(valid)
         self.assertTrue(any("재검증 실패" in warning for warning in warnings))
+
+    def test_actual_stage1_fixture_to_structured_stage2_to_submission(self):
+        fixture_path = Path(__file__).parent / "fixtures" / "stage1_intents.json"
+        stage1_intent = json.loads(fixture_path.read_text(encoding="utf-8"))["lookup"]
+        structured_path = Path(__file__).parent / "fixtures" / "samsung_dart.xml"
+        result = Stage3Service().answer(
+            question_id="Q-INTEGRATION",
+            question=stage1_intent["raw_question"],
+            stage1_intent=stage1_intent,
+            stage2_result={
+                "documents": [{
+                    "id": "periodic_2025_samsung",
+                    "source": "raw/periodic/삼성전자/2025.xml",
+                    "text": structured_path.read_text(encoding="utf-8"),
+                    "metadata": {
+                        "corp_name": "삼성전자",
+                        "doc_group": "periodic",
+                        "doc_subtype": "annual",
+                        "rcept_no": "20250000000000",
+                        "rcept_dt": "20260301",
+                        "base_year": 2025,
+                        "base_month": 12,
+                        "is_correction": False,
+                        "file_format": "xml",
+                    },
+                }],
+                "cited_documents": [],
+                "retrieval_trace": ["fixture"]
+            },
+        )
+        valid, errors = validate_submission_response(result)
+        self.assertTrue(valid, errors)
+        self.assertEqual(result["question_id"], "Q-INTEGRATION")
+        self.assertIn("periodic_2025_samsung", result["retrieved_context"])
+        self.assertIn("1000", result["answer"])
 
 
 if __name__ == "__main__":

@@ -150,6 +150,7 @@ Stage3 패키지는 `agentic_rag`, FastAPI, Pydantic 등 외부 프로젝트·�
 ```powershell
 python -m unittest stage3.tests.test_stage1_adapter -v
 python -m unittest stage3.tests.test_stage2_adapter -v
+python -m unittest stage3.tests.test_structured_parsing -v
 python -m unittest stage3.tests.test_fact_extraction -v
 python -m unittest stage3.tests.test_calculation_comparison -v
 python -m unittest stage3.tests.test_event_linker -v
