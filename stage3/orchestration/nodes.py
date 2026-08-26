@@ -9,6 +9,7 @@ from stage3.agents.comparison import comparison_agent
 from stage3.agents.event_linker import event_linker_agent
 from stage3.agents.fact_extraction import fact_extraction_agent
 from stage3.contracts import AgentResult, HandoffRequest, Provenance, Stage3Document, Stage3Fact, Stage3Intent, Stage3Result
+from stage3.agents.schemas import validate_agent_result
 from stage3.state import Stage3GraphState
 from stage3.validation import validate_stage3_result
 
@@ -40,9 +41,21 @@ def _agent_update(result: AgentResult, state: Stage3GraphState, **values: Any) -
 
 def stage1_gate_node(state: Stage3GraphState) -> dict[str, Any]:
     intent = state["intent"]
+    result = AgentResult(
+        agent="supervisor",
+        status="ok" if intent.is_processable else "blocked",
+        evidence_ids=(),
+        confidence=1.0,
+        trace=(f"route={intent.route}",),
+    )
+    values = _agent_update(result, state, trace=[f"route={intent.route}"])
     if intent.is_processable:
-        return {"trace": ["route=ok"]}
-    return {"status": intent.route, "fallback_reason": intent.route, "trace": [f"route={intent.route}"]}
+        return values
+    return {
+        **values,
+        "status": intent.route,
+        "fallback_reason": intent.route,
+    }
 
 
 def blocked_response_node(state: Stage3GraphState) -> dict[str, Any]:
@@ -93,7 +106,17 @@ def analysis_router_node(state: Stage3GraphState) -> dict[str, Any]:
         ).to_dict()
         for target in targets
     ]
-    return {"handoffs": handoffs, "trace": [f"analysis_targets={','.join(targets) or 'answer'}"]}
+    result = AgentResult(
+        agent="supervisor",
+        status="ok",
+        evidence_ids=tuple(fact.document_id for fact in state.get("facts", []) if fact.document_id),
+        confidence=1.0,
+        trace=(f"analysis_targets={','.join(targets) or 'answer'}",),
+    )
+    return {
+        **_agent_update(result, state),
+        "handoffs": handoffs,
+    }
 
 
 def make_specialist_node(handler: Callable[[Stage3GraphState], AgentResult], output_key: str):
@@ -182,10 +205,34 @@ def _state_result(state: Stage3GraphState) -> Stage3Result:
 def validation_node(state: Stage3GraphState) -> dict[str, Any]:
     result = _state_result(state)
     valid, warnings = validate_stage3_result(result, state["intent"])
+    document_ids = {document.id for document in state.get("documents", [])}
+    agent_warnings: list[str] = []
+    agent_results = list(state.get("agent_results", []))
+    provenance_agents = {str(item.get("agent", "")) for item in state.get("provenance", [])}
+    for payload in agent_results:
+        schema_valid, schema_message = validate_agent_result(payload)
+        if not schema_valid:
+            agent_warnings.append(schema_message)
+        if str(payload.get("agent", "")) not in provenance_agents:
+            agent_warnings.append(f"Agent provenance가 없습니다: {payload.get('agent', '')}")
+        unknown_ids = set(map(str, payload.get("evidence_ids", []))) - document_ids
+        if unknown_ids:
+            agent_warnings.append(f"Agent가 알 수 없는 문서를 참조합니다: {sorted(unknown_ids)}")
+    warnings = [*warnings, *agent_warnings]
+    validator = AgentResult(
+        agent="validator",
+        status="valid" if not warnings else "invalid",
+        evidence_ids=tuple(sorted(document_ids & {str(item.get("document_id", "")) for item in state.get("citations", [])})),
+        confidence=1.0 if not warnings else 0.0,
+        warnings=tuple(warnings),
+        trace=("validation=passed" if not warnings else "validation=failed",),
+    )
     return {
-        "validation": {"valid": valid, "warnings": warnings},
-        "status": result.status if valid else "insufficient_evidence",
-        "trace": ["validated" if valid else "validation_failed"],
+        "validation": {"valid": not warnings, "warnings": warnings},
+        "status": result.status if not warnings else "insufficient_evidence",
+        "agent_results": [validator.to_dict()],
+        "provenance": [_provenance(validator, state)],
+        "trace": ["validated" if not warnings else "validation_failed"],
     }
 
 
