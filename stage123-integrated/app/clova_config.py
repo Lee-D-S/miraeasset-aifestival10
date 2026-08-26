@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+DEFAULT_CLOVA_CHAT_MODEL = "HCX-DASH-002"
+
 
 def get_clova_api_key() -> str:
     """Return the unified CLOVA Studio key, with legacy-name fallback."""
@@ -14,4 +16,4 @@ def get_clova_api_key() -> str:
     return os.getenv("CLOVA_API_KEY", "").strip() or os.getenv("CLOVASTUDIO_API_KEY", "").strip()
 
 
-__all__ = ["get_clova_api_key"]
+__all__ = ["DEFAULT_CLOVA_CHAT_MODEL", "get_clova_api_key"]

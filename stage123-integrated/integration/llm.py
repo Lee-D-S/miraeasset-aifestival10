@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.clova_config import get_clova_api_key
+from app.clova_config import DEFAULT_CLOVA_CHAT_MODEL, get_clova_api_key
 
 
 class ProviderConfigurationError(RuntimeError):
@@ -29,7 +29,7 @@ def build_stage2_chat_model() -> Any:
             "CLOVA_API_KEY가 설정되지 않았습니다."
         )
     try:
-        return ChatClovaX(model="HCX-005", temperature=0.1, api_key=api_key)
+        return ChatClovaX(model=DEFAULT_CLOVA_CHAT_MODEL, temperature=0.1, api_key=api_key)
     except Exception as error:  # noqa: BLE001 - provider initialization boundary
         raise ProviderConfigurationError(
             f"ChatClovaX 초기화에 실패했습니다: {type(error).__name__}"

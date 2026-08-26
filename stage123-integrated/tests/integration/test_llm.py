@@ -4,6 +4,7 @@ import os
 import unittest
 from unittest.mock import patch
 
+from app.clova_config import DEFAULT_CLOVA_CHAT_MODEL
 from integration.llm import ProviderConfigurationError, build_stage2_chat_model
 
 
@@ -17,6 +18,7 @@ class Stage2LlmConfigurationTests(unittest.TestCase):
             model = build_stage2_chat_model()
 
         self.assertEqual(model.api_key.get_secret_value(), "test-clova-key")
+        self.assertEqual(model.model_name, DEFAULT_CLOVA_CHAT_MODEL)
 
     def test_legacy_studio_key_remains_a_fallback(self) -> None:
         with patch.dict(

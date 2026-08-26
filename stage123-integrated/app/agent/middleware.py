@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from enum import IntEnum
 
-from app.clova_config import get_clova_api_key
+from app.clova_config import DEFAULT_CLOVA_CHAT_MODEL, get_clova_api_key
 from langchain.agents import create_agent
 from langchain.agents.middleware import ModelResponse, before_model, dynamic_prompt, AgentState, ModelRequest, wrap_model_call
 from langgraph.runtime import Runtime
@@ -27,7 +27,7 @@ class UserContext(BaseModel):
     user_role:UserRole = UserRole.unknown
 
 # ===== 모델 정의 =====
-model = ChatClovaX(model="HCX-005", temperature=0.1, api_key=get_clova_api_key())
+model = ChatClovaX(model=DEFAULT_CLOVA_CHAT_MODEL, temperature=0.1, api_key=get_clova_api_key())
 
 # 금지어 목록
 BLOCKED_WORDS = ["바보", "멍청이", "나쁜말", "새끼", "존나", "존1나"]

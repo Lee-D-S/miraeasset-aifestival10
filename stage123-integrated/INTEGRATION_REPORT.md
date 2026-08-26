@@ -60,14 +60,14 @@ LOCAL_JSON_USE_CLOVA_EMBEDDING=1
 
 | 환경변수 | 사용 현황 | 호출/역할 |
 |---|---|---|
-| `CLOVA_API_KEY` | 사용 | Stage2 `ChatClovaX(model="HCX-005")`, JSON query embedding, 선택적 Stage1 slot filler |
+| `CLOVA_API_KEY` | 사용 | Stage2 `ChatClovaX(model="HCX-DASH-002")`, JSON query embedding, 선택적 Stage1 slot filler |
 | `CLOVASTUDIO_API_KEY` | 레거시 fallback | `CLOVA_API_KEY`가 없을 때만 통합 caller가 fallback으로 사용 |
 | `CLOVASTUDIO_APIGW_API_KEY` | 미사용 | 현재 통합 코드에서 참조하지 않음 |
 | `OPENAI_API_KEY` | 미사용 | 현재 통합 코드에서 참조하지 않음; `langchain_naver`의 내부 OpenAI 호환 SDK와 무관 |
 
 현재 실행 설정(`STAGE1_USE_LLM=0`, `STAGE3_EXECUTION_MODE=stdlib`)에서는 Stage1과 Stage3가
 별도 LLM을 호출하지 않는다. Stage2만 `langchain_naver.ChatClovaX`를 통해 CLOVA Studio
-OpenAI-compatible Chat Completions endpoint의 `HCX-005` 모델을 호출하고, 검색 질의 embedding은
+OpenAI-compatible Chat Completions endpoint의 경량 `HCX-DASH-002` 모델을 호출하고, 검색 질의 embedding은
 `/v1/api-tools/embedding/v2`를 직접 호출한다.
 
 키가 없거나 provider package가 없으면 결과의 `think_trace`에 `api_configuration` 또는 `dependency_issue`가 남는다. 해당 결과를 성공으로 집계하지 않는다.
