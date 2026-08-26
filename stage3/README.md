@@ -194,4 +194,22 @@ app = create_app(
 
 The provider must return a mapping with `documents` (or a supported alias),
 where each usable item contains a stable ID and body text. Stage3 itself does
-not import Stage2's database, Chroma, LangGraph, or embedding dependencies.
+not import Stage2's database, Chroma, or embedding dependencies. LangGraph is
+loaded only by the optional execution boundary described below.
+
+## Execution modes
+
+`create_app()` accepts an optional `execution_mode` argument:
+
+```python
+app = create_app(
+    stage1_provider=parse_stage1,
+    stage2_provider=retrieve_stage2,
+    execution_mode="auto",
+)
+```
+
+The supported modes are `auto`, `langgraph`, and `stdlib`. `auto` uses the
+LangGraph workflow when the optional package is installed and otherwise uses
+the standard-library runner. The `langgraph` mode requires the dependencies in
+`stage3/requirements-langgraph.txt`; `stdlib` runs without external packages.

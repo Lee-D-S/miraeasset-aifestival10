@@ -10,8 +10,18 @@ class ApiTests(unittest.TestCase):
         app = create_app(
             stage1_provider=lambda question: {"question": question, "route": "need_clarify", "intent": "lookup"},
             stage2_provider=lambda intent: {},
+            execution_mode="stdlib",
         )
         self.assertEqual(app.service.__class__.__name__, "Stage3Service")
+        self.assertEqual(app.service.execution_mode, "stdlib")
+
+    def test_invalid_execution_mode_is_rejected(self):
+        with self.assertRaises(ValueError):
+            create_app(
+                stage1_provider=lambda question: {"question": question, "route": "need_clarify", "intent": "lookup"},
+                stage2_provider=lambda intent: {},
+                execution_mode="unknown",
+            )
 
     def test_non_ok_route_does_not_call_stage2_provider(self):
         calls = {"count": 0}

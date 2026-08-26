@@ -24,10 +24,17 @@ Stage2Provider = Callable[[Mapping[str, Any]], Any]
 class Stage3Application:
     """stdlib-only HTTP boundary for the competition's GET /answer contract."""
 
-    def __init__(self, *, stage1_provider: Stage1Provider, stage2_provider: Stage2Provider, answer_client: Any | None = None):
+    def __init__(
+        self,
+        *,
+        stage1_provider: Stage1Provider,
+        stage2_provider: Stage2Provider,
+        answer_client: Any | None = None,
+        execution_mode: str = "auto",
+    ):
         self.stage1_provider = stage1_provider
         self.stage2_provider = stage2_provider
-        self.service = Stage3Service(answer_client=answer_client)
+        self.service = Stage3Service(answer_client=answer_client, execution_mode=execution_mode)
 
     def answer(self, question_id: str, question: str) -> dict[str, str]:
         last_error: Exception | None = None
@@ -75,5 +82,16 @@ class Stage3Application:
         ThreadingHTTPServer((host, port), Handler).serve_forever()
 
 
-def create_app(*, stage1_provider: Stage1Provider, stage2_provider: Stage2Provider, answer_client: Any | None = None) -> Stage3Application:
-    return Stage3Application(stage1_provider=stage1_provider, stage2_provider=stage2_provider, answer_client=answer_client)
+def create_app(
+    *,
+    stage1_provider: Stage1Provider,
+    stage2_provider: Stage2Provider,
+    answer_client: Any | None = None,
+    execution_mode: str = "auto",
+) -> Stage3Application:
+    return Stage3Application(
+        stage1_provider=stage1_provider,
+        stage2_provider=stage2_provider,
+        answer_client=answer_client,
+        execution_mode=execution_mode,
+    )

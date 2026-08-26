@@ -13,13 +13,15 @@ from stage3.api_contract import to_submission_response
 from stage3.contracts import Stage3Result
 from stage3.deterministic.normalization import normalize_facts
 from stage3.validation import validate_stage3_result
+from stage3.orchestration.runtime import ExecutionMode, resolve_execution_mode
 
 
 class Stage3Service:
     """Supervisor for Stage1 input plus Stage2 evidence."""
 
-    def __init__(self, *, answer_client: Any | None = None):
+    def __init__(self, *, answer_client: Any | None = None, execution_mode: str = "auto"):
         self.answer_writer = AnswerWriter(answer_client)
+        self.execution_mode: ExecutionMode = resolve_execution_mode(execution_mode)
 
     def process(self, *, question: str, stage1_intent: Mapping[str, Any], stage2_result: Any) -> Stage3Result:
         intent = adapt_stage1_intent(stage1_intent, question=question)
