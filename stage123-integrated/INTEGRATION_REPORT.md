@@ -91,6 +91,18 @@ OpenAI-compatible Chat Completions endpoint의 경량 `HCX-DASH-002` 모델을 �
 총 매출을 안정적으로 식별할 수 있는 구조화된 재무표가 충분하지 않아 Stage3 validator가 숫자를 임의로 확정하지 않고
 보수적으로 답변을 보류한다. Production corpus 또는 총계가 포함된 구조화 chunk를 연결한 뒤 같은 질문을 재검증해야 한다.
 
+### 관련·무관 질문 실시간 비교 검증
+
+`test_data/disclosure_clova_local.json`을 backend로 사용하고 실제 CLOVA API를 켠 상태에서 다음 두 질문을 연속 실행했다.
+
+| 케이스 | Stage1 | Stage2/API | 검색 결과 | Stage3 최종 상태 |
+|---|---|---|---:|---|
+| 삼성전자 2023년 1분기 주요 제품 매출 구성 | `ok` | 실제 ChatClovaX·embedding 호출 성공 | 문서 5건, Fact 10개, citation 4개 | `insufficient_evidence` |
+| 현대자동차 2023년 1분기 매출액 | `need_clarify` | route gate로 Stage2 미호출 | 0건 | `need_clarify` |
+
+두 번째 케이스에서 local corpus에 없는 기업을 삼성전자 데이터로 대체하지 않았고, Stage2 검색도 실행하지 않았다.
+첫 번째 케이스는 관련 문서를 확보했지만, 현재 fixture의 Stage3 숫자 검증 한계 때문에 답변을 확정하지 않았다.
+
 ### 변경 파일별 기록
 
 - `integration/stage2_agent.py`: LLM이 Stage1 기업·기간 경계를 벗어나 추가한 필터를 제거하고 Stage1 필터만 Tool에 전달한다.
