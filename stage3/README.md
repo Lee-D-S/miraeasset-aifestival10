@@ -213,3 +213,58 @@ The supported modes are `auto`, `langgraph`, and `stdlib`. `auto` uses the
 LangGraph workflow when the optional package is installed and otherwise uses
 the standard-library runner. The `langgraph` mode requires the dependencies in
 `stage3/requirements-langgraph.txt`; `stdlib` runs without external packages.
+
+## Agent workflow
+
+`Stage3Service` is an execution facade. It adapts the Stage1 Intent and the
+structured Stage2 result, then runs one of two implementations of the same
+workflow. The service does not call Fact extraction, calculation, comparison,
+event linking, or answer writing directly.
+
+```text
+Stage1 Intent
+  -> route gate
+  -> Stage2 evidence adapter
+  -> fact_extraction_agent
+  -> deterministic analysis router
+       -> calculation_agent
+       -> comparison_agent
+       -> event_linker_agent
+  -> merge_analysis
+  -> answer_agent
+  -> validation_agent
+       -> submission
+       -> fallback_agent -> validation_agent
+```
+
+The LangGraph implementation uses `StateGraph`, conditional edges, and
+`Send` for independent specialist branches. The stdlib implementation follows
+the same node handlers and contracts in a deterministic sequence. Stage1
+already supplies the route, metric, period, basis, and question type, so the
+Stage3 router does not classify the question again and does not use an LLM to
+choose an agent.
+
+The fixed Agent names are `supervisor`, `fact_extractor`, `calculation`,
+`comparison`, `event_linker`, `answer`, `validator`, and `fallback`. Each Agent
+result is stored as `AgentResult`; the documents and evidence it used are
+stored as `Provenance`. Graph transitions are also recorded as
+`HandoffRequest` entries. These records are available in the internal
+`Stage3Result` and are not added to the external five-field submission
+response.
+
+Stage3 does not contain retrieval, vector search, or reranking nodes. The
+Stage2 provider remains responsible for search and reranking and must return a
+stable document/chunk ID plus text or evidence spans. A string-only search
+result is rejected as evidence rather than being reconstructed into a fake
+document.
+
+The optional LangGraph dependency is installed separately:
+
+```powershell
+python -m pip install -r stage3/requirements-langgraph.txt
+```
+
+If that package is unavailable, use `execution_mode="stdlib"` explicitly or
+leave the mode as `"auto"` to select the standard-library fallback. If
+`execution_mode="langgraph"` is explicitly requested without the package,
+Stage3 raises a configuration error instead of silently switching modes.
