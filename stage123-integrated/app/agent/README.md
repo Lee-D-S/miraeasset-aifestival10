@@ -10,7 +10,8 @@
 1. 프로젝트 루트에 `data/3.gongsi/corpus`가 있어야 한다(원본 zip의 "3.공시" 폴더명을 `3.gongsi`로
    변경). `CorpusIndex.load()`가 여기서 `universe.csv`/`manifest.jsonl`을 자동 탐색한다.
 2. `pip install -r requirements.txt`
-3. `.env`에 `CLOVASTUDIO_API_KEY`를 채운다(Stage2의 `ChatClovaX` 호출에 필요. `app/agent/edges.py`도
+3. `.env`에 `CLOVA_API_KEY`를 채운다(Stage2의 `ChatClovaX` 호출에 필요. `CLOVASTUDIO_API_KEY`는
+   레거시 호환용으로만 읽는다. `app/agent/edges.py`도
    모듈 로드 시점에 LLM을 생성하므로 키가 없으면 즉시 에러가 난다).
 4. DB 생성(최초 1회 및 원본 데이터가 바뀔 때마다):
    ```bash
@@ -150,6 +151,6 @@ START
   실제로는 `app/agent/nodes/`(stage1.py/stage2.py/fallback.py/__init__.py) 패키지로 바뀌었다.
 - **기존에 열려 있던 이슈** (루트 `readme.md`의 Plan 항목, 이번 작업과 무관하게 여전히 유효):
   "최근 공시 5개?" 같은 광범위한 질문에서 검색이 문서를 잘 못 찾는 문제.
-- **`.env`의 `CLOVASTUDIO_API_KEY` 필수.** `app/agent/edges.py`가 모듈 임포트 시점에 바로
+- **`.env`의 `CLOVA_API_KEY` 필수.** `app/agent/edges.py`가 모듈 임포트 시점에 바로
   `ChatClovaX`를 생성하므로, 키가 없으면 `edges`를 import하는 순간(=`agent.py` 로드 시점) 실패한다.
   단독 스크립트에서 `edges.py`만 따로 import해서 쓰려면 그 전에 `load_dotenv()`를 직접 호출해야 한다.

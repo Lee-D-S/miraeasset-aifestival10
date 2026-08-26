@@ -3,9 +3,15 @@ from pydantic import BaseModel, Field
 from langchain_naver import ChatClovaX
 from langchain_core.prompts import ChatPromptTemplate
 
+from app.clova_config import get_clova_api_key
 from app.agent.state import AgentState
 
-llm = ChatClovaX(model="HCX-005", temperature=0.1, disabled_params={"parallel_tool_calls": None})
+llm = ChatClovaX(
+    model="HCX-005",
+    temperature=0.1,
+    api_key=get_clova_api_key(),
+    disabled_params={"parallel_tool_calls": None},
+)
 
 
 def route_decision(state: AgentState) -> str:

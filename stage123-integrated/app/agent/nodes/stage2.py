@@ -5,6 +5,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_naver import ChatClovaX
 from langgraph.prebuilt import ToolNode
 
+from app.clova_config import get_clova_api_key
 from state import AgentState
 from app.tools.hybrid_db_tools import dart_hybrid_search_tool
 from app.tools.math_tools import calculator
@@ -12,7 +13,7 @@ from app.tools.math_tools import calculator
 load_dotenv()
 
 tools = [dart_hybrid_search_tool, calculator]
-llm = ChatClovaX(model="HCX-005", temperature=0.1)
+llm = ChatClovaX(model="HCX-005", temperature=0.1, api_key=get_clova_api_key())
 
 
 def chatbot(state: AgentState):

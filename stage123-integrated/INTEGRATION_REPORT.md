@@ -49,9 +49,26 @@ rtk python scripts/run_e2e.py "삼성전자의 2023년 1분기 매출액은 얼�
 
 ```text
 langchain_naver 설치
-CLOVASTUDIO_API_KEY 또는 CLOVA_API_KEY
+CLOVA_API_KEY (CLOVASTUDIO_API_KEY는 레거시 호환용)
 LOCAL_JSON_USE_CLOVA_EMBEDDING=1
 ```
+
+`scripts/run_e2e.py`는 실행 시 workspace의 `.env`를 자동으로 로드한다. `ChatClovaX`에는
+`CLOVA_API_KEY`를 명시적으로 전달한다. API Gateway 전용 키는 현재 JSON embedding 경로에 필요하지 않다.
+
+현재 키·호출 사용 현황:
+
+| 환경변수 | 사용 현황 | 호출/역할 |
+|---|---|---|
+| `CLOVA_API_KEY` | 사용 | Stage2 `ChatClovaX(model="HCX-005")`, JSON query embedding, 선택적 Stage1 slot filler |
+| `CLOVASTUDIO_API_KEY` | 레거시 fallback | `CLOVA_API_KEY`가 없을 때만 통합 caller가 fallback으로 사용 |
+| `CLOVASTUDIO_APIGW_API_KEY` | 미사용 | 현재 통합 코드에서 참조하지 않음 |
+| `OPENAI_API_KEY` | 미사용 | 현재 통합 코드에서 참조하지 않음; `langchain_naver`의 내부 OpenAI 호환 SDK와 무관 |
+
+현재 실행 설정(`STAGE1_USE_LLM=0`, `STAGE3_EXECUTION_MODE=stdlib`)에서는 Stage1과 Stage3가
+별도 LLM을 호출하지 않는다. Stage2만 `langchain_naver.ChatClovaX`를 통해 CLOVA Studio
+OpenAI-compatible Chat Completions endpoint의 `HCX-005` 모델을 호출하고, 검색 질의 embedding은
+`/v1/api-tools/embedding/v2`를 직접 호출한다.
 
 키가 없거나 provider package가 없으면 결과의 `think_trace`에 `api_configuration` 또는 `dependency_issue`가 남는다. 해당 결과를 성공으로 집계하지 않는다.
 
@@ -64,6 +81,7 @@ Production DB를 사용할 때는 `E2E_DB_BACKEND=production`, `CORPUS_DIR`, SQL
 - Python compileall: 통과
 - unsafe route: Stage2 provider 호출 없이 Stage3 blocked response 확인
 - 실제 lookup E2E 시도: `langchain_naver` 미설치로 `dependency_issue` 기록
+- 키 전달 수정 후 실제 lookup E2E: `ChatClovaX` 초기화는 통과했으나 외부 provider 요청에서 `APIConnectionError` 발생
 - Stage 2 Stage1 pytest: 현재 환경에 `pytest`가 없어 별도 실행 대기
 
 실제 provider가 준비되면 lookup·text·period comparison·계산 질의를 다시 실행하고, 문서 ID·Fact·calculation·citation·handoff trace를 케이스별로 기록해야 한다.

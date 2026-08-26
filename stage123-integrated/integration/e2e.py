@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import json
 
+from dotenv import load_dotenv
+
 from .composition import Stage123Application
 
 
@@ -18,6 +20,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    load_dotenv()
     args = build_parser().parse_args(argv)
     import os
 
