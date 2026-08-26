@@ -3,8 +3,8 @@ from __future__ import annotations
 import re
 from typing import Iterable
 
-from stage3.contracts import Stage3Document, Stage3Fact, Stage3Intent
-from stage3.deterministic.normalization import UNIT_MULTIPLIERS, normalize_number
+from stage3.contracts import AgentResult, Stage3Document, Stage3Fact, Stage3Intent
+from stage3.deterministic.normalization import UNIT_MULTIPLIERS, normalize_facts, normalize_number
 from stage3.metric_registry import (
     METRIC_SPECS,
     fact_metric_for_label,
@@ -13,6 +13,7 @@ from stage3.metric_registry import (
     section_labels_for,
 )
 from stage3.parsing.structured import parse_structured_evidence
+from stage3.state import Stage3GraphState
 
 
 METRIC_LABELS: dict[str, tuple[str, ...]] = {
@@ -265,3 +266,19 @@ def extract_facts(documents: Iterable[Stage3Document], intent: Stage3Intent) -> 
                 kind="date",
             ))
     return facts
+
+
+def fact_extraction_agent(state: Stage3GraphState) -> AgentResult:
+    intent = state["intent"]
+    facts = extract_facts(state.get("documents", []), intent)
+    normalized, warnings = normalize_facts(facts, intent)
+    evidence_ids = tuple(dict.fromkeys(fact.document_id for fact in normalized if fact.document_id))
+    return AgentResult(
+        agent="fact_extractor",
+        status="ok" if normalized else "empty",
+        facts=tuple(fact.to_dict() for fact in normalized),
+        evidence_ids=evidence_ids,
+        confidence=max((fact.confidence for fact in normalized), default=0.0),
+        warnings=tuple(warnings),
+        trace=(f"documents={len(state.get('documents', []))}", f"facts={len(normalized)}"),
+    )

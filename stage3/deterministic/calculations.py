@@ -5,44 +5,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from stage3.contracts import Stage3Fact, Stage3Intent
-
-
-def execute_operation(operation: str, arguments: list[float], *, periods: float | None = None) -> float:
-    """Small stdlib-only calculation whitelist."""
-
-    if operation == "percentage_change":
-        if len(arguments) != 2 or arguments[0] == 0:
-            raise ValueError("percentage_change requires a non-zero old value")
-        return (arguments[1] - arguments[0]) / abs(arguments[0]) * 100
-    if operation == "cagr":
-        if len(arguments) != 2 or periods is None or arguments[0] <= 0 or periods <= 0:
-            raise ValueError("CAGR requires positive old value and period")
-        return ((arguments[1] / arguments[0]) ** (1 / periods) - 1) * 100
-    if operation == "ratio":
-        if len(arguments) != 2 or arguments[1] == 0:
-            raise ValueError("ratio requires a non-zero denominator")
-        return arguments[0] / arguments[1]
-    if operation == "margin":
-        return execute_operation("ratio", arguments) * 100
-    if operation == "sum":
-        return sum(arguments)
-    if operation == "average":
-        if not arguments:
-            raise ValueError("average requires values")
-        return sum(arguments) / len(arguments)
-    if operation == "min":
-        return min(arguments)
-    if operation == "max":
-        return max(arguments)
-    if operation == "add" and len(arguments) == 2:
-        return arguments[0] + arguments[1]
-    if operation == "subtract" and len(arguments) == 2:
-        return arguments[0] - arguments[1]
-    if operation == "multiply" and len(arguments) == 2:
-        return arguments[0] * arguments[1]
-    if operation == "divide" and len(arguments) == 2 and arguments[1] != 0:
-        return arguments[0] / arguments[1]
-    raise ValueError(f"Unsupported calculation operation: {operation}")
+from stage3.deterministic.calculation_registry import execute_operation
 
 
 def numeric_facts(facts: Iterable[Stage3Fact], *, metric: str | None = None) -> list[Stage3Fact]:
@@ -151,7 +114,7 @@ def _calculation_result(operation: str, facts: list[Stage3Fact], result: float, 
     }
 
 
-def _infer_operation(intent: Stage3Intent) -> str:
+def infer_operation(intent: Stage3Intent) -> str:
     question = intent.normalized_question
     if intent.intent in {"compare", "comparison"} or any(word in question for word in ("비교", "어느 기업", "가장 큰", "순위")):
         return "rank"
@@ -275,7 +238,7 @@ def calculate_facts(facts: Iterable[Stage3Fact], intent: Stage3Intent, *, operat
     """Run a whitelist calculation only on aligned, grounded Facts."""
 
     all_numeric = numeric_facts(facts)
-    operation = operation or _infer_operation(intent)
+    operation = operation or infer_operation(intent)
     if operation in {"ratio_percent", "margin"}:
         selected = all_numeric
     else:

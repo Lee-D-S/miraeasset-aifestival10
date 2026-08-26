@@ -147,6 +147,31 @@ class Stage3Fact:
     currency: str | None = None
     table_context: dict[str, Any] = field(default_factory=dict)
 
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "Stage3Fact":
+        """Rehydrate a Fact stored in LangGraph state or AgentResult."""
+
+        return cls(
+            metric=str(value.get("metric", "unknown")),
+            label=str(value.get("label", "")),
+            value=value.get("value", ""),
+            raw_value=value.get("raw_value", value.get("value", "")),
+            unit=str(value.get("unit", "")),
+            normalized_value=value.get("normalized_value"),
+            period=str(value["period"]) if value.get("period") is not None else None,
+            basis=str(value["basis"]) if value.get("basis") is not None else None,
+            company=str(value["company"]) if value.get("company") is not None else None,
+            document_id=str(value.get("document_id", "")),
+            source=str(value.get("source", "")),
+            evidence=str(value.get("evidence", "")),
+            span_start=value.get("span_start"),
+            span_end=value.get("span_end"),
+            confidence=float(value.get("confidence", 0.0)),
+            kind=str(value.get("kind", "numeric")),
+            currency=str(value["currency"]) if value.get("currency") is not None else None,
+            table_context=dict(value.get("table_context", {})),
+        )
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "metric": self.metric,

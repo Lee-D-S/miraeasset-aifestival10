@@ -3,7 +3,8 @@ from __future__ import annotations
 import re
 from typing import Any, Iterable
 
-from stage3.contracts import Stage3Document, Stage3Intent
+from stage3.contracts import AgentResult, Stage3Document, Stage3Intent
+from stage3.state import Stage3GraphState
 
 
 _CORRECTION_MARKERS = ("[기재정정]", "기재정정", "정정공시", "정정")
@@ -195,3 +196,26 @@ def link_events(documents: Iterable[Stage3Document], intent: Stage3Intent) -> li
         confidence = 1.0 if explicit_id else (0.9 if relation == "correction" else 0.85)
         links.append(_link(origin, followup, relation, intent=intent, confidence=confidence))
     return links
+
+
+def event_linker_agent(state: Stage3GraphState) -> AgentResult:
+    intent = state["intent"]
+    events = link_events(state.get("documents", []), intent)
+    evidence_ids = tuple(
+        dict.fromkeys(
+            str(source_id)
+            for event in events
+            for source_id in event.get("source_ids", [])
+            if source_id
+        )
+    )
+    warnings = tuple(str(event["warning"]) for event in events if event.get("warning"))
+    return AgentResult(
+        agent="event_linker",
+        status="ok" if events else "empty",
+        linked_events=tuple(dict(event) for event in events),
+        evidence_ids=evidence_ids,
+        confidence=max((float(event.get("confidence", 0.0)) for event in events), default=0.0),
+        warnings=warnings,
+        trace=(f"linked_events={len(events)}",),
+    )

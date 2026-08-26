@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from stage3.contracts import Stage3Fact, Stage3Intent
+from stage3.contracts import AgentResult, Stage3Fact, Stage3Intent
+from stage3.state import Stage3GraphState
 
 
 def _citation_lines(citations: list[dict[str, Any]]) -> list[str]:
@@ -92,3 +93,36 @@ class AnswerWriter:
         if warnings:
             sections.append("정보 한계\n" + "\n".join(f"- {warning}" for warning in warnings))
         return "\n\n".join(sections)
+
+
+def make_answer_agent(writer: AnswerWriter):
+    def answer_agent(state: Stage3GraphState) -> AgentResult:
+        intent = state["intent"]
+        facts = [
+            fact if isinstance(fact, Stage3Fact) else Stage3Fact.from_dict(fact)
+            for fact in state.get("facts", [])
+        ]
+        answer, mode = writer.write(
+            question=state.get("question", intent.question),
+            intent=intent,
+            facts=facts,
+            calculations=list(state.get("calculations", [])),
+            comparisons=list(state.get("comparison_results", [])),
+            events=list(state.get("linked_events", [])),
+            citations=list(state.get("citations", [])),
+            warnings=list(state.get("warnings", [])),
+        )
+        return AgentResult(
+            agent="answer",
+            status="ok" if answer.strip() else "empty",
+            answer=answer,
+            evidence_ids=tuple(
+                str(item.get("document_id", ""))
+                for item in state.get("citations", [])
+                if item.get("document_id")
+            ),
+            confidence=0.9 if answer.strip() else 0.0,
+            trace=(f"mode={mode}",),
+        )
+
+    return answer_agent
