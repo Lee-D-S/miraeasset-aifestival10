@@ -1,5 +1,9 @@
 # 1단계 — 질의 이해 (코퍼스 인덱스 쿼리 빌더)
 
+이 문서는 `app/stage1/` standalone 모듈 문서다. 전체 Stage123 실행은
+workspace 루트의 `scripts/run_e2e.py`를 사용한다. JSON fixture E2E에서는
+`integration/local_index.py`가 이 Stage1 계약에 맞는 local index를 구성한다.
+
 공시 Agent의 1단계다. 자연어 질의를 **`manifest.jsonl`에 그대로 걸 수 있는 필터**로 바꾼다.
 
 ```
@@ -13,23 +17,23 @@
 ## 실행
 
 ```bash
-# 단건
-python -m stage1.main "삼성전자의 2025년 연결기준 매출액은?"
+# 단건 (workspace 루트에서)
+python app/stage1/main.py "삼성전자의 2025년 연결기준 매출액은?"
 
 # 2단계에 넘길 필터만
-python -m stage1.main --filter-only "현대건설이 2025년에 체결한 공급계약 정리해줘"
+python app/stage1/main.py --filter-only "현대건설이 2025년에 체결한 공급계약 정리해줘"
 
 # think_trace용 한 줄 요약
-python -m stage1.main --trace "2차전지 기업 중 2025년 설비투자가 가장 큰 곳은?"
+python app/stage1/main.py --trace "2차전지 기업 중 2025년 설비투자가 가장 큰 곳은?"
 
 # 골드셋 회귀
-python -m stage1.main --gold
+python app/stage1/main.py --gold
 
 # 골드셋 + 불변식 검증 (표준 라이브러리만, pytest 불필요)
-python -m stage1.tests.run_checks
+python app/stage1/tests/run_checks.py
 
 # pytest가 있으면
-pytest stage1/tests
+pytest app/stage1/tests
 ```
 
 코퍼스 위치는 `CORPUS_DIR` 환경변수 또는 `--corpus-dir`로 지정한다. 없으면 상위 폴더에서

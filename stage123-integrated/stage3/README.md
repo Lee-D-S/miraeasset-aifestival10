@@ -1,8 +1,24 @@
 # Stage3
 
-Stage3는 Stage1의 Intent와 Stage2의 검색·rerank 결과를 입력으로 받아 공시 근거를 구조화하고, 결정론적 계산·비교와 HyperCLOVA X 답변 작성을 수행하는 모듈이다.
+Stage3는 Stage1의 Intent와 Stage2의 검색·rerank 결과를 입력으로 받아 공시 근거를 구조화하고, 결정론적 계산·비교·답변 검증을 수행하는 standalone package다.
 
-현재 구현 단계에서는 Stage1 Intent 입력 계약부터 구현한다. Stage2의 최종 문서 형식은 확정 전까지 별도 어댑터 뒤에 둔다.
+Stage2 결과는 `stage3.adapters.stage2`가 표준 계약으로 변환한다. 현재 공식 통합 E2E에서는
+`integration/composition.py`가 Stage3 `Stage3Service`를 호출한다. 기본 실행 모드는 `stdlib`이며,
+답변 client가 주입된 경우에만 HyperCLOVA X 답변 writer를 사용할 수 있다.
+
+## Stage123 통합 경로
+
+전체 실행은 workspace 루트의 `scripts/run_e2e.py`를 사용한다.
+
+```text
+Stage1: app/stage1/
+  -> Stage2: integration/stage2_agent.py
+  -> Stage3: stage3/Stage3Service
+  -> 5개 문자열 제출 응답
+```
+
+Stage3 단독 테스트와 통합 E2E 테스트는 서로 다른 목적을 가진다. 통합 테스트 명령은
+workspace 루트 README의 실행 방법을 기준으로 한다.
 
 ## Stage1 입력
 

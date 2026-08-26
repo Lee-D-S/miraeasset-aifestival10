@@ -1,9 +1,14 @@
 # app/agent — 에이전트 그래프 (Stage1 + Stage2)
 
+> **Legacy 경로**: 이 문서는 기존 `app/agent` 단독 LangGraph 그래프를 설명한다.
+> 현재 공식 Stage123 E2E 진입점은 `scripts/run_e2e.py`이며, 공식 Stage2는
+> `integration/stage2_agent.py`다. 이 디렉터리는 호환·비교 목적으로 보존한다.
+
 `app/agent`는 LangGraph 기반 에이전트다. **Stage1(질의 이해)** 이 자연어 질문을 Intent JSON으로
 바꾸고, 그 결과에 따라 **Stage2(검색·SQL 질의 + RAG 답변 생성)** 로 넘어가거나 즉시 안내 문구로
 끝난다. Stage1 자체의 상세 스펙(슬롯, 라우팅 규칙 등)은 `app/stage1/README.md`를 참고할 것.
-이 문서는 **그래프(app/agent) 레벨**의 사용법/입출력 명세만 다룬다.
+이 문서는 **legacy 그래프(app/agent) 레벨**의 사용법/입출력 명세만 다룬다.
+현재 통합 구조와 실행 방법은 workspace 루트의 `readme.md`와 `INTEGRATION_REPORT.md`를 기준으로 한다.
 
 ## 사용법
 

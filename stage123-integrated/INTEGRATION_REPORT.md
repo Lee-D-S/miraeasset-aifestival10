@@ -2,6 +2,10 @@
 
 상태: Phase 1~5 구현 완료, provider 연결·검색 필터 오류 수정 및 실제 E2E 검증 완료
 
+공식 실행 경로: `scripts/run_e2e.py` → `integration/e2e.py` → `integration/composition.py` →
+`app/stage1/` → `integration/stage2_agent.py` → `stage3/`.
+`app/agent/`는 legacy 단일 그래프이며 현재 공식 Stage123 E2E 경로가 아니다.
+
 ## 구현 위치
 
 이 workspace는 Stage 2 기준본을 복사해 `C:\projects\dis-164\stage123-integrated`에 만들었다. 중첩 Git 저장소는 만들지 않았으며, 변경은 부모 `lds` 브랜치에서 관리한다.

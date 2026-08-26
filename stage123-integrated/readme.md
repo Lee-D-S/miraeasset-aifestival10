@@ -1,143 +1,112 @@
-# Dart 공시 Agent
+# Stage123 통합 공시 Agent
 
-미래에셋 공모전 임시 test용
+미래에셋 AI 페스티벌용 Stage1 → Stage2 → Stage3 통합 workspace다.
 
-## 프로젝트 폴더
+## 공식 실행 경로
 
+현재 공식 E2E 진입점은 `scripts/run_e2e.py`다.
+
+```text
+질문
+  -> scripts/run_e2e.py
+  -> integration/e2e.py
+  -> integration/composition.py
+  -> Stage1: app/stage1 + LocalJsonCorpusIndex 또는 Production CorpusIndex
+  -> Stage2: integration/stage2_agent.py + dart_hybrid_search_tool
+  -> Stage2Repository: JSON fixture 또는 SQLite/Chroma adapter
+  -> Stage3: stage3/ + Stage3Service
+  -> 제출 응답 5개 문자열
 ```
 
-miraeasset-firstpenguin/
-├── app/                          # 메인 애플리케이션 (LangGraph 에이전트)
-│   ├── config.py                 # DB 경로 등 프로젝트 전역 설정 (SQLITE_URL, CHROMA_PATH ...)
-│   ├── agent/
-│   │   ├── agent.py              # 에이전트 정의
-│   │   ├── db.py                 # DB 연결 (app/config.py의 경로 사용)
-│   │   ├── edges.py              # 그래프 엣지(분기) 로직
-│   │   ├── middleware.py         # 미들웨어
-│   │   ├── nodes.py              # 그래프 노드
-│   │   └── state.py              # 에이전트 상태 정의
-│   ├── api/                      # (빈 디렉토리)
-│   ├── schemas/
-│   └── tools/
-│       ├── hybrid_db_tools.py
-│       ├── rdb_methods.py
-│       └── vectordb_methods.py
-│
-├── dart_preprocessing/           # DART 공시 데이터 전처리 파이프라인
-│   ├── chunker.py
-│   ├── converters.py
-│   ├── parsers.py
-│   └── preprocesser.py           # 실행 시 db_tmp/에 DB 생성 (app/config.py의 경로 사용)
-│
-├── data/
-│   └── 3.gongsi/
-│       └── corpus/
-│           ├── README.md
-│           ├── data_filter.md
-│           ├── manifest.jsonl
-│           ├── universe.csv / universe.xlsx
-│           └── raw/
-│               ├── exchange/     # 70개 기업 디렉토리 (총 1,539개 파일)
-│               ├── holding/      # 70개 기업 디렉토리 (총 1,150여개 파일)
-│               ├── major/        # 70개 기업 디렉토리 (총 668개 파일)
-│               └── periodic/     # 70개 기업 디렉토리 (총 1,542개 파일)
-│
-├── db_tmp/                       # (gitignore) DB 저장 통합 위치 - preprocesser.py 실행 시 자동 생성
-│   ├── dart_financials.db        # RDB (SQLite)
-│   └── chroma_db_temp/           # Vector DB (Chroma)
-│
-├── .env / .env.example
-├── .gitignore
-├── Dockerfile                    
-├── fix_nfd.py
-├── graph.png
-├── readme.md
-└── requirements.txt
+`app/agent/agent.py`는 현재 공식 E2E 진입점이 아니다. 기존 단일 LangGraph 그래프를 보존한
+legacy 경로이며, 자세한 내용은 [app/agent/README.md](app/agent/README.md)를 참고한다.
 
+## Stage별 공식 위치
+
+| 단계 | 공식 위치 | 역할 |
+|---|---|---|
+| Stage1 | `app/stage1/` | 자연어 질문을 Intent와 route, manifest filter로 변환 |
+| Stage2 | `integration/stage2_agent.py` | ChatClovaX 호출, 검색 Tool 실행, Stage2 evidence bundle 생성 |
+| Stage2 검색 | `app/tools/hybrid_db_tools.py`, `integration/*_repository.py` | JSON 또는 SQLite/Chroma 검색 adapter |
+| Stage3 | `stage3/` | Fact, 계산, 비교, 이벤트, 답변, 검증 |
+| 통합 조립 | `integration/composition.py` | Stage1·Stage2·Stage3 실행 순서와 오류 경계 |
+
+`app/agent/nodes/stage2.py`는 legacy 그래프의 Stage2 구현이며 현재 공식 통합 Stage2가 아니다.
+`stage3/`가 루트에 있는 이유는 Stage3가 독립 계약·stdlib 실행 모드를 가진 standalone package이기
+때문이다. 현재 통합 경로에서는 `integration/composition.py`가 이 package를 호출한다.
+
+## 실행 환경
+
+`.env`에 다음 설정을 둔다. 실제 키 값은 Git에 저장하지 않는다.
+
+```text
+CLOVA_API_KEY=<실제 키>
+E2E_DB_BACKEND=json
+LOCAL_JSON_USE_CLOVA_EMBEDDING=1
+STAGE1_USE_LLM=0
+STAGE3_EXECUTION_MODE=stdlib
 ```
 
-> DB 경로는 `app/config.py` 한 곳에서만 정의합니다. RDB(SQLite)/VectorDB(Chroma) 모두 프로젝트 루트의 `db_tmp/` 밑에 생성되며, `app/agent/db.py`와 `dart_preprocessing/preprocesser.py`는 이 설정을 가져다 씁니다.
+현재 기본 테스트는 `test_data/disclosure_clova_local.json`을 사용한다.
 
-(ver.a.0823)
+- Stage1: 기본적으로 규칙 기반이며 LLM을 호출하지 않는다.
+- Stage2: `ChatClovaX(model="HCX-DASH-002")`가 실제 CLOVA API를 호출한다.
+- JSON 검색: `LOCAL_JSON_USE_CLOVA_EMBEDDING=1`이면 검색어 embedding을 CLOVA API로 생성한다.
+- Stage3: 기본 `stdlib` 모드에서 결정론적으로 실행한다.
+- RAG Reasoning API: 현재 Stage123 통합 경로에서는 호출하지 않는다.
 
-아래의 **싱글 에이전트**를 기본 모델로 삼고 있습니다.(임시 이미지)
+## 테스트
 
-![임시이미지](graph.png)
+workspace 루트(`C:\projects\dis-164\stage123-integrated`)에서 실행한다.
 
-# 사용법
-
-- 일단 프로젝트 루트 폴더 바로 밑에 data/를 넣어주시는데, 원본 data/는 경로 중간 "3.공시" 이 부분 한글이 깨져있더라구요.
-귀찮으시겠지만 "3.gongsi"로 고쳐주세요.
-- `pip install -r requirements.txt` 먼저 해주세요.
-- .env 파일에서 *clova api key*는 써주셔야 합니다. (수정: 0825)
-
-그 후, 프로젝트 루트 위치에서
-
-```python
-
-python3 dart_preprocessing/preprocesser.py
-
+```powershell
+rtk python -m unittest discover -s tests/integration -p "test_*.py" -v
+rtk python -m unittest discover -s stage3/tests -p "test_*.py" -v
+rtk python -m compileall -q app dart_preprocessing integration stage3 scripts tests
+rtk python scripts/run_e2e.py "삼성전자의 2023년 1분기 주요 제품 매출 구성은 어떻게 되어 있나요?" --include-internal
 ```
 
-하면 db가 생성될 겁니다.
+실제 E2E에서 provider 연결과 검색이 성공해도 fixture의 근거가 부족하면 Stage3는
+`insufficient_evidence`를 반환한다. 이는 API 성공 여부와 별개의 데이터·검증 결과다.
 
-계속해서, 
+## 선택적 Production DB 경로
 
-```python
+SQLite와 Chroma를 사용하는 경로도 구현되어 있지만 현재 기본 테스트 경로는 아니다.
+Production corpus(`universe.csv`, `manifest.jsonl`, raw 문서)와 DB가 준비된 경우에만 다음 설정을 사용한다.
 
-python3 app/agent/agent.py 
-
+```text
+E2E_DB_BACKEND=production
+CORPUS_DIR=<universe.csv와 manifest.jsonl이 있는 corpus 경로>
 ```
 
-해서 테스트해보시면 됩니다. agent.py 밑의 __main__ 내의 
+`dart_preprocessing/`는 이 선택적 production DB 전처리 경로다. 파일 하나씩 수동 처리하는 방식이
+아니라 전체 corpus를 배치 처리해 SQLite/Chroma를 만든다.
 
-```python
+## 폴더 구조
 
-graph.astream(
-        {
-            "messages": [
-                "가장 최근 공시 5개?"
-            ]
-        }
-
+```text
+app/
+  stage1/              # 공식 Stage1
+  tools/               # 공식 검색·계산 Tool
+  agent/               # legacy 단일 Agent 그래프
+integration/            # 공식 Stage123 조립·Stage2 adapter·E2E
+stage3/                # 공식 Stage3 standalone package
+dart_preprocessing/    # 선택적 Production DB 전처리
+scripts/                # 공식 실행 스크립트
+tests/integration/      # Stage123 통합 테스트
+stage3/tests/           # Stage3 회귀 테스트
+test_data/              # 부모 workspace의 JSON fixture
 ```
 
-"messages" 이 부분에서 agent에게 보내는 질문 수정하실 수 있습니다.
+`stage123/`라는 별도 미추적 폴더는 기존 작업에서 제외한 폴더이며 이 workspace의 공식 경로가 아니다.
 
-## Plan
+## 현재 검증 상태
 
-- [ ] "최근 공시 5개?" 라는 질문에 대해 문서를 못 찾고 우왕좌왕댐.
+- Stage123 통합 테스트 11개 통과
+- Stage3 회귀 테스트 65개 통과
+- Python compileall 통과
+- 실제 CLOVA ChatClovaX·embedding API를 포함한 E2E 실행 확인
+- 관련 질문은 문서를 검색하고, corpus에 없는 기업은 route gate에서 차단
 
-### 아이디어
+세부 원인·검증 로그·커밋 기록은 [INTEGRATION_REPORT.md](INTEGRATION_REPORT.md)에 기록한다.
 
-#### 0. Architecture
-
-- VectorDB, RDB, Agent의 컨테이너 분리할까요, 말까요?
-- VPC는 예시에 다 나와있어서 크게 신경쓸 필요는 없을 것 같지 않음.
-
-#### 1. RDB와 VectorDB의 조합
-
-"무엇을 RDB에 넣고 무엇을 VectorDB에 넣을지"
-
--> 특히나 수치값들은 RDB로 정확하게 불러와야 함.
-
-#### 2. 속도
-
-Dart 공시에 관한 유투브 영상(활용영상)을 보니, 종종 "기자들이 기사를 쓰기 전에 빨리 여러 발표들을 볼 수 있다."라는 말이 있었음
-
-<-- 그만큼 빠른 속도가 생명인듯함.
-
-- 특히 DB에 저장되는 속도가 중요하지 않을까?
-- 물어보는 쪽에서 빨리 답하려면 검색 알고리즘/ 추천 알고리즘을 통해 몇 가지 주요 내용들은 캐시서버를 따로 두는게 좋지 않을까?
-
-#### 3. 편의
-
-Dart를 대부분 모름. & 요즘 LLM 서비스를 보면 후속 질문, 추천 질문 등 기능이 있음.
-
--> Role을 나누어서 
-- 전문가용 추천질문/후속질문
-- 일반사용자용 추천질문/후속질문 (예: "이번 공시는 무슨 의미를 갖나요?")
-
-파인튜닝을 해볼 수 있을 것 같다.
-
-혹은 추천 알고리즘을 통해 구현할 수도 있을 것 같다.
