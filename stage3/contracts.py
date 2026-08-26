@@ -8,6 +8,82 @@ Stage3Route = Literal["ok", "need_clarify", "unanswerable", "unsafe"]
 
 
 @dataclass(frozen=True)
+class HandoffRequest:
+    """Auditable handoff metadata shared by LangGraph and stdlib runners."""
+
+    source: str
+    target: str
+    task: str
+    reason: str
+    evidence: tuple[str, ...] = ()
+    trace: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "source": self.source,
+            "target": self.target,
+            "task": self.task,
+            "reason": self.reason,
+            "evidence": list(self.evidence),
+            "trace": list(self.trace),
+        }
+
+
+@dataclass(frozen=True)
+class AgentResult:
+    """Structured result returned by every Stage3 Agent node."""
+
+    agent: str
+    status: str
+    answer: str = ""
+    facts: tuple[dict[str, Any], ...] = ()
+    calculations: tuple[dict[str, Any], ...] = ()
+    comparison_results: tuple[dict[str, Any], ...] = ()
+    linked_events: tuple[dict[str, Any], ...] = ()
+    evidence_ids: tuple[str, ...] = ()
+    confidence: float = 0.0
+    warnings: tuple[str, ...] = ()
+    trace: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "agent": self.agent,
+            "status": self.status,
+            "answer": self.answer,
+            "facts": [dict(item) for item in self.facts],
+            "calculations": [dict(item) for item in self.calculations],
+            "comparison_results": [dict(item) for item in self.comparison_results],
+            "linked_events": [dict(item) for item in self.linked_events],
+            "evidence_ids": list(self.evidence_ids),
+            "confidence": self.confidence,
+            "warnings": list(self.warnings),
+            "trace": list(self.trace),
+        }
+
+
+@dataclass(frozen=True)
+class Provenance:
+    """Document and execution provenance for one Stage3 Agent."""
+
+    agent: str
+    question: str
+    document_ids: tuple[str, ...] = ()
+    sources: tuple[str, ...] = ()
+    confidence: float = 0.0
+    details: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "agent": self.agent,
+            "question": self.question,
+            "document_ids": list(self.document_ids),
+            "sources": list(self.sources),
+            "confidence": self.confidence,
+            "details": dict(self.details),
+        }
+
+
+@dataclass(frozen=True)
 class Stage3Document:
     """Stage2 document shape consumed by Stage3."""
 
@@ -106,6 +182,8 @@ class Stage3Result:
     warnings: list[str] = field(default_factory=list)
     provenance: list[dict[str, Any]] = field(default_factory=list)
     trace: list[str] = field(default_factory=list)
+    agent_results: list[dict[str, Any]] = field(default_factory=list)
+    handoffs: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -119,6 +197,8 @@ class Stage3Result:
             "warnings": list(self.warnings),
             "provenance": list(self.provenance),
             "trace": list(self.trace),
+            "agent_results": list(self.agent_results),
+            "handoffs": list(self.handoffs),
         }
 
 
