@@ -71,3 +71,10 @@ Production DB를 사용할 때는 `E2E_DB_BACKEND=production`, `CORPUS_DIR`, SQL
 ## 현재 데이터 한계
 
 기본 local JSON은 삼성전자 중심의 21개 chunk이며 2023-03, 2023-06, 2023-09, 2023-12, 2024-03 기간을 포함한다. 2025년·여러 기업 비교·정정 chain·수시공시가 있다고 가정하지 않는다.
+
+## lds 커밋
+
+- `c08b763 chore: initialize stage123 integration workspace`
+- `e6add1f feat: connect stage123 integration workflow`
+
+부모 `lds` 브랜치의 기존 미추적 `stage123/` 폴더는 두 커밋에 포함하지 않았다.
