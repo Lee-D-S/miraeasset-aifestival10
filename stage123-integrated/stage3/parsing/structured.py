@@ -1,0 +1,317 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from html.parser import HTMLParser
+import re
+from typing import Any, Iterable
+import xml.etree.ElementTree as ET
+
+
+_CELL_TAGS = {"td", "th", "tu"}
+_UNIT_RE = re.compile(r"단위\s*[:：]\s*([^()\n]+)")
+_PERIOD_RE = re.compile(r"20\d{2}\s*년(?:\s*\d{1,2}\s*월(?:\s*\d{1,2}\s*일?)?|\s*(?:[1-4]\s*분기|상반기|하반기|연간))?")
+_NUMBER_RE = re.compile(r"(?:△|▲|\-)?\s*\d[\d,]*(?:\.\d+)?")
+_CURRENCY_UNITS = ("조원", "십억원", "억원", "백만원", "천만원", "만원", "천원", "원")
+
+
+@dataclass(frozen=True)
+class StructuredTable:
+    """A table flattened into a grid while retaining disclosure context."""
+
+    table_id: str
+    rows: list[list[str]]
+    unit_label: str | None = None
+    basis_label: str | None = None
+    period_label: str | None = None
+    source_format: str = "text"
+
+    def row_text(self, row: list[str]) -> str:
+        return " | ".join(value for value in row if value.strip())
+
+    @property
+    def rendered_text(self) -> str:
+        return "\n".join(self.row_text(row) for row in self.rows if self.row_text(row))
+
+    def numeric_cells(self) -> list[dict[str, Any]]:
+        """Return numeric cells with row/column/unit/basis context.
+
+        This is intentionally structural rather than semantic: metric names
+        are resolved by the Stage3 metric registry in the extraction layer.
+        """
+
+        if not self.rows:
+            return []
+        column_labels = _column_labels(self.rows)
+        results: list[dict[str, Any]] = []
+        for row_index, row in enumerate(self.rows):
+            row_label = _row_label(row)
+            for column_index, value in enumerate(row):
+                number_match = _NUMBER_RE.search(value)
+                if not number_match:
+                    continue
+                column_label = column_labels[column_index] if column_index < len(column_labels) else ""
+                unit = _unit_for_column(self.unit_label, column_label, row_label, value)
+                currency = "USD" if re.search(r"\bUSD\b|\$", value) else ("KRW" if unit in _CURRENCY_UNITS else None)
+                basis = (
+                    "연결"
+                    if "연결" in row_label
+                    else "별도"
+                    if "별도" in row_label
+                    else self.basis_label
+                )
+                results.append(
+                    {
+                        "table_id": self.table_id,
+                        "row_index": row_index,
+                        "column_index": column_index,
+                        "row_label": row_label,
+                        "column_label": column_label,
+                        "value": value,
+                        "unit": unit,
+                        "currency": currency,
+                        "unit_label": self.unit_label,
+                        "basis_label": basis,
+                        "basis": basis,
+                        "period_label": self.period_label,
+                        "source_format": self.source_format,
+                    }
+                )
+        return results
+
+
+@dataclass(frozen=True)
+class StructuredEvidence:
+    """Visible evidence plus parsed tables and parser warnings."""
+
+    text: str
+    source_format: str
+    tables: list[StructuredTable] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+    @property
+    def has_structured_tables(self) -> bool:
+        return bool(self.tables)
+
+    @property
+    def numeric_cells(self) -> list[dict[str, Any]]:
+        return [cell for table in self.tables for cell in table.numeric_cells()]
+
+
+@dataclass
+class _CellToken:
+    text: str
+    colspan: int = 1
+    rowspan: int = 1
+
+
+def _local_name(tag: str) -> str:
+    return str(tag).rsplit("}", 1)[-1].lower()
+
+
+def _clean_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _attr(node: Any, name: str) -> str | None:
+    attributes = getattr(node, "attrib", {})
+    for key, value in attributes.items():
+        if _local_name(key) == name.lower():
+            return str(value)
+    return None
+
+
+def _span_count(value: str | None) -> int:
+    try:
+        return max(1, int(value or "1"))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _node_text(node: ET.Element) -> str:
+    return _clean_text(" ".join(node.itertext()))
+
+
+def _direct_cells(row: ET.Element) -> list[ET.Element]:
+    cells: list[ET.Element] = []
+
+    def visit(node: ET.Element) -> None:
+        for child in list(node):
+            name = _local_name(child.tag)
+            if name in _CELL_TAGS:
+                cells.append(child)
+            elif name != "tr":
+                visit(child)
+
+    visit(row)
+    return cells
+
+
+def _xml_rows(table: ET.Element) -> list[list[_CellToken]]:
+    rows: list[list[_CellToken]] = []
+    for row in table.iter():
+        if _local_name(row.tag) != "tr":
+            continue
+        tokens = []
+        for cell in _direct_cells(row):
+            tokens.append(_CellToken(_node_text(cell), _span_count(_attr(cell, "colspan")), _span_count(_attr(cell, "rowspan"))))
+        if tokens:
+            rows.append(tokens)
+    return rows
+
+
+class _HTMLTableParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.visible_parts: list[str] = []
+        self.tables: list[list[list[_CellToken]]] = []
+        self._table_rows: list[list[_CellToken]] | None = None
+        self._row: list[_CellToken] | None = None
+        self._cell_parts: list[str] | None = None
+        self._cell_colspan = 1
+        self._cell_rowspan = 1
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        name = tag.lower()
+        attr_map = {key.lower(): value for key, value in attrs}
+        if name == "table":
+            self._table_rows = []
+        elif name == "tr" and self._table_rows is not None:
+            self._row = []
+        elif name in _CELL_TAGS and self._row is not None:
+            self._cell_parts = []
+            self._cell_colspan = _span_count(attr_map.get("colspan"))
+            self._cell_rowspan = _span_count(attr_map.get("rowspan"))
+
+    def handle_endtag(self, tag: str) -> None:
+        name = tag.lower()
+        if name in _CELL_TAGS and self._cell_parts is not None and self._row is not None:
+            self._row.append(_CellToken(_clean_text(" ".join(self._cell_parts)), self._cell_colspan, self._cell_rowspan))
+            self._cell_parts = None
+        elif name == "tr" and self._row is not None and self._table_rows is not None:
+            if self._row:
+                self._table_rows.append(self._row)
+            self._row = None
+        elif name == "table" and self._table_rows is not None:
+            if self._table_rows:
+                self.tables.append(self._table_rows)
+            self._table_rows = None
+
+    def handle_data(self, data: str) -> None:
+        cleaned = _clean_text(data)
+        if not cleaned:
+            return
+        self.visible_parts.append(cleaned)
+        if self._cell_parts is not None:
+            self._cell_parts.append(cleaned)
+
+
+def _expand_rows(rows: Iterable[Iterable[_CellToken]]) -> list[list[str]]:
+    occupied: dict[tuple[int, int], str] = {}
+    expanded: list[list[str]] = []
+    for row_index, tokens in enumerate(rows):
+        row_values: dict[int, str] = {}
+        column_index = 0
+        for token in tokens:
+            while (row_index, column_index) in occupied:
+                row_values[column_index] = occupied[(row_index, column_index)]
+                column_index += 1
+            for offset in range(token.colspan):
+                current_column = column_index + offset
+                row_values[current_column] = token.text
+                for future_row in range(row_index + 1, row_index + token.rowspan):
+                    occupied[(future_row, current_column)] = token.text
+            column_index += token.colspan
+        while (row_index, column_index) in occupied:
+            row_values[column_index] = occupied[(row_index, column_index)]
+            column_index += 1
+        if row_values:
+            max_column = max(row_values)
+            expanded.append([row_values.get(index, "") for index in range(max_column + 1)])
+    return expanded
+
+
+def _table_metadata(rows: list[list[str]]) -> tuple[str | None, str | None, str | None]:
+    all_text = "\n".join(" | ".join(row) for row in rows)
+    unit_match = _UNIT_RE.search(all_text)
+    unit_label = _clean_text(unit_match.group(1)) if unit_match else None
+    basis_label = next((value for row in rows for value in row if "연결" in value or "별도" in value), None)
+    period_match = _PERIOD_RE.search(all_text)
+    period_label = _clean_text(period_match.group(0)) if period_match else None
+    return unit_label, basis_label, period_label
+
+
+def _make_tables(raw_tables: Iterable[Iterable[Iterable[_CellToken]]], source_format: str) -> list[StructuredTable]:
+    tables: list[StructuredTable] = []
+    for index, raw_rows in enumerate(raw_tables, start=1):
+        rows = _expand_rows(raw_rows)
+        if not rows:
+            continue
+        unit_label, basis_label, period_label = _table_metadata(rows)
+        tables.append(StructuredTable(f"table-{index:03d}", rows, unit_label, basis_label, period_label, source_format))
+    return tables
+
+
+def _column_labels(rows: list[list[str]]) -> list[str]:
+    for row in rows:
+        nonnumeric = [value for value in row if value and not _NUMBER_RE.search(value)]
+        if len(nonnumeric) >= 2 and not any("단위" in value for value in nonnumeric):
+            return row
+    return rows[0] if rows else []
+
+
+def _row_label(row: list[str]) -> str:
+    for value in row:
+        if value.strip() and not _NUMBER_RE.search(value):
+            return value
+    return ""
+
+
+def _unit_for_column(unit_label: str | None, column_label: str, row_label: str = "", value: str = "") -> str:
+    if re.search(r"\bUSD\b|\$", value):
+        return "USD"
+    if not unit_label:
+        if "원" in row_label or "원" in column_label:
+            return "원"
+        if "%" in row_label or "비중" in row_label:
+            return "%"
+        return ""
+    if "%" in column_label or "비중" in column_label or "율" in column_label:
+        return "%"
+    for unit in _CURRENCY_UNITS:
+        if unit in unit_label:
+            return unit
+    return ""
+
+
+def _looks_like_html(value: str) -> bool:
+    return bool(re.search(r"<\s*html(?:\s|>)", value, re.IGNORECASE))
+
+
+def parse_structured_evidence(value: str) -> StructuredEvidence:
+    """Parse DART XML or HTML table evidence without third-party packages."""
+
+    raw = str(value or "")
+    if not raw.lstrip().startswith("<"):
+        return StructuredEvidence(raw, "text")
+
+    if _looks_like_html(raw):
+        parser = _HTMLTableParser()
+        try:
+            parser.feed(raw)
+            parser.close()
+        except Exception as error:  # noqa: BLE001 - malformed upstream markup
+            return StructuredEvidence(" ".join(parser.visible_parts), "html", warnings=[f"html_parse_error: {error}"])
+        tables = _make_tables(parser.tables, "html")
+        return StructuredEvidence(" ".join(parser.visible_parts), "html", tables)
+
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError as error:
+        return StructuredEvidence(re.sub(r"<[^>]+>", " ", raw), "xml", warnings=[f"xml_parse_error: {error}"])
+    raw_tables = [_xml_rows(table) for table in root.iter() if _local_name(table.tag) == "table"]
+    tables = _make_tables(raw_tables, "xml")
+    visible_text = _clean_text(" ".join(root.itertext()))
+    return StructuredEvidence(visible_text, "xml", tables)
+
+
+__all__ = ["StructuredEvidence", "StructuredTable", "parse_structured_evidence"]

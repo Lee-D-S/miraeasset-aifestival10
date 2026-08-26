@@ -1,0 +1,34 @@
+{
+  "_note": "data_filter.md / manifest.jsonl 실측 기준. 정기공시는 FY2023~FY2025 전체 + FY2026 1분기만 존재한다.",
+
+  "fiscal": {
+    "min_year": 2023,
+    "max_year": 2026,
+    "available_periods": {
+      "2023": [3, 6, 9, 12],
+      "2024": [3, 6, 9, 12],
+      "2025": [3, 6, 9, 12],
+      "2026": [3]
+    }
+  },
+
+  "disclosure": {
+    "event_from": "20230101",
+    "event_to": "20260331",
+    "rcept_observed_from": "20230102",
+    "rcept_observed_to": "20260619"
+  },
+
+  "base_month_by_subtype": {
+    "annual": 12,
+    "half": 6,
+    "quarter": [3, 9]
+  },
+
+  "quarter_to_period": {
+    "1": { "doc_subtype": "quarter", "base_month": 3 },
+    "2": { "doc_subtype": "half", "base_month": 6 },
+    "3": { "doc_subtype": "quarter", "base_month": 9 },
+    "4": { "doc_subtype": "annual", "base_month": 12 }
+  }
+}

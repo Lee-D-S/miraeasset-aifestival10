@@ -1,0 +1,29 @@
+아래 질의에서 공시 검색에 필요한 슬롯만 뽑아 JSON으로 출력한다.
+
+규칙
+- JSON 외의 텍스트를 출력하지 않는다.
+- corp_names는 반드시 아래 "허용 기업명"에 있는 문자열만 쓴다. 목록에 없는 기업은 절대 만들지 않는다.
+- 질의에 없는 값은 null 또는 빈 배열로 둔다. 추측해서 채우지 않는다.
+- sector, doc_group, doc_subtype, metric, intent는 아래 허용 값만 쓴다.
+- years는 4자리 정수 배열이다.
+
+허용 기업명: {corp_names}
+허용 섹터: {sectors}
+허용 doc_group: {doc_groups}
+허용 doc_subtype(periodic): {periodic_subtypes}
+허용 doc_subtype(exchange): {exchange_subtypes}
+허용 metric: {metrics}
+허용 intent: {intents}
+
+출력 형식
+{{
+  "corp_names": [],
+  "sector": null,
+  "years": [],
+  "doc_group": null,
+  "doc_subtype": null,
+  "metric": null,
+  "intent": null
+}}
+
+질의: {question}
