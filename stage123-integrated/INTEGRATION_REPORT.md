@@ -124,5 +124,6 @@ Production DB를 사용할 때는 `E2E_DB_BACKEND=production`, `CORPUS_DIR`, SQL
 - `e6add1f feat: connect stage123 integration workflow`
 - `4cd1273 fix: pass unified clova key to ChatClovaX`
 - `d70e53a test: use lightweight clova chat model`
+- `1ba50c5 fix: diagnose and harden stage123 e2e`
 
 부모 `lds` 브랜치의 기존 미추적 `stage123/` 폴더는 두 커밋에 포함하지 않았다.
