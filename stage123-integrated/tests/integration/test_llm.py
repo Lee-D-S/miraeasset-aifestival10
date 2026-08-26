@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from app.clova_config import DEFAULT_CLOVA_CHAT_MODEL
-from integration.llm import ProviderConfigurationError, build_stage2_chat_model
+from stage2.llm import ProviderConfigurationError, build_stage2_chat_model
 
 
 class Stage2LlmConfigurationTests(unittest.TestCase):

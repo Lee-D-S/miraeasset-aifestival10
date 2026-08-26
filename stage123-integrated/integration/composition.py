@@ -6,18 +6,19 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable
 
-from app.stage1 import build_intent
+from stage1 import build_intent
 from stage3.api_contract import to_submission_response
 from stage3.contracts import Stage3Result
 from stage3.service import Stage3Service
 
-from .embedding import ClovaQueryEmbedding
-from .json_repository import JsonStage2Repository
-from .llm import DependencyConfigurationError, ProviderConfigurationError, build_stage2_chat_model
+from stage1 import CorpusIndex
+from stage2.embedding import ClovaQueryEmbedding
+from stage2.json_repository import JsonStage2Repository
+from stage2.llm import DependencyConfigurationError, ProviderConfigurationError, build_stage2_chat_model
 from .local_index import LocalJsonCorpusIndex
-from .production_repository import ProductionStage2Repository
-from .stage2_agent import Stage2Agent
-from .stage2_repository import RetrievalError
+from stage2.production_repository import ProductionStage2Repository
+from stage2.stage2_agent import Stage2Agent
+from stage2.stage2_repository import RetrievalError
 
 
 class IntegrationFailure(RuntimeError):
@@ -134,8 +135,6 @@ class Stage123Application:
             corpus_dir = os.getenv("CORPUS_DIR")
             if not corpus_dir:
                 raise IntegrationFailure("dependency_issue", "Production Stage1 requires CORPUS_DIR")
-            from app.stage1 import CorpusIndex
-
             index = CorpusIndex.load(corpus_dir=Path(corpus_dir))
         else:
             raise IntegrationFailure("schema_issue", f"unsupported E2E_DB_BACKEND: {backend}")

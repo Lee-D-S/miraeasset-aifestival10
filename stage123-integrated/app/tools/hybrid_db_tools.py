@@ -17,7 +17,7 @@ def _get_repository() -> Any:
     if _repository is not None:
         return _repository
 
-    from integration.production_repository import ProductionStage2Repository
+    from stage2.production_repository import ProductionStage2Repository
 
     return ProductionStage2Repository.from_environment()
 
@@ -57,7 +57,7 @@ def dart_hybrid_search_tool(
         exclude_corp_name: 검색 결과에서 제외할 기업명 (예: '삼성SDI', 선택사항)
         top_k: 추출할 관련 청크 개수 (기본값 3)
     """
-    from integration.stage2_repository import SearchRequest
+    from stage2.stage2_repository import SearchRequest
 
     result = _get_repository().search(
         SearchRequest(

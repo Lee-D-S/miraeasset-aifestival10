@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 
 from state import AgentState
-from app.stage1 import CorpusIndex, build_intent
+from stage1 import CorpusIndex, build_intent
 
 load_dotenv()
 

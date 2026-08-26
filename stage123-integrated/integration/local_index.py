@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from app.stage1.index.corpus_index import CorpusIndex, Stage1Config
+from stage1.index.corpus_index import CorpusIndex, Stage1Config
 
 
 def _period(value: Any) -> tuple[int | None, int | None]:
@@ -40,7 +40,7 @@ class LocalJsonCorpusIndex:
         if not isinstance(rows, list):
             raise ValueError("local JSON corpus must contain a list")
 
-        config_dir = Path(__file__).resolve().parents[1] / "app" / "stage1" / "config"
+        config_dir = Path(__file__).resolve().parents[1] / "stage1" / "config"
         config = Stage1Config.load(config_dir)
         corp_names = {
             str((row.get("metadata") or {}).get("corp_name", "")).strip()

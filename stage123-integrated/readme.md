@@ -11,8 +11,8 @@
   -> scripts/run_e2e.py
   -> integration/e2e.py
   -> integration/composition.py
-  -> Stage1: app/stage1 + LocalJsonCorpusIndex 또는 Production CorpusIndex
-  -> Stage2: integration/stage2_agent.py + dart_hybrid_search_tool
+  -> Stage1: stage1/ + LocalJsonCorpusIndex 또는 Production CorpusIndex
+  -> Stage2: stage2/stage2_agent.py + dart_hybrid_search_tool
   -> Stage2Repository: JSON fixture 또는 SQLite/Chroma adapter
   -> Stage3: stage3/ + Stage3Service
   -> 제출 응답 5개 문자열
@@ -25,9 +25,9 @@ legacy 경로이며, 자세한 내용은 [app/agent/README.md](app/agent/README.
 
 | 단계 | 공식 위치 | 역할 |
 |---|---|---|
-| Stage1 | `app/stage1/` | 자연어 질문을 Intent와 route, manifest filter로 변환 |
-| Stage2 | `integration/stage2_agent.py` | ChatClovaX 호출, 검색 Tool 실행, Stage2 evidence bundle 생성 |
-| Stage2 검색 | `app/tools/hybrid_db_tools.py`, `integration/*_repository.py` | JSON 또는 SQLite/Chroma 검색 adapter |
+| Stage1 | `stage1/` | 자연어 질문을 Intent와 route, manifest filter로 변환 |
+| Stage2 | `stage2/stage2_agent.py` | ChatClovaX 호출, 검색 Tool 실행, Stage2 evidence bundle 생성 |
+| Stage2 검색 | `app/tools/hybrid_db_tools.py`, `stage2/*_repository.py` | JSON 또는 SQLite/Chroma 검색 adapter |
 | Stage3 | `stage3/` | Fact, 계산, 비교, 이벤트, 답변, 검증 |
 | 통합 조립 | `integration/composition.py` | Stage1·Stage2·Stage3 실행 순서와 오류 경계 |
 
@@ -85,14 +85,18 @@ CORPUS_DIR=<universe.csv와 manifest.jsonl이 있는 corpus 경로>
 ## 폴더 구조
 
 ```text
+stage1/                # 공식 Stage1
+stage2/                # 공식 Stage2 agent·repository·provider
 app/
-  stage1/              # 공식 Stage1
+  schemas/              # Stage2 Tool 입력 스키마
   tools/               # 공식 검색·계산 Tool
   agent/               # legacy 단일 Agent 그래프
-integration/            # 공식 Stage123 조립·Stage2 adapter·E2E
+integration/            # 공식 Stage123 조립·E2E
 stage3/                # 공식 Stage3 standalone package
 dart_preprocessing/    # 선택적 Production DB 전처리
 scripts/                # 공식 실행 스크립트
+  maintenance/         # 선택적 corpus 유지보수 스크립트
+docs/                  # 통합 검증 보고서
 tests/integration/      # Stage123 통합 테스트
 stage3/tests/           # Stage3 회귀 테스트
 test_data/              # 부모 workspace의 JSON fixture
@@ -108,5 +112,4 @@ test_data/              # 부모 workspace의 JSON fixture
 - 실제 CLOVA ChatClovaX·embedding API를 포함한 E2E 실행 확인
 - 관련 질문은 문서를 검색하고, corpus에 없는 기업은 route gate에서 차단
 
-세부 원인·검증 로그·커밋 기록은 [INTEGRATION_REPORT.md](INTEGRATION_REPORT.md)에 기록한다.
-
+세부 원인·검증 로그·커밋 기록은 [docs/INTEGRATION_REPORT.md](docs/INTEGRATION_REPORT.md)에 기록한다.

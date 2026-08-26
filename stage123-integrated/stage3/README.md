@@ -11,8 +11,8 @@ Stage2 결과는 `stage3.adapters.stage2`가 표준 계약으로 변환한다. �
 전체 실행은 workspace 루트의 `scripts/run_e2e.py`를 사용한다.
 
 ```text
-Stage1: app/stage1/
-  -> Stage2: integration/stage2_agent.py
+Stage1: stage1/
+  -> Stage2: stage2/stage2_agent.py
   -> Stage3: stage3/Stage3Service
   -> 5개 문자열 제출 응답
 ```

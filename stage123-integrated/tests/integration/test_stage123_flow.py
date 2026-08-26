@@ -6,11 +6,11 @@ from pathlib import Path
 
 from langchain_core.messages import AIMessage
 
-from app.stage1 import build_intent
+from stage1 import build_intent
 from integration.composition import Stage123Application, _stage2_failure
-from integration.json_repository import JsonStage2Repository
+from stage2.json_repository import JsonStage2Repository
 from integration.local_index import LocalJsonCorpusIndex
-from integration.stage2_agent import Stage2Agent
+from stage2.stage2_agent import Stage2Agent
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -19,7 +19,7 @@ QUESTION = "삼성전자의 2023년 1분기 매출액은 얼마인가?"
 
 
 class ScriptedSearchModel:
-    """Unit-test model; real E2E uses ChatClovaX from integration.llm."""
+    """Unit-test model; real E2E uses ChatClovaX from stage2.llm."""
 
     def bind_tools(self, _tools):
         return self

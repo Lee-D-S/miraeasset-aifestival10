@@ -1,5 +1,6 @@
 import os
 import sys
+from pathlib import Path
 
 # 현재 파일(agent.py) 기준으로 상위 상위 폴더(miraeasset-firstpenguin)를 모듈 검색 경로에 등록
 PROJECT_ROOT = os.path.abspath(
@@ -120,7 +121,9 @@ async def astream():
 if __name__ == "__main__":
     try:
         png_bytes = graph.get_graph().draw_mermaid_png()
-        with open("graph.png", "wb") as f:
+        graph_path = Path(__file__).resolve().parent / "assets" / "graph.png"
+        graph_path.parent.mkdir(parents=True, exist_ok=True)
+        with graph_path.open("wb") as f:
             f.write(png_bytes)
     except Exception:
         pass

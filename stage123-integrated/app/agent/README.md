@@ -2,13 +2,13 @@
 
 > **Legacy 경로**: 이 문서는 기존 `app/agent` 단독 LangGraph 그래프를 설명한다.
 > 현재 공식 Stage123 E2E 진입점은 `scripts/run_e2e.py`이며, 공식 Stage2는
-> `integration/stage2_agent.py`다. 이 디렉터리는 호환·비교 목적으로 보존한다.
+> `stage2/stage2_agent.py`다. 이 디렉터리는 호환·비교 목적으로 보존한다.
 
 `app/agent`는 LangGraph 기반 에이전트다. **Stage1(질의 이해)** 이 자연어 질문을 Intent JSON으로
 바꾸고, 그 결과에 따라 **Stage2(검색·SQL 질의 + RAG 답변 생성)** 로 넘어가거나 즉시 안내 문구로
-끝난다. Stage1 자체의 상세 스펙(슬롯, 라우팅 규칙 등)은 `app/stage1/README.md`를 참고할 것.
+끝난다. Stage1 자체의 상세 스펙(슬롯, 라우팅 규칙 등)은 `stage1/README.md`를 참고할 것.
 이 문서는 **legacy 그래프(app/agent) 레벨**의 사용법/입출력 명세만 다룬다.
-현재 통합 구조와 실행 방법은 workspace 루트의 `readme.md`와 `INTEGRATION_REPORT.md`를 기준으로 한다.
+현재 통합 구조와 실행 방법은 workspace 루트의 `readme.md`와 `docs/INTEGRATION_REPORT.md`를 기준으로 한다.
 
 ## 사용법
 
@@ -47,7 +47,7 @@ START
         └─ route == "unsafe"        ─▶ unsafe_node        ─▶ END   (Stage3 미구현 placeholder)
 ```
 
-- Stage1: `app/agent/nodes/stage1.py` (`query_interpreter`) — 내부적으로 `app/stage1`의
+- Stage1: `app/agent/nodes/stage1.py` (`query_interpreter`) — 내부적으로 `stage1/`의
   `build_intent`를 호출한다.
 - Stage2: `app/agent/nodes/stage2.py` (`chatbot`, `tool_node`, `context_organizer`,
   `query_transformer`, `response_generator`) — 하이브리드 검색(`dart_hybrid_search_tool`, RDB+VectorDB)
@@ -146,14 +146,14 @@ START
   - `unanswerable`/`unsafe`: 정책상 END로 끝나는 게 맞는지, 대안 질문 제안 같은 걸 더 붙일지 결정 필요.
 - **`query_interpreter` 예외 처리 없음.** `build_intent`가 예외를 던지면 그래프 노드가 그대로
   죽는다. 이상 입력(빈 문자열, 인코딩 깨짐 등)에 대한 방어가 필요.
-- **`stage1_understand` ↔ `edges.route_decision` 통합 테스트 부재.** `app/stage1/tests`는
+- **`stage1_understand` ↔ `edges.route_decision` 통합 테스트 부재.** `stage1/tests`는
   Stage1 파이프라인 자체(`build_intent`)만 검증하고, 이번에 새로 연결한
   `nodes/stage1.py` + `edges.route_decision` + 그래프 조건부 엣지 조합은 아직 자동화된 테스트가 없다.
 - **`CorpusIndex` 싱글턴 재사용 전략.** `app/agent/nodes/stage1.py`가 모듈 로드 시 1회
   `CorpusIndex.load()`를 실행한다. 코퍼스가 바뀌는 경우(재수집 등) 프로세스 재시작 없이 갱신할
   방법, 그리고 테스트에서 목(mock) 인덱스로 주입할 방법이 필요하다.
-- **루트 `readme.md` 구조 갱신.** 폴더 트리에 아직 `app/agent/nodes.py`(단일 파일)로 적혀 있는데,
-  실제로는 `app/agent/nodes/`(stage1.py/stage2.py/fallback.py/__init__.py) 패키지로 바뀌었다.
+- **구조 정리 완료.** 공식 Stage1·Stage2는 각각 루트 `stage1/`, `stage2/`에 있고,
+  이 디렉터리는 legacy 단일 그래프와 그 시각화 산출물만 보존한다.
 - **기존에 열려 있던 이슈** (루트 `readme.md`의 Plan 항목, 이번 작업과 무관하게 여전히 유효):
   "최근 공시 5개?" 같은 광범위한 질문에서 검색이 문서를 잘 못 찾는 문제.
 - **`.env`의 `CLOVA_API_KEY` 필수.** `app/agent/edges.py`가 모듈 임포트 시점에 바로

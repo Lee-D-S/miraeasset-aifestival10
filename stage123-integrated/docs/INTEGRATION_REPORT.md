@@ -3,8 +3,10 @@
 상태: Phase 1~5 구현 완료, provider 연결·검색 필터 오류 수정 및 실제 E2E 검증 완료
 
 공식 실행 경로: `scripts/run_e2e.py` → `integration/e2e.py` → `integration/composition.py` →
-`app/stage1/` → `integration/stage2_agent.py` → `stage3/`.
+`stage1/` → `stage2/stage2_agent.py` → `stage3/`.
 `app/agent/`는 legacy 단일 그래프이며 현재 공식 Stage123 E2E 경로가 아니다.
+
+구조 정리 후 공식 Stage 위치는 `stage1/`, `stage2/`, `stage3/`이며, `integration/`은 조립 전용이다.
 
 ## 구현 위치
 
@@ -32,9 +34,9 @@
 ## 주요 코드
 
 - `integration/local_index.py`: local JSON의 실제 기업·기간으로 Stage1 `CorpusIndex`를 구성한다.
-- `integration/json_repository.py`: `test_data/disclosure_clova_local.json`을 읽고 embedding cosine 검색을 수행한다. query embedding이 없으면 성공으로 위장하지 않고 `embedding_unavailable`로 실패한다.
-- `integration/production_repository.py`: 기존 SQLite 후보 조회와 Chroma 검색을 Stage2 구조화 결과로 변환한다.
-- `integration/stage2_agent.py`: 실제 ChatClovaX를 lazy 초기화하고 기존 검색 Tool과 LangGraph `ToolNode`를 실행한다.
+- `stage2/json_repository.py`: `test_data/disclosure_clova_local.json`을 읽고 embedding cosine 검색을 수행한다. query embedding이 없으면 성공으로 위장하지 않고 `embedding_unavailable`로 실패한다.
+- `stage2/production_repository.py`: 기존 SQLite 후보 조회와 Chroma 검색을 Stage2 구조화 결과로 변환한다.
+- `stage2/stage2_agent.py`: 실제 ChatClovaX를 lazy 초기화하고 기존 검색 Tool과 LangGraph `ToolNode`를 실행한다.
 - `integration/composition.py`: Stage1·Stage2·Stage3 조립, route gate, 오류 분류, 제출 응답을 담당한다.
 - `scripts/run_e2e.py`: 단일 자연어 E2E 진입점이다.
 - `tests/integration/`: repository·ToolNode·Stage1 route·Stage3 handoff 검증이다.
@@ -109,7 +111,7 @@ OpenAI-compatible Chat Completions endpoint의 경량 `HCX-DASH-002` 모델을 �
 
 ### 변경 파일별 기록
 
-- `integration/stage2_agent.py`: LLM이 Stage1 기업·기간 경계를 벗어나 추가한 필터를 제거하고 Stage1 필터만 Tool에 전달한다.
+- `stage2/stage2_agent.py`: LLM이 Stage1 기업·기간 경계를 벗어나 추가한 필터를 제거하고 Stage1 필터만 Tool에 전달한다.
 - `integration/composition.py`: provider connection/auth/rate-limit 예외를 구분하고, 예외 메시지와 원인을 credential 마스킹 후 보존한다.
 - `integration/e2e.py`: Windows stdout/stderr를 UTF-8로 출력한다.
 - `tests/integration/test_stage123_flow.py`: 오염된 LLM 필터 회귀 테스트와 `WinError 10013` 원인 보존 테스트를 추가했다.

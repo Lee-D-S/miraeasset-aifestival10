@@ -4,8 +4,8 @@ import json
 import unittest
 from pathlib import Path
 
-from integration.json_repository import JsonStage2Repository
-from integration.stage2_repository import RetrievalError, SearchRequest
+from stage2.json_repository import JsonStage2Repository
+from stage2.stage2_repository import RetrievalError, SearchRequest
 
 
 ROOT = Path(__file__).resolve().parents[2]
