@@ -7,7 +7,7 @@ from pathlib import Path
 from langchain_core.messages import AIMessage
 
 from app.stage1 import build_intent
-from integration.composition import Stage123Application
+from integration.composition import Stage123Application, _stage2_failure
 from integration.json_repository import JsonStage2Repository
 from integration.local_index import LocalJsonCorpusIndex
 from integration.stage2_agent import Stage2Agent
@@ -37,6 +37,30 @@ class ScriptedSearchModel:
         )
 
 
+class PollutingSearchModel(ScriptedSearchModel):
+    """Simulate an LLM adding filters outside Stage1's manifest boundary."""
+
+    def invoke(self, messages):
+        return AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "dart_hybrid_search_tool",
+                    "args": {
+                        "query": "매출액",
+                        "top_k": 2,
+                        "start_date": "20230101",
+                        "end_date": "20230131",
+                        "section_name": "사업의 내용",
+                        "sector": "반도체·전자부품",
+                        "exclude_corp_name": "삼성전자",
+                    },
+                    "id": "polluting-search",
+                }
+            ],
+        )
+
+
 class Stage123FlowTests(unittest.TestCase):
     def setUp(self) -> None:
         self.rows = json.loads(DATA.read_text(encoding="utf-8"))
@@ -59,6 +83,30 @@ class Stage123FlowTests(unittest.TestCase):
         self.assertTrue(result["documents"][0]["metadata"])
         self.assertEqual(result["original_question"], QUESTION)
         self.assertNotEqual(result["search"]["query"], "")
+
+    def test_stage1_filters_remove_llm_only_extra_constraints(self) -> None:
+        intent = build_intent(QUESTION, self.index, use_llm=False).to_dict()
+        result = Stage2Agent(PollutingSearchModel(), self.repository).run(
+            question=QUESTION,
+            intent=intent,
+        )
+        self.assertEqual(result["status"], "ok")
+        self.assertGreater(len(result["documents"]), 0)
+
+    def test_provider_connection_failure_keeps_safe_cause(self) -> None:
+        class APIConnectionError(Exception):
+            pass
+
+        try:
+            try:
+                raise OSError("[WinError 10013] socket access denied")
+            except OSError as cause:
+                raise APIConnectionError("Connection error.") from cause
+        except APIConnectionError as error:
+            failure = _stage2_failure(error)
+
+        self.assertEqual(failure.classification, "provider_connection")
+        self.assertIn("WinError 10013", str(failure))
 
     def test_non_ok_route_does_not_construct_or_call_stage2_model(self) -> None:
         application = Stage123Application(

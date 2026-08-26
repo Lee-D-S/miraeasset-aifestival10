@@ -26,6 +26,42 @@ class IntegrationFailure(RuntimeError):
         self.classification = classification
 
 
+_PROVIDER_CONNECTION_ERRORS = {"APIConnectionError", "APITimeoutError"}
+_PROVIDER_AUTH_ERRORS = {"AuthenticationError", "PermissionDeniedError"}
+_PROVIDER_LIMIT_ERRORS = {"RateLimitError"}
+
+
+def _safe_exception_detail(error: Exception, *, limit: int = 500) -> str:
+    """Keep provider diagnostics while preventing credentials from entering traces."""
+
+    parts = [" ".join(str(error).split())]
+    cause = error.__cause__ or error.__context__
+    if cause is not None and str(cause):
+        parts.append(f"cause={type(cause).__name__}: {' '.join(str(cause).split())}")
+    detail = "; ".join(part for part in parts if part)
+    for env_name in ("CLOVA_API_KEY", "CLOVASTUDIO_API_KEY", "CLOVASTUDIO_APIGW_API_KEY", "OPENAI_API_KEY"):
+        secret = os.getenv(env_name, "").strip()
+        if secret:
+            detail = detail.replace(secret, "***")
+    return detail[:limit] or type(error).__name__
+
+
+def _stage2_failure(error: Exception) -> IntegrationFailure:
+    error_name = type(error).__name__
+    if error_name in _PROVIDER_CONNECTION_ERRORS:
+        classification = "provider_connection"
+    elif error_name in _PROVIDER_AUTH_ERRORS:
+        classification = "api_configuration"
+    elif error_name in _PROVIDER_LIMIT_ERRORS:
+        classification = "provider_rate_limit"
+    else:
+        classification = "integration_bug"
+    return IntegrationFailure(
+        classification,
+        f"Stage2 workflow failed: {error_name}: {_safe_exception_detail(error)}",
+    )
+
+
 @dataclass
 class E2ERun:
     question_id: str
@@ -138,7 +174,7 @@ class Stage123Application:
             except (DependencyConfigurationError, ProviderConfigurationError) as error:
                 stage2_failure = IntegrationFailure(error.classification, str(error))
             except Exception as error:  # noqa: BLE001 - integration boundary
-                stage2_failure = IntegrationFailure("integration_bug", f"Stage2 workflow failed: {type(error).__name__}")
+                stage2_failure = _stage2_failure(error)
 
             if stage2_failure is not None:
                 stage2_result = self._empty_stage2(

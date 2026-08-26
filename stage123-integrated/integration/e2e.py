@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 
 from dotenv import load_dotenv
 
@@ -20,6 +21,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Windows terminals may default to a legacy code page even though the
+    # application contract and JSON output are UTF-8.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     load_dotenv()
     args = build_parser().parse_args(argv)
     import os

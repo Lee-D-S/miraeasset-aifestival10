@@ -76,6 +76,10 @@ def _filters(intent: dict[str, Any]) -> dict[str, Any]:
 
 def _merge_stage1_filters(tool_call: dict[str, Any], state: Stage2AgentState) -> dict[str, Any]:
     args = dict(tool_call.get("args") or {})
+    # Stage1's manifest is authoritative. Keep only the two fields Stage2 may
+    # choose freely; otherwise an LLM-provided date/sector filter can silently
+    # make a valid periodic document set look empty.
+    args = {key: value for key, value in args.items() if key in {"query", "top_k"}}
     args.setdefault("query", state.get("search_query") or state.get("original_question", ""))
     for key, value in _filters(state.get("intent", {})).items():
         if value not in (None, [], ""):

@@ -1,6 +1,6 @@
 # Stage 1 + Stage 2 + Stage 3 통합 보고서
 
-상태: Phase 1~5 구현 완료, 실제 외부 provider E2E는 환경 의존성으로 대기
+상태: Phase 1~5 구현 완료, provider 연결·검색 필터 오류 수정 및 실제 E2E 검증 완료
 
 ## 구현 위치
 
@@ -72,16 +72,44 @@ OpenAI-compatible Chat Completions endpoint의 경량 `HCX-DASH-002` 모델을 �
 
 키가 없거나 provider package가 없으면 결과의 `think_trace`에 `api_configuration` 또는 `dependency_issue`가 남는다. 해당 결과를 성공으로 집계하지 않는다.
 
+## 문제 원인 및 수정 기록 (2026-08-26)
+
+이번 E2E 점검에서 확인한 문제와 수정은 다음과 같다.
+
+| 증상 | 직접 원인 | 수정 내용 | 검증 |
+|---|---|---|---|
+| `OpenAIError`/provider 초기화 실패 | `ChatClovaX`가 기본적으로 읽는 키 이름과 프로젝트의 통합 키 이름이 달랐음 | `CLOVA_API_KEY`를 `ChatClovaX(..., api_key=...)`에 명시적으로 전달하고 `CLOVASTUDIO_API_KEY`는 fallback으로만 유지 | 통합 LLM 테스트 통과, `ChatClovaX` 초기화 통과 |
+| `APIConnectionError` | 실제 하위 원인은 `[WinError 10013]` 소켓 접근 거부였고, 기존 composition이 예외 원인을 버리고 타입만 기록했음 | `provider_connection` 분류를 추가하고 원인·cause를 마스킹 후 trace에 보존 | 네트워크 허용 실행에서 인증 `/v1/openai/models` HTTP 200, Stage2 ChatClovaX 호출 성공 |
+| 검색 후보 0건 | LLM Tool call이 Stage1에 없는 `start_date=20230101~20230131`, `section_name`, `exclude_corp_name` 등을 임의로 추가했고 JSON repository가 이를 그대로 적용했음 | Stage2 Tool call을 `query/top_k`만 자유 입력으로 제한하고 Stage1 manifest 필터를 authoritative하게 재주입 | `candidate_count=9`, `vector_ranked=3` 확인 |
+| Windows 한글 JSON 출력 깨짐 | runner가 stdout/stderr 인코딩을 명시하지 않았음 | `scripts/run_e2e.py`에서 출력 스트림을 UTF-8로 재설정 | UTF-8 실행 시 원문 질문·trace 보존 확인 |
+
+### 현재 E2E 결과의 의미
+
+수정 후 실제 전체 흐름은 `Stage1 → ChatClovaX → ToolNode → CLOVA embedding → local JSON → Stage3`까지
+실행되며, Stage2 결과는 `ok`이고 문서 3건을 반환한다. 샘플 질문의 최종 상태가
+`insufficient_evidence`인 것은 API 실패가 아니다. 현재 21개 chunk fixture에는 사업부문 매출 근거가 중심으로 들어 있고,
+총 매출을 안정적으로 식별할 수 있는 구조화된 재무표가 충분하지 않아 Stage3 validator가 숫자를 임의로 확정하지 않고
+보수적으로 답변을 보류한다. Production corpus 또는 총계가 포함된 구조화 chunk를 연결한 뒤 같은 질문을 재검증해야 한다.
+
+### 변경 파일별 기록
+
+- `integration/stage2_agent.py`: LLM이 Stage1 기업·기간 경계를 벗어나 추가한 필터를 제거하고 Stage1 필터만 Tool에 전달한다.
+- `integration/composition.py`: provider connection/auth/rate-limit 예외를 구분하고, 예외 메시지와 원인을 credential 마스킹 후 보존한다.
+- `integration/e2e.py`: Windows stdout/stderr를 UTF-8로 출력한다.
+- `tests/integration/test_stage123_flow.py`: 오염된 LLM 필터 회귀 테스트와 `WinError 10013` 원인 보존 테스트를 추가했다.
+- `.env`: 실제 키 값은 문서·Git에 기록하지 않는다. 필요한 변수명과 사용처만 이 보고서에 기록한다.
+
 Production DB를 사용할 때는 `E2E_DB_BACKEND=production`, `CORPUS_DIR`, SQLite/Chroma가 모두 준비되어야 한다. 현재 원본 Stage 2 기준본에는 corpus·`db_tmp`가 없으므로 준비 전이다.
 
 ## 검증 결과
 
-- 통합 단위·handoff 테스트: 6개 통과
+- 통합 단위·handoff 테스트: 11개 통과
 - Stage 3 기존 회귀 테스트: 65개 통과
 - Python compileall: 통과
 - unsafe route: Stage2 provider 호출 없이 Stage3 blocked response 확인
-- 실제 lookup E2E 시도: `langchain_naver` 미설치로 `dependency_issue` 기록
-- 키 전달 수정 후 실제 lookup E2E: `ChatClovaX` 초기화는 통과했으나 외부 provider 요청에서 `APIConnectionError` 발생
+- 실제 lookup E2E: provider 연결 허용 실행에서 Stage2 `ok`, 후보 9건, vector-ranked 문서 3건 확인
+- 제한된 실행 환경에서 동일 호출 시 `[WinError 10013]`이 발생할 수 있으며, 이제 `provider_connection`과 원인 trace로 기록된다.
+- 샘플 fixture 최종 결과: Stage3 `insufficient_evidence`; 문서·Fact 일부는 확보했지만 총 매출 확정 근거가 부족해 보류
 - Stage 2 Stage1 pytest: 현재 환경에 `pytest`가 없어 별도 실행 대기
 
 실제 provider가 준비되면 lookup·text·period comparison·계산 질의를 다시 실행하고, 문서 ID·Fact·calculation·citation·handoff trace를 케이스별로 기록해야 한다.
@@ -94,5 +122,7 @@ Production DB를 사용할 때는 `E2E_DB_BACKEND=production`, `CORPUS_DIR`, SQL
 
 - `c08b763 chore: initialize stage123 integration workspace`
 - `e6add1f feat: connect stage123 integration workflow`
+- `4cd1273 fix: pass unified clova key to ChatClovaX`
+- `d70e53a test: use lightweight clova chat model`
 
 부모 `lds` 브랜치의 기존 미추적 `stage123/` 폴더는 두 커밋에 포함하지 않았다.
