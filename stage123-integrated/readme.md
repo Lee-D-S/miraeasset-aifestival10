@@ -48,12 +48,26 @@ STAGE3_EXECUTION_MODE=stdlib
 ```
 
 현재 기본 테스트는 `test_data/disclosure_clova_local.json`을 사용한다.
+`E2E_DB_BACKEND=json`이 기본값이며, `LOCAL_JSON_DB_PATH`가 없으면 이 fixture를 자동으로 찾는다.
 
 - Stage1: 기본적으로 규칙 기반이며 LLM을 호출하지 않는다.
 - Stage2: `ChatClovaX(model="HCX-DASH-002")`가 실제 CLOVA API를 호출한다.
 - JSON 검색: `LOCAL_JSON_USE_CLOVA_EMBEDDING=1`이면 검색어 embedding을 CLOVA API로 생성한다.
 - Stage3: 기본 `stdlib` 모드에서 결정론적으로 실행한다.
 - RAG Reasoning API: 현재 Stage123 통합 경로에서는 호출하지 않는다.
+
+현재 통합 경로의 키 사용은 다음과 같다.
+
+| 환경변수 | 상태 | 용도 |
+|---|---|---|
+| `CLOVA_API_KEY` | 사용 | Stage2 ChatClovaX와 JSON query embedding |
+| `CLOVASTUDIO_API_KEY` | legacy fallback | `CLOVA_API_KEY`가 없을 때만 fallback |
+| `CLOVASTUDIO_APIGW_API_KEY` | 미사용 | 현재 Stage123 통합 코드에서 호출하지 않음 |
+| `OPENAI_API_KEY` | 미사용 | 현재 Stage123 통합 코드에서 호출하지 않음 |
+
+따라서 JSON fixture를 사용해도 `LOCAL_JSON_USE_CLOVA_EMBEDDING=1`이면 실제 CLOVA API가
+호출된다. 키를 제공하지 않은 fixture-only 테스트는 Stage2 provider를 성공으로 가장하지 않고
+`api_configuration` 또는 `dependency_issue`로 종료한다.
 
 ## 테스트
 
@@ -64,7 +78,12 @@ rtk python -m unittest discover -s tests/integration -p "test_*.py" -v
 rtk python -m unittest discover -s stage3/tests -p "test_*.py" -v
 rtk python -m compileall -q app dart_preprocessing integration stage3 scripts tests
 rtk python scripts/run_e2e.py "삼성전자의 2023년 1분기 주요 제품 매출 구성은 어떻게 되어 있나요?" --include-internal
+rtk python scripts/run_e2e_suite.py
 ```
+
+`run_e2e.py`는 질문 하나를 실행하는 단건 진입점이고, `run_e2e_suite.py`는 JSON fixture의
+관련 질문·무관 기업 질문·unsafe·clarify·기간 밖 질문을 연속 실행해 API 모드, 문서 ID,
+인용 수, 실패 분류를 JSON으로 출력하는 회귀용 suite다.
 
 실제 E2E에서 provider 연결과 검색이 성공해도 fixture의 근거가 부족하면 Stage3는
 `insufficient_evidence`를 반환한다. 이는 API 성공 여부와 별개의 데이터·검증 결과다.
@@ -80,7 +99,8 @@ CORPUS_DIR=<universe.csv와 manifest.jsonl이 있는 corpus 경로>
 ```
 
 `dart_preprocessing/`는 이 선택적 production DB 전처리 경로다. 파일 하나씩 수동 처리하는 방식이
-아니라 전체 corpus를 배치 처리해 SQLite/Chroma를 만든다.
+아니라 전체 corpus를 배치 처리해 SQLite/Chroma를 만든다. 상세한 입력·임베딩 경계는
+[`dart_preprocessing/README.md`](dart_preprocessing/README.md)를 참고한다.
 
 ## 폴더 구조
 
@@ -111,5 +131,7 @@ test_data/              # 부모 workspace의 JSON fixture
 - Python compileall 통과
 - 실제 CLOVA ChatClovaX·embedding API를 포함한 E2E 실행 확인
 - 관련 질문은 문서를 검색하고, corpus에 없는 기업은 route gate에서 차단
+- fixture에 사업부문 근거는 있어도 총 매출 구조화 근거가 부족한 질문은
+  `insufficient_evidence`로 보류될 수 있으며, 이는 API 실패가 아니다.
 
 세부 원인·검증 로그·커밋 기록은 [docs/INTEGRATION_REPORT.md](docs/INTEGRATION_REPORT.md)에 기록한다.

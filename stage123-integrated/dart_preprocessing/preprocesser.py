@@ -1,4 +1,6 @@
-# 경로
+"""Build the optional SQLite/Chroma production index from a DART corpus."""
+
+import argparse
 import os
 import sys
 from pathlib import Path
@@ -10,8 +12,8 @@ from app.config import SQLITE_URL
 
 import pandas as pd
 # 내부 임포트
-from chunker import split_to_chunks
-from parsers import parse_docs
+from dart_preprocessing.chunker import split_to_chunks
+from dart_preprocessing.parsers import parse_docs
 from app.agent.db import vectorstore
 
 from langchain_core.documents import Document
@@ -24,8 +26,29 @@ from sqlalchemy import create_engine
 # .env 파일에서 환경 변수 로드
 load_dotenv()
 
-def load_master_data(base_dir: str):
+def _resolve_corpus_dir(corpus_dir: str | Path | None = None) -> Path:
+    raw_path = str(corpus_dir or os.getenv("CORPUS_DIR", "")).strip()
+    if not raw_path:
+        raise ValueError(
+            "CORPUS_DIR is required for production preprocessing. "
+            "Pass --corpus-dir or set CORPUS_DIR to the directory containing universe.csv and manifest.jsonl."
+        )
+    path = Path(raw_path).expanduser()
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+    path = path.resolve()
+    required_files = (path / "universe.csv", path / "manifest.jsonl")
+    missing = [str(item) for item in required_files if not item.is_file()]
+    if missing:
+        raise FileNotFoundError(
+            "Production corpus is missing required files: " + ", ".join(missing)
+        )
+    return path
+
+
+def load_master_data(base_dir: str | Path):
     """universe.csv 와 manifest.jsonl 조인하여 통합 문서 메타데이터 구축"""
+    base_dir = Path(base_dir)
     universe_df = pd.read_csv(
         os.path.join(base_dir, 'universe.csv'),
         dtype={'corp_code': str, 'stock_code': str},
@@ -55,8 +78,14 @@ def load_master_data(base_dir: str):
     return merged_df
 
 
-def process_doc_to_db():
-    base_directory = PROJECT_ROOT / 'data' / '3.gongsi' / 'corpus'
+def process_doc_to_db(corpus_dir: str | Path | None = None) -> dict[str, int]:
+    """Parse one complete corpus and write its chunks to SQLite and Chroma.
+
+    The function returns diagnostic counters. ``success_docs`` is increased only
+    after both the SQLite and Chroma writes for a batch complete successfully.
+    """
+
+    base_directory = _resolve_corpus_dir(corpus_dir)
 
     master_df = load_master_data(base_directory) # 매니페스트는 한 행당 하나의 문서
     master_docs = master_df.to_dict(orient='records') # 한 행 당 한 개의 '딕셔너리(키는 컬럼명)의 리스트'로 만듦.
@@ -64,6 +93,7 @@ def process_doc_to_db():
     print(f'Total Documents to Process: {len(master_docs)}')
 
     df_item_list = []
+    pending_doc_count = 0
     BATCH_SIZE = 50  # 문서 파일 (defalt: 50개 문서파일) 배치단위 수정
 
     # DB engine
@@ -135,6 +165,7 @@ def process_doc_to_db():
             rcept_no = chunk.get('rcept_no', 'doc_id') # rcept_no없으면 doc_id로
             chunk['chunk_id'] = f'{rcept_no}_{c_idx}'
         df_item_list.extend(doc_chunks) # 추가 청크들을 꺼내서 리스트에 잘 넣어줌:  [chunk1, chunk2, ..., chunk_n]
+        pending_doc_count += 1
 
         # vectorDB instance 한 번 intialized
         # vectorstore = vectorstore
@@ -190,6 +221,9 @@ def process_doc_to_db():
                 for i in range(0, len(docs), SUB_BATCH_SIZE):
                     sub_docs = docs[i : i + SUB_BATCH_SIZE]
                     vectorstore.add_documents(sub_docs)
+
+                stats["success_docs"] += pending_doc_count
+                pending_doc_count = 0
                             
                 print(f"{doc_idx} chroma db에 저장완료")
                 df_item_list = []  # 배치 후 메모리 비우기
@@ -203,6 +237,15 @@ def process_doc_to_db():
     print(f"- [스킵 원인2] 지원 파일(.xml/.html 등) 없음: {stats['no_target_files']}")
     print(f"- [스킵 원인3] 청크 0개 생성: {stats['empty_chunks']}")
     print("=" * 60)
+    return stats
 
 if __name__ == '__main__':
-    process_doc_to_db()
+    parser = argparse.ArgumentParser(description="DART corpus를 SQLite/Chroma production DB로 전처리")
+    parser.add_argument(
+        "--corpus-dir",
+        type=Path,
+        default=None,
+        help="universe.csv와 manifest.jsonl이 있는 corpus 경로. 생략하면 CORPUS_DIR을 사용합니다.",
+    )
+    args = parser.parse_args()
+    process_doc_to_db(args.corpus_dir)

@@ -3,6 +3,13 @@
 > **Legacy 경로**: 이 문서는 기존 `app/agent` 단독 LangGraph 그래프를 설명한다.
 > 현재 공식 Stage123 E2E 진입점은 `scripts/run_e2e.py`이며, 공식 Stage2는
 > `stage2/stage2_agent.py`다. 이 디렉터리는 호환·비교 목적으로 보존한다.
+> 이 문서는 기존 `app/agent` 단독 그래프용 문서이며 현재 Stage123 통합 E2E와 직접 연결되지 않는다.
+> 아래의 실행·DB 설명은 legacy standalone 경로에만 해당한다.
+
+현재 통합 Stage3는 별도 standalone package인 [`stage3/`](../../stage3/README.md)에 구현되어 있고,
+전체 조립은 [`integration/composition.py`](../../integration/composition.py)의
+`Stage123Application`이 담당한다. 이 legacy 그래프의 fallback 노드에서 말하는 Stage3
+placeholder는 **legacy 그래프 내부에서만** placeholder라는 뜻이다.
 
 `app/agent`는 LangGraph 기반 에이전트다. **Stage1(질의 이해)** 이 자연어 질문을 Intent JSON으로
 바꾸고, 그 결과에 따라 **Stage2(검색·SQL 질의 + RAG 답변 생성)** 로 넘어가거나 즉시 안내 문구로
@@ -10,27 +17,30 @@
 이 문서는 **legacy 그래프(app/agent) 레벨**의 사용법/입출력 명세만 다룬다.
 현재 통합 구조와 실행 방법은 workspace 루트의 `readme.md`와 `docs/INTEGRATION_REPORT.md`를 기준으로 한다.
 
-## 사용법
+## Legacy standalone 사용법
 
-1. 프로젝트 루트에 `data/3.gongsi/corpus`가 있어야 한다(원본 zip의 "3.공시" 폴더명을 `3.gongsi`로
-   변경). `CorpusIndex.load()`가 여기서 `universe.csv`/`manifest.jsonl`을 자동 탐색한다.
+이 경로는 실제 DART corpus와 SQLite/Chroma DB를 사용하는 별도 실행 경로다. 프로젝트 루트의
+`test_data/disclosure_clova_local.json`은 이 standalone 그래프의 corpus가 아니라 공식
+Stage123 통합 E2E용 JSON fixture다.
+
+1. `CORPUS_DIR` 또는 legacy 코드가 탐색하는 `universe.csv`/`manifest.jsonl` corpus를 준비한다.
 2. `pip install -r requirements.txt`
 3. `.env`에 `CLOVA_API_KEY`를 채운다(Stage2의 `ChatClovaX` 호출에 필요. `CLOVASTUDIO_API_KEY`는
    레거시 호환용으로만 읽는다. `app/agent/edges.py`도
    모듈 로드 시점에 LLM을 생성하므로 키가 없으면 즉시 에러가 난다).
 4. DB 생성(최초 1회 및 원본 데이터가 바뀔 때마다):
    ```bash
-   python3 dart_preprocessing/preprocesser.py
+   python dart_preprocessing/preprocesser.py --corpus-dir <CORPUS_DIR>
    ```
 5. 그래프 실행:
    ```bash
-   python3 app/agent/agent.py
+   python app/agent/agent.py
    ```
-   `agent.py` 맨 아래 `astream()`의 `messages` 리스트에 있는 문자열이 실제로 보내는 질문이다.
-   이 부분을 바꿔서 테스트하면 된다.
+   이 명령은 공식 E2E가 아니라 legacy 그래프만 실행한다. `agent.py` 맨 아래 `astream()`의
+   `messages` 리스트에 있는 문자열이 실제로 보내는 질문이다.
 6. 다른 스크립트에서 임포트해서 쓸 경우, `app/agent`가 `sys.path`에 있어야 `from state import ...`
    같은 bare import가 풀린다(`agent.py` 상단에서 `PROJECT_ROOT`를 `sys.path`에 넣어주므로,
-   `python3 app/agent/agent.py`처럼 스크립트를 직접 실행하는 방식을 권장).
+   `python app/agent/agent.py`처럼 스크립트를 직접 실행하는 방식도 legacy 그래프 범위에서만 권장한다).
 
 ## 파이프라인 개요
 
@@ -42,9 +52,9 @@ START
         │                                                   └─ (관련성 있음/재시도==2) response_generator
         │                                                        └─(hallucination) 아니오 → response_generator 재시도
         │                                                                          예    → END
-        ├─ route == "need_clarify"  ─▶ clarify_node       ─▶ END   (Stage3 미구현 placeholder)
-        ├─ route == "unanswerable"  ─▶ unanswerable_node  ─▶ END   (Stage3 미구현 placeholder)
-        └─ route == "unsafe"        ─▶ unsafe_node        ─▶ END   (Stage3 미구현 placeholder)
+        ├─ route == "need_clarify"  ─▶ clarify_node       ─▶ END   (legacy 내부 placeholder)
+        ├─ route == "unanswerable"  ─▶ unanswerable_node  ─▶ END   (legacy 내부 placeholder)
+        └─ route == "unsafe"        ─▶ unsafe_node        ─▶ END   (legacy 내부 placeholder)
 ```
 
 - Stage1: `app/agent/nodes/stage1.py` (`query_interpreter`) — 내부적으로 `stage1/`의
@@ -53,7 +63,8 @@ START
   `query_transformer`, `response_generator`) — 하이브리드 검색(`dart_hybrid_search_tool`, RDB+VectorDB)
   로 근거를 모으고 RAG로 답을 만든다.
 - Stage3 placeholder: `app/agent/nodes/fallback.py` (`clarify_node`, `unanswerable_node`,
-  `unsafe_node`) — 아직 미구현. 자세한 내용은 [향후 필요한 작업](#향후-필요한-작업) 참고.
+  `unsafe_node`) — 이 legacy 그래프 내부에서만 임시 노드다. 현재 통합 Stage3의 실제 구현은
+  `stage3/`와 `Stage123Application`을 사용한다.
 - 분기 로직: `app/agent/edges.py`의 `route_decision`(Stage1→Stage2/placeholder),
   `decide_to_generate`(검색 결과 평가), `check_hallucinations`(생성 답변 검증).
 

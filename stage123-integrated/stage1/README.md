@@ -18,26 +18,40 @@ workspace 루트의 `scripts/run_e2e.py`를 사용한다. JSON fixture E2E에서
 
 ```bash
 # 단건 (workspace 루트에서)
-python -m stage1.main "삼성전자의 2025년 연결기준 매출액은?"
+python -m stage1.main --corpus-dir <CORPUS_DIR> "삼성전자의 2025년 연결기준 매출액은?"
 
 # 2단계에 넘길 필터만
-python -m stage1.main --filter-only "현대건설이 2025년에 체결한 공급계약 정리해줘"
+python -m stage1.main --corpus-dir <CORPUS_DIR> --filter-only "현대건설이 2025년에 체결한 공급계약 정리해줘"
 
 # think_trace용 한 줄 요약
-python -m stage1.main --trace "2차전지 기업 중 2025년 설비투자가 가장 큰 곳은?"
+python -m stage1.main --corpus-dir <CORPUS_DIR> --trace "2차전지 기업 중 2025년 설비투자가 가장 큰 곳은?"
 
 # 골드셋 회귀
-python -m stage1.main --gold
+python -m stage1.main --corpus-dir <CORPUS_DIR> --gold
 
 # 골드셋 + 불변식 검증 (표준 라이브러리만, pytest 불필요)
+$env:CORPUS_DIR = "<CORPUS_DIR>"
 python -m stage1.tests.run_checks
 
 # pytest가 있으면
 pytest stage1/tests
 ```
 
-코퍼스 위치는 `CORPUS_DIR` 환경변수 또는 `--corpus-dir`로 지정한다. 없으면 상위 폴더에서
-`universe.csv`가 있는 `*/*/corpus`를 찾는다.
+`<CORPUS_DIR>`에는 `universe.csv`와 `manifest.jsonl`이 모두 있어야 한다. `--gold`와
+`stage1/tests/run_checks.py`는 이 실제 corpus의 기업·기간 경계를 사용하므로, corpus가 없으면
+실행할 수 없다. `test_data/disclosure_clova_local.json`은 Stage1 standalone corpus가 아니라
+Stage123 통합 E2E용 fixture다.
+
+전체 통합 경로에서는 `integration/local_index.py`의 `LocalJsonCorpusIndex`가 JSON fixture의
+기업·기간 정보를 Stage1 계약에 맞춰 구성한다. 따라서 통합 E2E를 실행할 때 Stage1 standalone
+corpus를 별도로 준비하지 않는다.
+
+단독 Stage1 실행과 Stage123 전체 실행은 다음처럼 구분한다.
+
+| 목적 | 진입점 | 입력 |
+|---|---|---|
+| Stage1 standalone | `python -m stage1.main --corpus-dir <CORPUS_DIR> ...` | `universe.csv` + `manifest.jsonl` |
+| Stage123 통합 E2E | `python scripts/run_e2e.py ...` | JSON fixture 또는 production adapter |
 
 ## 파이프라인
 

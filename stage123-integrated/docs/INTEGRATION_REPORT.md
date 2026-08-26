@@ -51,6 +51,19 @@ rtk python -m unittest discover -s stage3/tests -p "test_*.py" -v
 rtk python scripts/run_e2e.py "삼성전자의 2023년 1분기 매출액은 얼마인가?" --include-internal
 ```
 
+### 실행 경로별 검증 범위
+
+| 경로 | 데이터·DB | provider | 목적 |
+|---|---|---|---|
+| `scripts/run_e2e.py` | 기본 `test_data/disclosure_clova_local.json` JSON fixture | 실제 CLOVA ChatClovaX와 설정에 따른 CLOVA query embedding | 질문 1건의 공식 Stage123 E2E |
+| `scripts/run_e2e_suite.py` | JSON fixture 기본, 관련·무관·unsafe·clarify·기간 밖 케이스 | `.env`에 키가 있으면 실제 API, 없으면 provider 실패를 명시적으로 출력 | 반복 회귀와 케이스별 실패 분류 |
+| `E2E_DB_BACKEND=production` | `CORPUS_DIR`의 universe/manifest/raw 문서와 SQLite/Chroma | production repository와 provider | 선택적 production 준비 후 검증 |
+
+`run_e2e.py`는 단일 질문의 제출 응답과 선택적 내부 결과를 출력한다.
+`run_e2e_suite.py`는 동일한 `Stage123Application`을 여러 질문에 재사용하고 각 결과에
+`failure_classification`, `document_ids`, `citation_count`, `test_mode`를 출력한다.
+두 runner 모두 workspace `.env`를 읽고 Windows stdout/stderr를 UTF-8로 설정한다.
+
 실제 JSON semantic E2E에는 다음이 필요하다.
 
 ```text
@@ -77,6 +90,12 @@ OpenAI-compatible Chat Completions endpoint의 경량 `HCX-DASH-002` 모델을 �
 `/v1/api-tools/embedding/v2`를 직접 호출한다.
 
 키가 없거나 provider package가 없으면 결과의 `think_trace`에 `api_configuration` 또는 `dependency_issue`가 남는다. 해당 결과를 성공으로 집계하지 않는다.
+
+`.env.example`의 `LOCAL_JSON_DB_PATH`는 한때 `..\test_data\...`로 되어 있어
+`C:\projects\test_data`를 가리킬 수 있었다. 현재는 workspace 기준
+`test_data/disclosure_clova_local.json`으로 수정했으며, production 예시는
+`E2E_DB_BACKEND=production`과 `CORPUS_DIR` 주석으로만 제공한다. 실제 `.env`의 키 값은
+문서화하거나 수정하지 않는다.
 
 ## 문제 원인 및 수정 기록 (2026-08-26)
 
@@ -124,6 +143,9 @@ Production DB를 사용할 때는 `E2E_DB_BACKEND=production`, `CORPUS_DIR`, SQL
 - 통합 단위·handoff 테스트: 11개 통과
 - Stage 3 기존 회귀 테스트: 65개 통과
 - Python compileall: 통과
+- Stage1 gold: 실제 `universe.csv`와 `manifest.jsonl` corpus가 이 workspace에 없어 실행하지 못했다.
+  통합 JSON fixture는 Stage1 standalone gold corpus가 아니며, 통합 테스트에서는
+  `LocalJsonCorpusIndex`를 사용한다.
 - unsafe route: Stage2 provider 호출 없이 Stage3 blocked response 확인
 - 실제 lookup E2E: provider 연결 허용 실행에서 Stage2 `ok`, 후보 9건, vector-ranked 문서 3건 확인
 - 제한된 실행 환경에서 동일 호출 시 `[WinError 10013]`이 발생할 수 있으며, 이제 `provider_connection`과 원인 trace로 기록된다.
@@ -143,5 +165,9 @@ Production DB를 사용할 때는 `E2E_DB_BACKEND=production`, `CORPUS_DIR`, SQL
 - `4cd1273 fix: pass unified clova key to ChatClovaX`
 - `d70e53a test: use lightweight clova chat model`
 - `1ba50c5 fix: diagnose and harden stage123 e2e`
+- `8211682 docs: record stage123 e2e fix`
+- `a1f67e7 docs: record live related unrelated e2e`
+- `e9407e9 docs: clarify stage123 architecture and entrypoints`
+- `e190b53 refactor: organize stage123 package structure`
 
 부모 `lds` 브랜치의 기존 미추적 `stage123/` 폴더는 두 커밋에 포함하지 않았다.

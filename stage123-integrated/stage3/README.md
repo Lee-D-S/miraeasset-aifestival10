@@ -3,8 +3,9 @@
 Stage3는 Stage1의 Intent와 Stage2의 검색·rerank 결과를 입력으로 받아 공시 근거를 구조화하고, 결정론적 계산·비교·답변 검증을 수행하는 standalone package다.
 
 Stage2 결과는 `stage3.adapters.stage2`가 표준 계약으로 변환한다. 현재 공식 통합 E2E에서는
-`integration/composition.py`가 Stage3 `Stage3Service`를 호출한다. 기본 실행 모드는 `stdlib`이며,
-답변 client가 주입된 경우에만 HyperCLOVA X 답변 writer를 사용할 수 있다.
+실제 `stage2/` 결과를 `integration/composition.py`의 `Stage123Application`이 받아
+Stage3 `Stage3Service`로 전달한다. 기본 실행 모드는 `stdlib`이며, 답변 client가 주입된
+경우에만 HyperCLOVA X 답변 writer를 사용할 수 있다.
 
 ## Stage123 통합 경로
 
@@ -19,6 +20,38 @@ Stage1: stage1/
 
 Stage3 단독 테스트와 통합 E2E 테스트는 서로 다른 목적을 가진다. 통합 테스트 명령은
 workspace 루트 README의 실행 방법을 기준으로 한다.
+
+## `Stage3Service.process()`와 `answer()`
+
+- `process(question, stage1_intent, stage2_result)`는 내부 `Stage3Result`를 반환한다. Fact,
+  calculation, comparison, event, citation, validation, handoff trace를 검증해야 하는
+  서비스·테스트 경계에서 사용한다.
+- `answer(question_id, question, stage1_intent, stage2_result)`는 내부적으로 `process()`를
+  실행한 뒤 대회 제출 계약인 `question_id`, `question`, `retrieved_context`, `think_trace`,
+  `answer` 5개 문자열로 변환한다.
+
+현재 통합 애플리케이션은 [`integration/composition.py`](../integration/composition.py)의
+`Stage123Application`이다. 이 조립 계층이 Stage1 route gate와 Stage2 provider를 담당한 뒤
+`Stage3Service.process()`를 호출하고, 최종 제출 응답은 `to_submission_response()`로 만든다.
+
+## Standalone HTTP API와 실제 통합 E2E
+
+Standalone Stage3 HTTP API는 `stage3.api.create_app()`에 Stage1·Stage2 provider를 주입해
+사용한다. 이 API는 Stage3 계약을 점검하는 경계이며, 자체적으로 DART DB·Chroma·embedding을
+초기화하지 않는다.
+
+실제 Stage123 E2E는 `python scripts/run_e2e.py "질문"`으로 실행한다. 이 경로는
+`Stage123Application.from_environment()`를 통해 JSON fixture 또는 production repository를
+선택하고, 실제 Stage2 ChatClovaX·검색 Tool 결과를 Stage3에 전달한다. 따라서 standalone
+HTTP API와 실제 provider를 포함한 통합 E2E는 같은 Stage3 계약을 사용하지만 실행 진입점과
+provider 책임이 다르다.
+
+## 현재 검증 상태와 근거 한계
+
+통합 JSON fixture E2E에서 Stage2 ChatClovaX와 CLOVA query embedding 호출이 성공해도,
+fixture에 요청 지표의 구조화된 총계·기간·기준 근거가 부족하면 Stage3는
+`insufficient_evidence`를 반환한다. 이는 API 또는 Stage3 실행 실패가 아니라 검증기가 숫자를
+임의로 확정하지 않은 결과다. 현재 회귀 기준은 통합 테스트 11개와 Stage3 테스트 65개다.
 
 ## Stage1 입력
 
@@ -60,7 +93,9 @@ bundle = adapt_stage2_bundle(stage2_result)
 documents = bundle.effective_documents()
 ```
 
-Stage2의 최종 문서 계약이 확정되기 전까지 `adapt_stage2_bundle()`이 필드 차이를 흡수한다. Stage3는 검색·rerank를 수행하지 않고 전달받은 문서와 근거 구간만 사용한다.
+Stage2 payload에 일부 alias나 metadata 표현 차이가 있어도 `adapt_stage2_bundle()`이 표준 계약으로
+변환한다. 이 adapter는 현재 실제 통합 E2E에서 `stage2/` repository가 반환한 bundle을 받는
+경계로 사용된다. Stage3는 검색·rerank를 수행하지 않고 전달받은 문서와 근거 구간만 사용한다.
 
 문서 목록은 `documents`, `retrieved_documents`, `results`, 인용 목록은
 `cited_documents`, `citedDocuments` alias를 지원한다. 문서 ID·본문·출처·점수와
