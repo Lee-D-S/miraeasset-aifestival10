@@ -14,6 +14,7 @@ def append_values(left: list[Any], right: list[Any]) -> list[Any]:
 class Stage3GraphState(TypedDict, total=False):
     question: str
     intent: Stage3Intent
+    stage2_result: Any
     documents: list[Stage3Document]
     facts: list[Stage3Fact]
     calculations: list[dict[str, Any]]
@@ -29,6 +30,8 @@ class Stage3GraphState(TypedDict, total=False):
     answer_mode: str
     status: str
     fallback_reason: str
+    fallback_used: bool
+    validation_warnings: list[str]
     validation: dict[str, Any]
 
 
