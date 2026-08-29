@@ -1,270 +1,177 @@
 # Stage3
 
-Stage3는 Stage1의 Intent와 Stage2의 검색·rerank 결과를 입력으로 받아 공시 근거를 구조화하고, 결정론적 계산·비교와 HyperCLOVA X 답변 작성을 수행하는 모듈이다.
+Stage3는 Stage1의 Intent와 Stage2의 구조화된 검색 결과를 받아 Fact를 추출하고,
+결정론적 계산·비교·이벤트 연결을 수행한 뒤 근거 기반 답변을 작성하는 단일
+LangGraph 노드다.
 
-현재 구현 단계에서는 Stage1 Intent 입력 계약부터 구현한다. Stage2의 최종 문서 형식은 확정 전까지 별도 어댑터 뒤에 둔다.
+Stage3는 검색, 임베딩, rerank, 최종 답변 검증, API JSON 생성을 담당하지 않는다.
+이 기능들은 각각 Stage2와 Stage4 또는 외부 통합 그래프의 책임이다.
 
-## Stage1 입력
+외부 4-stage 그래프의 전체 실행 State는 `C:/projects/dis-164/shared_state.py`의
+`AgentState`를 사용한다. 이 문서의 `Stage3NodeState`/`Stage3NodeOutput`은 그
+전체 State 중 Stage3가 읽고 쓰는 부분 계약이며, Stage3 노드는 전체 State를
+직접 재구성하지 않고 partial update만 반환한다.
 
-```python
-from stage3.adapters.stage1 import adapt_stage1_intent
-
-intent = adapt_stage1_intent(stage1_intent_dict, question=question)
-```
-
-`route`가 `ok`가 아닌 경우 Stage3는 검색·계산·답변 생성을 진행하지 않고 한계 또는 차단 결과를 반환해야 한다.
-
-Stage3는 `raw_question`, `normalized_question`, `intent`, `route`, `corps`,
-`sector`, `sector_members`, `metric`, `metric_confidence`, `basis`, `time`,
-`correction_mode`, `allow_pdf_html`, `manifest_filter`, `doc_count`,
-`availability`, `assumptions`, `warnings`, `missing_slots`, `reject_reason`,
-`clarify_message`, `llm_used`를 Stage1 원본과 함께 보존한다. `manifest_filter`는
-Stage3가 다시 만들지 않는다. `route`가 `ok`가 아니면 API 경계에서 Stage2
-provider를 호출하지 않는다.
-
-Stage1이 정의한 metric key는 `stage3/metric_registry.py`의
-`STAGE1_METRICS`에서 관리한다. 이 registry는 질의를 재분류하지 않고, 후속 Fact
-추출기가 Stage1 metric에 맞는 공시 필드를 선택할 때 사용한다.
-
-재무 숫자 Fact는 `revenue`, `operating_profit`, `net_income`, `capex`와
-`total_assets` 계열을 처리한다. `total_assets` 계열은 원문 라벨에 따라
-`assets`, `liabilities`, `equity`, `ratio`로 분리한다. `supply_contract`,
-`contract_termination`, `facility_investment`, `fundraising`,
-`major_shareholding`은 유형별 field Fact를 추가하고, `business_overview`,
-`investment_plan`, `mgmt_judgement`, `rnd`, `dividend`, `employees`,
-`shareholders`, `litigation`, `restructuring`, `treasury_stock`은 근거 section
-Fact로 저장한다. 모든 Fact는 문서 ID·출처·근거를 함께 가진다.
-
-## Stage2 입력
+## Canonical node API
 
 ```python
-from stage3.adapters.stage2 import adapt_stage2_bundle
+from stage3 import build_stage3_node
 
-bundle = adapt_stage2_bundle(stage2_result)
-documents = bundle.effective_documents()
+stage3_node = build_stage3_node(answer_client=hyperclova_client)
+update = stage3_node(state)
 ```
 
-Stage2의 최종 문서 계약이 확정되기 전까지 `adapt_stage2_bundle()`이 필드 차이를 흡수한다. Stage3는 검색·rerank를 수행하지 않고 전달받은 문서와 근거 구간만 사용한다.
+`build_stage3_node()`가 반환하는 함수는 LangGraph node 규격에 맞춰 state를 하나
+받고 partial state update를 반환한다. 입력 state는 직접 수정하지 않는다.
 
-문서 목록은 `documents`, `retrieved_documents`, `results`, 인용 목록은
-`cited_documents`, `citedDocuments` alias를 지원한다. 문서 ID·본문·출처·점수와
-근거 span도 각각 계획된 alias에서 표준 필드로 변환한다. 인용 문서가 있으면
-`effective_documents()`가 인용 문서를 우선 반환한다. ID가 없는 문서는 근거로
-사용하지 않으며, 본문이 없더라도 텍스트가 있는 evidence span은 보존한다.
+### 입력 state
 
-중첩 `metadata`를 우선하고 top-level의 `corp_name`, `corp_code`, `doc_group`,
-`doc_subtype`, `report_nm`, `rcept_no`, `rcept_dt`, `flr_nm`, `base_year`,
-`base_month`, `is_correction`, `file_path`, `file_format`, `n_files`,
-`report_period`, `basis`를 누락 시 fallback으로 채운다. 그 외 입력 필드는
-어댑터의 `raw`에 남긴다.
+| 필드 | 설명 |
+|---|---|
+| `question` | 사용자 원문 질문 |
+| `intent` | Stage1 Intent mapping 또는 `Stage3Intent` |
+| `route` | `ok`, `need_clarify`, `unanswerable`, `unsafe` |
+| `stage2_result` | `documents`/`cited_documents`를 포함한 구조화 검색 결과 |
+| `context` | 기존 공유 context. 구조화 문서가 없으면 근거로 위조하지 않음 |
+| `messages` | LangGraph 대화 이력 |
+| `gen_retry_num` | 답변 생성 횟수 |
 
-## Fact 추출과 정규화
+통합 그래프에서 Stage3가 기대하는 Intent의 canonical 확장 형태는 다음과 같다.
+
+```json
+{
+  "question_type": "lookup|compare|calculation|event|text",
+  "calculation": {
+    "operation": "percentage_change",
+    "metric": "revenue",
+    "denominator_metric": "revenue"
+  }
+}
+```
+
+단, 현재 확인된 Stage1의 `Intent.to_dict()`에는 아직
+`question_type`과 중첩 `calculation`이 포함되지 않는다. 현재 Stage1의
+`intent` 값은 `lookup`, `calc`, `compare`, `list`, `change`, `exists`,
+`unknown` 중 하나이며, 이 값을 `question_type`의 임시 대체값으로 읽는 것은
+Stage3 내부 호환 처리다. Stage1 또는 Stage1 후단 변환기가 아래 두 필드를
+실제로 채울지는 통합 시 확정해야 한다.
+
+따라서 `question_type=calculation`인데 `calculation.operation`이 없으면 Stage3는
+질문 문구를 분석해 연산을 추측하지 않고 `missing_calculation_plan`을 반환한다.
+`question_type=compare`는 Stage1의 비교 판단에 따라 `rank`를 수행한다.
+
+### 출력 state
+
+process 가능한 요청은 다음 값을 partial update한다.
 
 ```python
-from stage3.agents.fact_extraction import extract_facts
-from stage3.deterministic.normalization import normalize_facts
-
-facts = extract_facts(bundle.effective_documents(), intent)
-facts, warnings = normalize_facts(facts, intent)
+{
+    "answer": "...",
+    "context": "검증용 근거·계산 묶음",
+    "messages": [assistant_message],
+    "gen_retry_num": previous_gen_retry_num + 1,
+    "stage3_result": {
+        "status": "success|insufficient_evidence|error|need_clarify|unanswerable|unsafe",
+        "answer": "...",
+        "facts": [...],
+        "calculations": [...],
+        "comparison_results": [...],
+        "linked_events": [...],
+        "citations": [...],
+        "warnings": [...],
+        "trace": [...]
+    }
+}
 ```
 
-추출 결과는 지표·원값·단위·정규화값·기간·연결/별도 기준·기업·문서 ID·근거 구간을 보존한다. 계산에 사용할 값은 `normalized_value`를 사용하며, 기간·기준이 불명확하면 경고를 남긴다.
+`route != ok`이면 Stage3는 `stage3_result`만 기록하고 답변·context·메시지·생성
+카운터를 갱신하지 않는다. 최종 차단 문구는 Stage4가 결정한다.
 
-본문이 DART XML이면 `xml.etree.ElementTree`, HTML이면 `html.parser.HTMLParser`로
-표를 읽는다. `<TABLE>/<TR>/<TD>/<TH>/<TU>`와 HTML `table/tr/td/th/span`을
-지원하며 `colspan`·`rowspan`, 별도 단위 행, `연결조정 전·후`, `△` 음수 표기를
-구조화한다. 금액 표는 KRW 단위를 정규화하고 USD 같은 외화는 `currency`를
-분리해 보존하며 환율을 임의로 적용하지 않는다. 표 Fact에는 행·열·단위·기간
-context도 남긴다.
-
-Stage2가 PDF 경로만 전달하고 본문 또는 evidence span을 전달하지 않으면 Stage3는
-PDF를 직접 파싱하지 않고 `pdf_text_required` 경고와 `insufficient_evidence`
-상태를 반환한다.
-
-## 계산·비교·사건 연결
-
-```python
-from stage3.agents.calculation import calculate_facts
-from stage3.agents.comparison import compare_facts
-from stage3.agents.event_linker import link_events
-
-calculation = calculate_facts(facts, intent)
-comparison = compare_facts(facts, intent)
-events = link_events(bundle.effective_documents(), intent)
-```
-
-계산과 비교는 검색 score가 아니라 정규화된 Fact 값으로 수행한다. 계산 Registry는 whitelist 연산만 실행하며, 기간·단위·연결/별도 기준이 맞지 않으면 결과 대신 오류 상태와 근거를 반환한다.
-
-정정공시는 Stage1 `correction_mode`에 따라 원본만, 최신 정정본 우선, 또는 전체
-chain으로 처리한다. 정정 chain은 기업·공시 그룹·세부 유형·기준 기간·정정
-표시를 기준으로 묶고, 정정 사유·변경 전후 항목이 없으면 `insufficient_evidence`
-경고를 남긴다. 계약 체결·해지 연결은 metadata의 원공시 접수번호 또는 원문
-식별자를 먼저 사용한다. 이 정보가 없으면 기업·계약명·상대방·금액·계약일을
-정확히 비교하며, 부분 문자열만 같은 문서는 연결하지 않는다.
-
-증감률·CAGR은 Intent가 지정한 기간의 Fact만 선택한다. 비교·순위는
-`companies` 또는 `sector_members`를 모두 요구하고 동일 기간·기준·통화의 값만
-정렬한다. KRW 단위처럼 변환 가능한 단위는 canonical 값으로 맞추지만, 통화가
-다르거나 단위·기간·기준이 없으면 계산하지 않는다. 비중과 영업이익률은
-Stage1의 주 지표 Fact와 같은 기업·기간의 매출액 Fact를 분자·분모로 사용한다.
-계산 결과에는 산식·입력 Fact의 기간·단위·기준·통화·문서 ID를 함께 저장한다.
-
-## Supervisor와 제출 응답
-
-```python
-from stage3.service import Stage3Service
-
-service = Stage3Service()
-response = service.answer(
-    question_id="Q-001",
-    question=question,
-    stage1_intent=stage1_intent,
-    stage2_result=stage2_result,
-)
-```
-
-`Stage3Service`는 Stage1 route를 먼저 확인한 뒤 Fact·계산·비교·사건 Agent 결과를 통합하고 답변을 작성한다. 최종 `response`는 대회 제출 형식의 5개 문자열 필드로 변환된다. HyperCLOVA X client를 주입하면 답변 생성에 사용하고, client가 없으면 근거 기반 결정론적 템플릿으로 fallback한다.
-
-답변 검증기는 Fact의 문서 ID·citation, 계산 입력과 산식을 재검사하고 답변의
-숫자를 Fact·계산 결과와 대조한다. 검증에 실패한 HyperCLOVA X 답변은 사용하지
-않고 deterministic fallback으로 교체한다. citation의 `evidence`는 연결된 Fact
-근거와 Stage2 evidence span을 우선 사용하며, 외부 제출 응답은
-`question_id`, `question`, `retrieved_context`, `think_trace`, `answer` 5개
-문자열 필드만 반환한다.
-
-실제 HTTP 경계는 외부 웹 프레임워크 없이 Python 표준 라이브러리로 제공하며, Stage2 최종 계약을 고정하지 않도록 provider 주입 방식으로 제공한다.
-
-```python
-from stage3.api import create_app
-
-app = create_app(stage1_provider=parse_stage1, stage2_provider=retrieve_stage2)
-app.serve(host="0.0.0.0", port=8080)
-```
-
-`GET /answer`는 인증 헤더 없이 호출되며, provider 오류는 최초 호출 후 최대 2회 재시도한다. 세 번 모두 실패하면 503을 반환한다.
-
-Stage3 패키지는 `agentic_rag`, FastAPI, Pydantic 등 외부 프로젝트·웹 프레임워크에 의존하지 않는다. `requirements.txt`에는 설치 패키지가 없으며, Stage1·Stage2 provider와 HyperCLOVA X client는 실행 환경에서 주입한다.
-
-## 테스트
-
-```powershell
-python -m unittest stage3.tests.test_stage1_adapter -v
-python -m unittest stage3.tests.test_stage2_adapter -v
-python -m unittest stage3.tests.test_structured_parsing -v
-python -m unittest stage3.tests.test_fact_extraction -v
-python -m unittest stage3.tests.test_calculation_comparison -v
-python -m unittest stage3.tests.test_event_linker -v
-python -m unittest stage3.tests.test_service_and_api -v
-python -m unittest stage3.tests.test_api -v
-```
-
-## Actual Stage2 boundary
-
-The Stage2 preprocessing output uses `chunk_id` for the chunk identifier and
-`text_content` for the chunk body. Chroma document outputs may expose the body
-as `page_content`. The Stage3 adapter accepts all of these aliases:
+## 내부 처리 흐름
 
 ```text
-ID: id, doc_id, document_id, chunk_id
-Body: text, content, doc, text_content, page_content
-Source: source, source_path, file_path
-```
-
-Stage2 metadata such as `rcept_no`, `rcept_dt`, `base_year`, `base_month`,
-`doc_group`, `doc_subtype`, `is_correction`, `section_name`, `chunk_type`, and
-`raw_json_content` is preserved for Fact extraction and citations.
-
-Stage3 requires a stable document or chunk ID and body text (or an evidence
-span). A string-only Stage2 context does not contain a stable ID or metadata,
-so it is not converted into a document and produces `insufficient_evidence`.
-Stage3 never reconstructs IDs from that string and never reruns Stage2 search
-or reranking.
-
-The integrated application injects a structured Stage2 provider from outside
-the standalone Stage3 package:
-
-```python
-from stage3.api import create_app
-
-app = create_app(
-    stage1_provider=parse_stage1,
-    stage2_provider=retrieve_stage2,
-)
-```
-
-The provider must return a mapping with `documents` (or a supported alias),
-where each usable item contains a stable ID and body text. Stage3 itself does
-not import Stage2's database, Chroma, or embedding dependencies. LangGraph is
-loaded only by the optional execution boundary described below.
-
-## Execution modes
-
-`create_app()` accepts an optional `execution_mode` argument:
-
-```python
-app = create_app(
-    stage1_provider=parse_stage1,
-    stage2_provider=retrieve_stage2,
-    execution_mode="auto",
-)
-```
-
-The supported modes are `auto`, `langgraph`, and `stdlib`. `auto` uses the
-LangGraph workflow when the optional package is installed and otherwise uses
-the standard-library runner. The `langgraph` mode requires the dependencies in
-`stage3/requirements-langgraph.txt`; `stdlib` runs without external packages.
-
-## Agent workflow
-
-`Stage3Service` is an execution facade. It adapts the Stage1 Intent and the
-structured Stage2 result, then runs one of two implementations of the same
-workflow. The service does not call Fact extraction, calculation, comparison,
-event linking, or answer writing directly.
-
-```text
-Stage1 Intent
+Stage1 Intent + Stage2 structured result
   -> route gate
-  -> Stage2 evidence adapter
-  -> fact_extraction_agent
-  -> deterministic analysis router
-       -> calculation_agent
-       -> comparison_agent
-       -> event_linker_agent
-  -> merge_analysis
-  -> answer_agent
-  -> validation_agent
-       -> submission
-       -> fallback_agent -> validation_agent
+  -> cited_documents 우선 선택
+  -> 본문/XML/HTML에서 Fact 추출
+  -> 단위·기간·연결/별도 기준 정규화
+  -> Stage1이 지정한 계산·비교 실행
+  -> 필요 시 계약·정정·후속 공시 연결
+  -> citations와 검증용 context 구성
+  -> HyperCLOVA X 답변 작성 또는 deterministic fallback
+  -> Stage3 partial state update
 ```
 
-The LangGraph implementation uses `StateGraph`, conditional edges, and
-`Send` for independent specialist branches. The stdlib implementation follows
-the same node handlers and contracts in a deterministic sequence. Stage1
-already supplies the route, metric, period, basis, and question type, so the
-Stage3 router does not classify the question again and does not use an LLM to
-choose an agent.
+Fact 추출과 계산은 결정론적으로 실행한다. 지원하는 whitelist operation은
+`add`, `subtract`, `multiply`, `divide`, `percentage_change`, `cagr`,
+`ratio_percent`, `margin`, `sum`, `average`, `min`, `max`, `rank`다.
+입력 기간·단위·통화·연결/별도 기준이 맞지 않으면 계산하지 않고 상태와 경고를
+반환한다.
 
-The fixed Agent names are `supervisor`, `fact_extractor`, `calculation`,
-`comparison`, `event_linker`, `answer`, `validator`, and `fallback`. Each Agent
-result is stored as `AgentResult`; the documents and evidence it used are
-stored as `Provenance`. Graph transitions are also recorded as
-`HandoffRequest` entries. These records are available in the internal
-`Stage3Result` and are not added to the external five-field submission
-response.
+계약·정정·후속 공시 연결은 Stage1이 event/correction 유형을 지정했거나 metric이
+계약 관련인 경우에만 실행한다. 원공시 접수번호·문서 ID를 우선 사용하고, 식별자가
+없는 경우에도 계약명이 정확히 일치하고 보조 필드가 확인될 때만 연결한다.
 
-Stage3 does not contain retrieval, vector search, or reranking nodes. The
-Stage2 provider remains responsible for search and reranking and must return a
-stable document/chunk ID plus text or evidence spans. A string-only search
-result is rejected as evidence rather than being reconstructed into a fake
-document.
+## Stage2 boundary
 
-The optional LangGraph dependency is installed separately:
+Stage3는 Stage2의 검색·임베딩·rerank 구현을 import하거나 호출하지 않는다.
+`stage2_result`는 다음 alias를 지원하는 구조화 mapping이어야 한다.
+
+- 문서 목록: `documents`, `retrieved_documents`, `results`
+- 인용 목록: `cited_documents`, `citedDocuments`
+- ID: `id`, `doc_id`, `document_id`, `chunk_id`
+- 본문: `text`, `content`, `doc`, `text_content`, `page_content`
+- 메타데이터: 중첩 `metadata` 우선, top-level 값은 누락 시 보완
+
+`cited_documents`가 있으면 이를 우선 사용한다. ID가 없거나 본문·evidence span이
+없는 문서는 Fact와 citation의 근거로 사용하지 않는다. 문자열 `context`만으로
+가짜 문서 ID를 만들지 않는다.
+
+## Answer writer
+
+실행 환경에서는 HyperCLOVA X client를 주입한다.
+
+```python
+stage3_node = build_stage3_node(answer_client=hyperclova_client)
+```
+
+client는 `generate_text(messages)` 인터페이스를 제공해야 한다. client가 없거나
+호출에 실패하면 Fact·계산·citation만 사용하는 deterministic fallback을 사용한다.
+Stage3는 답변 재생성·수치 검증·출처 검증·의미 검증을 수행하지 않는다. 이 작업은
+Stage4가 담당한다.
+
+## 기존 API 호환성
+
+`Stage3Service.process()`, `Stage3Service.answer()`, `create_app()`의 호출 형태는
+호환용으로 유지된다. 이 API들도 동일한 canonical Stage3 pipeline을 사용한다.
+
+`execution_mode="langgraph"`를 선택하면 `stage3` 하나만 포함한 compatibility graph를
+사용한다. 외부 통합 그래프에서는 다음처럼 Stage3 node 하나를 Stage1과 Stage4
+사이에 직접 등록한다.
+
+```python
+builder.add_node("stage3", build_stage3_node(answer_client=hyperclova_client))
+```
+
+LangGraph compatibility graph를 사용하려면 다음 의존성을 설치한다.
 
 ```powershell
 python -m pip install -r stage3/requirements-langgraph.txt
 ```
 
-If that package is unavailable, use `execution_mode="stdlib"` explicitly or
-leave the mode as `"auto"` to select the standard-library fallback. If
-`execution_mode="langgraph"` is explicitly requested without the package,
-Stage3 raises a configuration error instead of silently switching modes.
+## 테스트
+
+```powershell
+python -m unittest discover -s stage3/tests -p "test_*.py" -v
+python -m compileall -q stage3
+```
+
+단일 node 계약 테스트는 다음을 검증한다.
+
+- partial update와 입력 state 불변성
+- 구조화 Stage2 문서·citation 전달
+- route 차단과 근거 부족 처리
+- Stage1 명시 operation 기반 계산
+- 계약·정정 이벤트의 조건부 연결
+- HyperCLOVA client 1회 호출과 deterministic fallback
+- `gen_retry_num`만 증가하고 `retry_num`과 Stage4 validation은 건드리지 않음
