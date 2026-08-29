@@ -60,12 +60,10 @@ def _evidence(text: str, start: int, end: int) -> str:
     return text[left:right].strip()
 
 
-def _metric_pattern(metric: str | None, question: str = "") -> tuple[str, ...]:
+def _metric_pattern(metric: str | None, *, extra_metrics: Iterable[str] = ()) -> tuple[str, ...]:
     labels = list(numeric_labels_for(metric))
-    if any(word in question for word in ("비중", "비율", "마진", "영업이익률")):
-        labels.extend(numeric_labels_for("revenue"))
-    if "영업이익률" in question or "마진" in question:
-        labels.extend(numeric_labels_for("operating_profit"))
+    for extra_metric in extra_metrics:
+        labels.extend(numeric_labels_for(extra_metric))
     return tuple(dict.fromkeys(labels))
 
 
@@ -145,7 +143,13 @@ def extract_facts(documents: Iterable[Stage3Document], intent: Stage3Intent) -> 
     """Extract grounded numeric and date facts from Stage2 evidence text."""
 
     facts: list[Stage3Fact] = []
-    labels = _metric_pattern(intent.metric, intent.normalized_question)
+    extra_metrics: list[str] = []
+    operation = str(intent.calculation.get("operation", ""))
+    if operation in {"ratio_percent", "margin"}:
+        extra_metrics.append(str(intent.calculation.get("denominator_metric") or "revenue"))
+    if operation == "margin":
+        extra_metrics.append("operating_profit")
+    labels = _metric_pattern(intent.metric, extra_metrics=extra_metrics)
     label_pattern = "|".join(re.escape(label) for label in sorted(labels, key=len, reverse=True)) or r"(?!)"
     numeric_pattern = re.compile(rf"(?P<label>{label_pattern})[^\d\-△▲]*(?P<value>{NUMBER_PATTERN})\s*(?P<unit>{UNIT_PATTERN}|단위)?")
     for document in documents:

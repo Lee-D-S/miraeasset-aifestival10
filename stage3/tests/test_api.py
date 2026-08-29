@@ -46,7 +46,7 @@ class ApiTests(unittest.TestCase):
 
         self.assertEqual(calls["count"], 0)
         self.assertEqual(response["question_id"], "Q-CLARIFY")
-        self.assertIn("명확하지", response["answer"])
+        self.assertEqual(response["answer"], "")
 
     def test_provider_boundary_allows_two_retries(self):
         calls = {"count": 0}

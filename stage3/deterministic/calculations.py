@@ -115,20 +115,12 @@ def _calculation_result(operation: str, facts: list[Stage3Fact], result: float, 
 
 
 def infer_operation(intent: Stage3Intent) -> str:
-    question = intent.normalized_question
-    if intent.intent in {"compare", "comparison"} or any(word in question for word in ("비교", "어느 기업", "가장 큰", "순위")):
+    """Return only the operation explicitly selected by Stage1."""
+
+    question_type = (intent.question_type or intent.intent or "").strip().lower()
+    if question_type in {"compare", "comparison"}:
         return "rank"
-    if any(word in question for word in ("증감률", "증가율", "감소율", "성장률")):
-        return "percentage_change"
-    if "CAGR" in question.upper() or "연평균" in question:
-        return "cagr"
-    if "영업이익률" in question or "마진" in question:
-        return "margin"
-    if "비중" in question or "비율" in question:
-        return "ratio_percent"
-    if "합계" in question or "총액" in question:
-        return "sum"
-    return "compare" if intent.intent in {"compare", "comparison"} else "lookup"
+    return str(intent.calculation.get("operation", "lookup"))
 
 
 def _series_facts(selected: list[Stage3Fact], intent: Stage3Intent, periods: list[str]) -> list[Stage3Fact]:
@@ -218,11 +210,18 @@ def _compare_values(facts: list[Stage3Fact], intent: Stage3Intent, operation: st
     }
 
 
-def _ratio_inputs(selected: list[Stage3Fact], intent: Stage3Intent, numerator_metric: str) -> tuple[Stage3Fact, Stage3Fact] | None:
+def _ratio_inputs(
+    selected: list[Stage3Fact],
+    intent: Stage3Intent,
+    numerator_metric: str,
+    denominator_metric: str = "revenue",
+) -> tuple[Stage3Fact, Stage3Fact] | None:
     periods = _requested_periods(intent)
     selected = _filter_periods(selected, periods)
     numerator = [fact for fact in selected if fact.metric == numerator_metric]
-    denominator = [fact for fact in selected if fact.metric == "revenue" or fact.label in {"매출액", "매출"}]
+    denominator = [fact for fact in selected if fact.metric == denominator_metric]
+    if denominator_metric == "revenue":
+        denominator = [fact for fact in selected if fact.metric == "revenue" or fact.label in {"매출액", "매출"}]
     companies = intent.companies or intent.sector_members
     if companies:
         numerator = [fact for fact in numerator if fact.company in companies]
@@ -276,7 +275,8 @@ def calculate_facts(facts: Iterable[Stage3Fact], intent: Stage3Intent, *, operat
         return _calculation_result(operation, [old, new], result, formula, "%")
     if operation in {"ratio_percent", "margin"}:
         numerator_metric = "operating_profit" if operation == "margin" else (intent.metric or "")
-        pair = _ratio_inputs(selected, intent, numerator_metric)
+        denominator_metric = str(intent.calculation.get("denominator_metric") or "revenue")
+        pair = _ratio_inputs(selected, intent, numerator_metric, denominator_metric)
         if pair is None:
             return _error(operation, "insufficient_evidence", "비중·마진 계산에 필요한 분자·분모가 없습니다.")
         numerator, denominator = pair
@@ -287,6 +287,23 @@ def calculate_facts(facts: Iterable[Stage3Fact], intent: Stage3Intent, *, operat
         if operation == "ratio_percent":
             result *= 100
         return _calculation_result(operation, [numerator, denominator], result, "numerator/denominator*100", "%")
+    if operation in {"add", "subtract", "multiply", "divide"}:
+        selected = _filter_periods(selected, _requested_periods(intent))
+        if len(selected) < 2:
+            return _error(operation, "insufficient_evidence", "사칙연산에 필요한 두 개 이상의 수치 근거가 없습니다.")
+        operands = sorted(selected, key=lambda fact: (str(fact.period), str(fact.document_id)))[:2]
+        alignment_error = _alignment_error(operands, same_period=False)
+        if alignment_error:
+            return _error(operation, alignment_error, "사칙연산 입력값의 기간·기준·통화·단위가 다릅니다.")
+        result = execute_operation(operation, [float(fact.normalized_value) for fact in operands])
+        formula = {
+            "add": "left+right",
+            "subtract": "left-right",
+            "multiply": "left*right",
+            "divide": "left/right",
+        }[operation]
+        unit = _common_display_unit(operands) if operation in {"add", "subtract"} else ""
+        return _calculation_result(operation, operands, result, formula, unit)
     if operation in {"sum", "average", "min", "max"}:
         selected = _filter_periods(selected, _requested_periods(intent))
         if not selected:

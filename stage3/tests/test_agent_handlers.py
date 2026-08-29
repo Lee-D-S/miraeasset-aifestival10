@@ -24,6 +24,8 @@ class AgentHandlerTests(unittest.TestCase):
         calc_intent = adapt_stage1_intent({
             "route": "ok",
             "intent": "calc",
+            "question_type": "calculation",
+            "calculation": {"operation": "percentage_change"},
             "metric": "revenue",
             "basis": "연결",
             "normalized_question": "2024년에서 2025년 매출 증가율은?",

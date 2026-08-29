@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Annotated, TypedDict
+from typing import Any, Annotated, Mapping, TypedDict
 
 from stage3.contracts import Stage3Document, Stage3Fact, Stage3Intent
 
@@ -33,6 +33,44 @@ class Stage3GraphState(TypedDict, total=False):
     fallback_used: bool
     validation_warnings: list[str]
     validation: dict[str, Any]
+    stage3_result: dict[str, Any]
 
 
-__all__ = ["Stage3GraphState", "append_values"]
+class Stage3NodeState(TypedDict, total=False):
+    """Structural input contract for the single Stage3 LangGraph node.
+
+    The outer application may use a richer ``AgentState``.  Stage3 only
+    depends on these keys and therefore does not import the team's concrete
+    state module.
+    """
+
+    question: str
+    intent: Mapping[str, Any] | Stage3Intent
+    route: str
+    stage2_result: Any
+    context: str
+    messages: list[Any]
+    gen_retry_num: int
+
+
+class Stage3NodeOutput(TypedDict, total=False):
+    """Partial state update returned by the canonical Stage3 node."""
+
+    answer: str
+    context: str
+    messages: list[Any]
+    gen_retry_num: int
+    stage3_result: dict[str, Any]
+
+
+class Stage3NodeGraphState(Stage3NodeState, Stage3NodeOutput, total=False):
+    """Combined schema used only by the optional one-node compatibility graph."""
+
+
+__all__ = [
+    "Stage3GraphState",
+    "Stage3NodeGraphState",
+    "Stage3NodeOutput",
+    "Stage3NodeState",
+    "append_values",
+]

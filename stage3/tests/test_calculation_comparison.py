@@ -18,6 +18,8 @@ class CalculationComparisonTests(unittest.TestCase):
             "normalized_question": question,
             "route": "ok",
             "intent": "compare" if "기업" in question else "calc",
+            "question_type": "compare" if "기업" in question else "calculation",
+            "calculation": {"operation": "rank"} if "기업" in question else {"operation": "percentage_change"},
             "metric": metric,
             "basis": "연결",
             "time": {},
@@ -68,6 +70,8 @@ class CalculationComparisonTests(unittest.TestCase):
             "normalized_question": "2024년에서 2025년 매출 증가율은?",
             "route": "ok",
             "intent": "calc",
+            "question_type": "calculation",
+            "calculation": {"operation": "percentage_change"},
             "metric": "revenue",
             "basis": "연결",
             "time": {"years": [2024, 2025], "base_months": [12]},
@@ -123,6 +127,8 @@ class CalculationComparisonTests(unittest.TestCase):
             "normalized_question": "설비투자 매출 비중은?",
             "route": "ok",
             "intent": "calc",
+            "question_type": "calculation",
+            "calculation": {"operation": "ratio_percent"},
             "metric": "capex",
             "basis": "연결",
         })
@@ -134,6 +140,25 @@ class CalculationComparisonTests(unittest.TestCase):
         result = calculate_facts(facts, intent, operation="ratio_percent")
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["result"], 10.0)
+
+    def test_arithmetic_operations_are_whitelisted(self):
+        intent = adapt_stage1_intent({
+            "raw_question": "두 금액의 합계는?",
+            "normalized_question": "두 금액의 합계는?",
+            "route": "ok",
+            "intent": "calc",
+            "question_type": "calculation",
+            "calculation": {"operation": "add"},
+            "metric": "revenue",
+            "basis": "연결",
+        })
+        facts = extract_facts(adapt_stage2_bundle([
+            {"id": "left", "text": "2025년 연결 매출액 10억원", "metadata": {"corp_name": "기업A", "report_period": "2025-12", "basis": "연결"}},
+            {"id": "right", "text": "2025년 연결 매출액 5억원", "metadata": {"corp_name": "기업B", "report_period": "2025-12", "basis": "연결"}},
+        ]).documents, intent)
+        result = calculate_facts(normalize_facts(facts, intent)[0], intent, operation="add")
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["result"], 1_500_000_000.0)
 
     def test_currency_mismatch_is_rejected(self):
         def fact(document_id: str, currency: str) -> Stage3Fact:
@@ -162,6 +187,7 @@ class CalculationComparisonTests(unittest.TestCase):
         margin_intent = adapt_stage1_intent({
             "raw_question": "영업이익률은?", "normalized_question": "영업이익률은?", "route": "ok",
             "intent": "calc", "metric": "operating_profit", "basis": "연결",
+            "question_type": "calculation", "calculation": {"operation": "margin"},
         })
         margin_facts = extract_facts(adapt_stage2_bundle([
             {"id": "op", "text": "영업이익 20억원", "metadata": {"corp_name": "기업A", "report_period": "2025-12", "basis": "연결"}},
@@ -173,6 +199,7 @@ class CalculationComparisonTests(unittest.TestCase):
         cagr_intent = adapt_stage1_intent({
             "raw_question": "2023년부터 2025년까지 CAGR은?", "normalized_question": "2023년부터 2025년까지 CAGR은?", "route": "ok",
             "intent": "calc", "metric": "revenue", "basis": "연결",
+            "question_type": "calculation", "calculation": {"operation": "cagr"},
             "time": {"years": [2023, 2025], "base_months": [12]},
         })
         cagr_facts = self._facts(

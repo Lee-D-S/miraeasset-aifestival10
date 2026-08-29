@@ -13,12 +13,21 @@ def calculation_agent(state: Stage3GraphState) -> AgentResult:
         for fact in state.get("facts", [])
     ]
     plan = build_calculation_plan(intent)
-    if not plan or plan.get("operation") not in SUPPORTED_OPERATIONS:
+    if not plan:
+        return AgentResult(
+            agent="calculation",
+            status="missing_calculation_plan",
+            confidence=0.0,
+            warnings=("Stage1 calculation.operation이 없습니다.",),
+            trace=("plan=missing",),
+        )
+    if plan.get("operation") not in SUPPORTED_OPERATIONS:
         return AgentResult(
             agent="calculation",
             status="unsupported",
             confidence=0.0,
-            trace=("plan=none",),
+            warnings=(f"지원하지 않는 계산 연산입니다: {plan.get('operation', '')}",),
+            trace=(f"operation={plan.get('operation', '')}",),
         )
 
     result = calculate_facts(facts, intent, operation=plan["operation"])

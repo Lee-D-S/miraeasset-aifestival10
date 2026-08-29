@@ -66,7 +66,7 @@ class Stage3ServiceTests(unittest.TestCase):
         self.assertEqual(result.status, "insufficient_evidence")
         self.assertIn("pdf-only: pdf_text_required", result.warnings)
 
-    def test_unverified_hyperclova_answer_is_replaced_by_deterministic_fallback(self):
+    def test_stage3_does_not_validate_injected_hyperclova_answer(self):
         class HallucinatingClient:
             def generate_text(self, _messages):
                 return "매출액은 999억원입니다."
@@ -77,10 +77,9 @@ class Stage3ServiceTests(unittest.TestCase):
             stage1_intent={"route": "ok", "intent": "lookup", "metric": "revenue", "basis": "연결", "time": {"years": [2025], "base_months": [12]}},
             stage2_result={"documents": [{"id": "grounded", "text": "2025년 연결 매출액 100억원", "metadata": {"corp_name": "기업A", "report_period": "2025-12", "basis": "연결"}}]},
         )
-        self.assertEqual(result.status, "insufficient_evidence")
-        self.assertIn("100", result.answer)
-        self.assertNotIn("999", result.answer)
-        self.assertIn("validation_failed", result.trace)
+        self.assertEqual(result.status, "success")
+        self.assertIn("999", result.answer)
+        self.assertNotIn("validation_failed", result.trace)
 
     def test_validator_recomputes_calculation_and_rejects_tampered_result(self):
         intent = adapt_stage1_intent({"route": "ok", "intent": "calc", "metric": "revenue", "basis": "연결"})

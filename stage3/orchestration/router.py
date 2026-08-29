@@ -11,13 +11,14 @@ def route_after_gate(state: dict[str, Any]) -> str:
 
 
 def analysis_targets(intent: Stage3Intent) -> tuple[str, ...]:
-    question = intent.normalized_question
+    question_type = (intent.question_type or intent.intent or "").strip().lower()
+    operation = str(intent.calculation.get("operation", "")).strip().lower()
     targets: list[str] = []
-    if intent.intent in {"calc", "calculation"} or any(word in question for word in ("증감률", "증가율", "비중", "합계", "성장률", "CAGR", "영업이익률", "마진")):
+    if question_type in {"calc", "calculation"} and operation:
         targets.append("calculation_agent")
-    if intent.intent in {"compare", "comparison"} or any(word in question for word in ("비교", "어느 기업", "가장 큰", "순위")):
+    if question_type in {"compare", "comparison"}:
         targets.append("comparison_agent")
-    if intent.intent in {"exists", "event_link", "change"} or any(word in question for word in ("계약", "해지", "정정", "후속")):
+    if question_type in {"event", "exists", "event_link", "change", "contract", "correction"} or intent.metric in {"supply_contract", "contract_termination"}:
         targets.append("event_linker_agent")
     return tuple(dict.fromkeys(targets))
 

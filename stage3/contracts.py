@@ -210,6 +210,25 @@ class Stage3Result:
     agent_results: list[dict[str, Any]] = field(default_factory=list)
     handoffs: list[dict[str, Any]] = field(default_factory=list)
 
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "Stage3Result":
+        """Rehydrate a result returned through the LangGraph state channel."""
+
+        return cls(
+            status=str(value.get("status", "error")),
+            answer=str(value.get("answer", "")),
+            facts=[dict(item) for item in value.get("facts", []) if isinstance(item, Mapping)],
+            calculations=[dict(item) for item in value.get("calculations", []) if isinstance(item, Mapping)],
+            comparison_results=[dict(item) for item in value.get("comparison_results", []) if isinstance(item, Mapping)],
+            linked_events=[dict(item) for item in value.get("linked_events", []) if isinstance(item, Mapping)],
+            citations=[dict(item) for item in value.get("citations", []) if isinstance(item, Mapping)],
+            warnings=[str(item) for item in value.get("warnings", [])],
+            provenance=[dict(item) for item in value.get("provenance", []) if isinstance(item, Mapping)],
+            trace=[str(item) for item in value.get("trace", [])],
+            agent_results=[dict(item) for item in value.get("agent_results", []) if isinstance(item, Mapping)],
+            handoffs=[dict(item) for item in value.get("handoffs", []) if isinstance(item, Mapping)],
+        )
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "status": self.status,
@@ -235,6 +254,8 @@ class Stage3Intent:
     normalized_question: str
     route: Stage3Route
     intent: str
+    question_type: str | None = None
+    calculation: dict[str, Any] = field(default_factory=dict)
     metric: str | None = None
     basis: str | None = None
     time: dict[str, Any] = field(default_factory=dict)
@@ -269,6 +290,8 @@ class Stage3Intent:
             "normalized_question": self.normalized_question,
             "route": self.route,
             "intent": self.intent,
+            "question_type": self.question_type,
+            "calculation": dict(self.calculation),
             "metric": self.metric,
             "basis": self.basis,
             "time": dict(self.time),
@@ -351,11 +374,20 @@ def adapt_stage1_intent(intent: Mapping[str, Any], *, question: str | None = Non
 
     metric = source.get("metric")
     basis = source.get("basis")
+    raw_calculation = source.get("calculation")
+    calculation = dict(raw_calculation) if isinstance(raw_calculation, Mapping) else {}
+    if not calculation and source.get("operation") is not None:
+        calculation = {"operation": source.get("operation")}
+    if source.get("denominator_metric") is not None and "denominator_metric" not in calculation:
+        calculation["denominator_metric"] = source.get("denominator_metric")
+    question_type = source.get("question_type", source.get("intent"))
     return Stage3Intent(
         question=raw_question,
         normalized_question=normalized,
         route=route,  # type: ignore[arg-type]
         intent=str(source.get("intent", "unsupported")),
+        question_type=str(question_type).strip() if question_type is not None and str(question_type).strip() else None,
+        calculation=calculation,
         metric=str(metric).strip() if metric is not None and str(metric).strip() else None,
         basis=str(basis).strip() if basis is not None and str(basis).strip() else None,
         time=_mapping(source.get("time")),

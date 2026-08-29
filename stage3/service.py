@@ -6,9 +6,8 @@ from stage3.adapters.stage1 import adapt_stage1_intent
 from stage3.agents.answer import AnswerWriter
 from stage3.api_contract import to_submission_response
 from stage3.contracts import Stage3Result
-from stage3.orchestration.nodes import state_to_result
+from stage3.node import build_stage3_node
 from stage3.orchestration.runtime import ExecutionMode, resolve_execution_mode
-from stage3.orchestration.stdlib_runner import run_stdlib
 
 
 class Stage3Service:
@@ -17,6 +16,7 @@ class Stage3Service:
     def __init__(self, *, answer_client: Any | None = None, execution_mode: str = "auto"):
         self.answer_writer = AnswerWriter(answer_client)
         self.execution_mode: ExecutionMode = resolve_execution_mode(execution_mode)
+        self._stage3_node = build_stage3_node(answer_writer=self.answer_writer)
         self._langgraph_app: Any | None = None
 
     def process(self, *, question: str, stage1_intent: Mapping[str, Any], stage2_result: Any) -> Stage3Result:
@@ -25,13 +25,16 @@ class Stage3Service:
             if self.execution_mode == "langgraph":
                 state = self._run_langgraph(question, intent, stage2_result)
             else:
-                state = run_stdlib(
-                    question=question,
-                    intent=intent,
-                    stage2_result=stage2_result,
-                    answer_writer=self.answer_writer,
-                )
-            return state_to_result(state)
+                state = self._stage3_node({
+                    "question": question,
+                    "intent": intent,
+                    "route": intent.route,
+                    "stage2_result": stage2_result,
+                    "context": "",
+                    "messages": [],
+                    "gen_retry_num": 0,
+                })
+            return Stage3Result.from_dict(state["stage3_result"])
         except Exception as error:  # noqa: BLE001 - workflow boundary
             return Stage3Result(
                 status="error",
@@ -49,6 +52,10 @@ class Stage3Service:
             "question": question,
             "intent": intent,
             "stage2_result": stage2_result,
+            "route": intent.route,
+            "context": "",
+            "messages": [],
+            "gen_retry_num": 0,
             "warnings": [],
             "agent_results": [],
             "provenance": [],

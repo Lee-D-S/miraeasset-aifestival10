@@ -14,6 +14,7 @@ def _lookup_input() -> tuple[str, dict, dict]:
         "normalized_question": question,
         "route": "ok",
         "intent": "lookup",
+        "question_type": "lookup",
         "metric": "revenue",
         "basis": "연결",
         "time": {"years": [2025], "base_months": [12]},
@@ -31,22 +32,15 @@ def _lookup_input() -> tuple[str, dict, dict]:
 
 class OrchestrationTests(unittest.TestCase):
     @unittest.skipUnless(langgraph_available(), "LangGraph가 설치된 환경에서 실행")
-    def test_graph_compiles_without_search_or_rerank_nodes(self):
+    def test_graph_contains_only_one_stage3_node(self):
         from stage3.orchestration.langgraph_graph import build_graph
 
         graph = build_graph(answer_writer=Stage3Service(execution_mode="stdlib").answer_writer)
         node_names = set(graph.nodes)
-        self.assertIn("fact_extraction_agent", node_names)
-        self.assertIn("calculation_agent", node_names)
-        self.assertIn("comparison_agent", node_names)
-        self.assertIn("event_linker_agent", node_names)
-        self.assertIn("validation_agent", node_names)
-        self.assertNotIn("retrieve", node_names)
-        self.assertNotIn("rerank", node_names)
-        self.assertNotIn("search", node_names)
+        self.assertEqual(node_names, {"__start__", "stage3"})
 
     @unittest.skipUnless(langgraph_available(), "LangGraph가 설치된 환경에서 실행")
-    def test_langgraph_and_stdlib_share_analysis_result_contract(self):
+    def test_langgraph_and_stdlib_share_single_node_result_contract(self):
         question, intent, stage2 = _lookup_input()
         graph_result = Stage3Service(execution_mode="langgraph").process(
             question=question, stage1_intent=intent, stage2_result=stage2
@@ -58,27 +52,14 @@ class OrchestrationTests(unittest.TestCase):
             self.assertEqual(getattr(graph_result, field), getattr(stdlib_result, field), field)
 
     @unittest.skipUnless(langgraph_available(), "LangGraph가 설치된 환경에서 실행")
-    def test_send_fanout_records_calculation_and_comparison_agents(self):
-        question = "기업A와 기업B의 2025년 매출액 증감률을 비교하고 순위를 알려줘"
-        intent = {
-            "question": question,
-            "normalized_question": question,
-            "route": "ok",
-            "intent": "compare",
-            "metric": "revenue",
-            "basis": "연결",
-            "companies": ["기업A", "기업B"],
-            "time": {"years": [2025], "base_months": [12]},
-        }
-        stage2 = {"documents": [
-            {"id": "a", "source": "a.xml", "text": "2025년 연결 매출액 100억원", "metadata": {"corp_name": "기업A", "report_period": "2025-12", "basis": "연결"}},
-            {"id": "b", "source": "b.xml", "text": "2025년 연결 매출액 120억원", "metadata": {"corp_name": "기업B", "report_period": "2025-12", "basis": "연결"}},
-        ]}
-        result = Stage3Service(execution_mode="langgraph").process(
-            question=question, stage1_intent=intent, stage2_result=stage2
-        )
-        agents = {item["agent"] for item in result.agent_results}
-        self.assertTrue({"supervisor", "fact_extractor", "calculation", "comparison", "answer", "validator"}.issubset(agents))
+    def test_langgraph_result_has_no_internal_stage4_validator(self):
+        question, intent, stage2 = _lookup_input()
+        with patch("stage3.validation.validate_stage3_result", side_effect=AssertionError("Stage4 validator must not run")):
+            result = Stage3Service(execution_mode="langgraph").process(
+                question=question, stage1_intent=intent, stage2_result=stage2
+            )
+        self.assertEqual(result.status, "success")
+        self.assertTrue(result.answer)
 
     def test_langgraph_mode_missing_dependency_has_clear_error(self):
         with patch("stage3.orchestration.runtime.langgraph_available", return_value=False):
