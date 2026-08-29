@@ -15,6 +15,17 @@ from langgraph.graph import MessagesState, add_messages
 
 
 Route = Literal["ok", "need_clarify", "unanswerable", "unsafe"]
+SupervisorPhase = Literal["after_stage1", "after_stage2", "after_stage3", "after_stage4"]
+TerminationReason = Literal[
+    "unsafe",
+    "unanswerable",
+    "need_clarify",
+    "validation_failed",
+    "configuration_failure",
+    "supervisor_error",
+    "supervisor_limit",
+    "completed",
+]
 
 
 class Stage1CalculationPlan(TypedDict, total=False):
@@ -146,6 +157,17 @@ class AgentState(MessagesState):
     supervisor_phase: str | None
     supervisor_action: str | None
     supervisor_reason: str | None
+    # Canonical control envelope and execution diagnostics
+    phase: str | None
+    next_action: str | None
+    last_action: str | None
+    search_attempts: int
+    planner_attempts: int
+    regeneration_attempts: int
+    validation_attempts: int
+    termination_reason: str | None
+    original_question: str
+    search_query: str
 
 
 class AgentStateUpdate(TypedDict, total=False):
@@ -173,16 +195,54 @@ class AgentStateUpdate(TypedDict, total=False):
     supervisor_phase: str | None
     supervisor_action: str | None
     supervisor_reason: str | None
+    phase: str | None
+    next_action: str | None
+    last_action: str | None
+    search_attempts: int
+    planner_attempts: int
+    regeneration_attempts: int
+    validation_attempts: int
+    termination_reason: str | None
+    original_question: str
+    search_query: str
 
 
 IMMUTABLE_STATE_FIELDS = frozenset({"question_id", "question"})
 
 STAGE_WRITE_FIELDS: Mapping[str, frozenset[str]] = {
-    "stage1": frozenset({"intent", "route"}),
-    "stage2": frozenset({"stage2_result", "retry_num", "documents"}),
-    "stage3": frozenset({"stage3_result", "answer", "context", "messages", "gen_retry_num"}),
-    "stage4": frozenset({"stage4_result", "answer", "messages"}),
+    "stage1": frozenset({"intent", "route", "search_query"}),
+    "stage2": frozenset({"stage2_result", "retry_num", "search_attempts", "documents", "search_query"}),
+    "stage3": frozenset({"stage3_result", "answer", "context", "messages", "gen_retry_num", "facts"}),
+    "stage4": frozenset({"stage4_result", "answer", "messages", "validation_attempts"}),
 }
+
+
+def validate_node_update(
+    owner: str,
+    state: Mapping[str, Any],
+    update: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate a stage's partial update before LangGraph merges it.
+
+    The graph passes only partial updates, so immutable request fields are
+    rejected if supplied and each stage is restricted to its ownership set.
+    """
+
+    allowed = STAGE_WRITE_FIELDS.get(owner)
+    if allowed is None:
+        raise ValueError(f"unknown stage owner: {owner}")
+    if not isinstance(update, Mapping):
+        raise TypeError(f"{owner} node must return a mapping")
+    illegal = set(update) - allowed
+    if illegal & IMMUTABLE_STATE_FIELDS:
+        raise ValueError(f"immutable state fields cannot be changed: {sorted(illegal & IMMUTABLE_STATE_FIELDS)}")
+    if illegal:
+        raise ValueError(f"{owner} node wrote unauthorized fields: {sorted(illegal)}")
+    if "search_query" in update and not isinstance(update["search_query"], str):
+        raise TypeError("search_query must be a string")
+    if state.get("original_question") and state.get("question") != state.get("original_question"):
+        raise ValueError("question changed during execution")
+    return dict(update)
 
 
 def make_initial_agent_state(
@@ -223,6 +283,16 @@ def make_initial_agent_state(
         "supervisor_phase": None,
         "supervisor_action": None,
         "supervisor_reason": None,
+        "phase": None,
+        "next_action": None,
+        "last_action": None,
+        "search_attempts": 0,
+        "planner_attempts": 0,
+        "regeneration_attempts": 0,
+        "validation_attempts": 0,
+        "termination_reason": None,
+        "original_question": question,
+        "search_query": question,
     }
 
 
@@ -238,5 +308,8 @@ __all__ = [
     "Stage3Result",
     "Stage4Result",
     "Route",
+    "SupervisorPhase",
+    "TerminationReason",
     "make_initial_agent_state",
+    "validate_node_update",
 ]

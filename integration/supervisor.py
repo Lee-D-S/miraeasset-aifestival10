@@ -16,9 +16,15 @@ SupervisorAction = Literal[
     "request_clarification",
     "unanswerable",
     "fail_closed",
+    "regenerate_answer",
     "finish",
 ]
 SupervisorPhase = Literal["after_stage1", "after_stage2", "after_stage3", "after_stage4"]
+ALLOWED_ACTIONS = frozenset({
+    "run_stage2", "retry_search", "run_calculation_planner", "run_stage3",
+    "run_stage4", "request_clarification", "unanswerable", "fail_closed",
+    "regenerate_answer", "finish",
+})
 
 
 @dataclass(frozen=True)
@@ -70,7 +76,7 @@ class DeterministicSupervisor:
         if phase == "after_stage2":
             result = state.get("stage2_result")
             result = result if isinstance(result, Mapping) else {}
-            if result.get("cited_documents") or result.get("status") == "ok":
+            if result.get("cited_documents"):
                 return SupervisorDecision("run_stage3", "인용 가능한 근거가 있습니다.")
             if int(state.get("retry_num", 0) or 0) < self.max_search_retries:
                 return SupervisorDecision("retry_search", "검색 결과가 부족합니다.")
@@ -90,12 +96,13 @@ class DeterministicSupervisor:
 
 def normalize_decision(value: SupervisorDecision | Mapping[str, Any]) -> SupervisorDecision:
     if isinstance(value, SupervisorDecision):
+        if value.action not in ALLOWED_ACTIONS:
+            raise ValueError(f"허용되지 않은 Supervisor action입니다: {value.action}")
         return value
     if not isinstance(value, Mapping):
         raise ValueError("Supervisor decision은 mapping이어야 합니다.")
     action = str(value.get("action", "fail_closed"))
-    allowed = {"run_stage2", "retry_search", "run_calculation_planner", "run_stage3", "run_stage4", "request_clarification", "unanswerable", "fail_closed", "finish"}
-    if action not in allowed:
+    if action not in ALLOWED_ACTIONS:
         raise ValueError(f"허용되지 않은 Supervisor action입니다: {action}")
     return SupervisorDecision(action, str(value.get("reason", "")))  # type: ignore[arg-type]
 
@@ -122,6 +129,9 @@ def build_supervisor_node(
             "supervisor_steps": int(state.get("supervisor_steps", 0) or 0) + 1,
             "supervisor_action": decision.action,
             "supervisor_reason": decision.reason,
+            "phase": phase,
+            "next_action": decision.action,
+            "last_action": decision.action,
         }
 
     return supervisor_node
@@ -132,13 +142,27 @@ def build_planner_tool(planner: Callable[[Mapping[str, Any]], Mapping[str, Any]]
 
     def calculation_planner(state: Mapping[str, Any]) -> dict[str, Any]:
         update = dict(planner(state)) if planner else {}
-        return {**update, "planner_retry_num": int(state.get("planner_retry_num", 0) or 0) + 1}
+        return {
+            **update,
+            "planner_retry_num": int(state.get("planner_retry_num", 0) or 0) + 1,
+            "planner_attempts": int(state.get("planner_attempts", 0) or 0) + 1,
+        }
 
     return calculation_planner
 
 
 def retry_search_tool(state: Mapping[str, Any]) -> dict[str, Any]:
-    return {"retry_num": int(state.get("retry_num", 0) or 0) + 1}
+    current_query = str(state.get("search_query") or state.get("question") or "")
+    original = str(state.get("original_question") or state.get("question") or "")
+    retry = int(state.get("retry_num", 0) or 0) + 1
+    # A retry must alter the retrieval query while retaining the original
+    # question as an immutable audit field.
+    query = f"{current_query} 관련 핵심 공시 근거" if retry % 2 else f"{original} 수치 기간 기준 출처"
+    return {
+        "retry_num": retry,
+        "search_attempts": int(state.get("search_attempts", 0) or 0) + 1,
+        "search_query": query,
+    }
 
 
 __all__ = [
@@ -146,6 +170,7 @@ __all__ = [
     "SupervisorAction",
     "SupervisorClient",
     "SupervisorDecision",
+    "ALLOWED_ACTIONS",
     "build_planner_tool",
     "build_supervisor_node",
     "normalize_decision",

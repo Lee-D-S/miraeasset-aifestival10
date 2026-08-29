@@ -45,13 +45,19 @@ class SharedStateTests(unittest.TestCase):
         self.assertNotIn("question", get_type_hints(AgentStateUpdate))
 
     def test_stage_write_ownership_matches_the_shared_contract(self) -> None:
-        self.assertEqual(STAGE_WRITE_FIELDS["stage1"], {"intent", "route"})
-        self.assertEqual(STAGE_WRITE_FIELDS["stage2"], {"stage2_result", "retry_num", "documents"})
+        self.assertEqual(STAGE_WRITE_FIELDS["stage1"], {"intent", "route", "search_query"})
+        self.assertEqual(
+            STAGE_WRITE_FIELDS["stage2"],
+            {"stage2_result", "retry_num", "search_attempts", "documents", "search_query"},
+        )
         self.assertEqual(
             STAGE_WRITE_FIELDS["stage3"],
-            {"stage3_result", "answer", "context", "messages", "gen_retry_num"},
+            {"stage3_result", "answer", "context", "messages", "gen_retry_num", "facts"},
         )
-        self.assertEqual(STAGE_WRITE_FIELDS["stage4"], {"stage4_result", "answer", "messages"})
+        self.assertEqual(
+            STAGE_WRITE_FIELDS["stage4"],
+            {"stage4_result", "answer", "messages", "validation_attempts"},
+        )
 
     def test_initial_state_has_all_defaults_and_fresh_messages(self) -> None:
         first = make_initial_agent_state(

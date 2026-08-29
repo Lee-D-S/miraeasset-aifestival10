@@ -9,7 +9,7 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 
 from integration.supervisor import build_planner_tool, build_supervisor_node, retry_search_tool
-from shared_state import AgentState
+from shared_state import AgentState, validate_node_update
 
 StateNode = Callable[[Mapping[str, Any]], Mapping[str, Any]]
 
@@ -31,11 +31,25 @@ def _supervisor_route(state: Mapping[str, Any]) -> str:
 
 
 def _blocked_route(route: str) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
-    return lambda _state: {"route": route}
+    reason = {
+        "need_clarify": "need_clarify",
+        "unanswerable": "unanswerable",
+        "unsafe": "unsafe",
+    }.get(route, "validation_failed")
+    return lambda _state: {"route": route, "termination_reason": reason}
 
 
 def _set_phase(phase: str) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
-    return lambda _state: {"supervisor_phase": phase}
+    return lambda _state: {"supervisor_phase": phase, "phase": phase}
+
+
+def _owned_stage(owner: str, node: StateNode) -> StateNode:
+    """Wrap an injected stage so unauthorized state writes fail closed."""
+
+    def wrapped(state: Mapping[str, Any]) -> Mapping[str, Any]:
+        return validate_node_update(owner, state, node(state))
+
+    return wrapped
 
 
 def _planner_return(state: Mapping[str, Any]) -> str:
@@ -48,18 +62,18 @@ def build_graph(nodes: StageNodes):
     supervisor = nodes.supervisor or build_supervisor_node()
     planner = nodes.calculation_planner or build_planner_tool()
     builder = StateGraph(AgentState)
-    builder.add_node("stage1", nodes.stage1)
+    builder.add_node("stage1", _owned_stage("stage1", nodes.stage1))
     builder.add_node("phase_after_stage1", _set_phase("after_stage1"))
     builder.add_node("supervisor_after_stage1", supervisor)
     builder.add_node("calculation_planner", planner)
-    builder.add_node("stage2", nodes.stage2)
+    builder.add_node("stage2", _owned_stage("stage2", nodes.stage2))
     builder.add_node("phase_after_stage2", _set_phase("after_stage2"))
     builder.add_node("retry_search", retry_search_tool)
     builder.add_node("supervisor_after_stage2", supervisor)
-    builder.add_node("stage3", nodes.stage3)
+    builder.add_node("stage3", _owned_stage("stage3", nodes.stage3))
     builder.add_node("phase_after_stage3", _set_phase("after_stage3"))
     builder.add_node("supervisor_after_stage3", supervisor)
-    builder.add_node("stage4", nodes.stage4)
+    builder.add_node("stage4", _owned_stage("stage4", nodes.stage4))
     builder.add_node("phase_after_stage4", _set_phase("after_stage4"))
     builder.add_node("supervisor_after_stage4", supervisor)
     builder.add_node("clarify", _blocked_route("need_clarify"))

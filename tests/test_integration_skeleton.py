@@ -17,8 +17,8 @@ def _stage2(state):
     return {
         "stage2_result": {
             "status": "ok",
-            "documents": [],
-            "cited_documents": [],
+            "documents": [{"id": "doc-1", "text": "evidence"}],
+            "cited_documents": [{"id": "doc-1", "text": "evidence"}],
             "retrieval_trace": [],
             "warnings": [],
         }
