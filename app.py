@@ -1,23 +1,8 @@
-from fastapi import FastAPI
+"""Public API entrypoint for the four-stage Agent engine."""
 
-from application.factory import build_answer_service
-from common.config import settings
-from common.schemas import AnswerResponse
+from integration.api import create_app
 
 
-app = FastAPI(title="AI Festival RAG API", version="0.1.0")
-answer_service = build_answer_service()
-
-
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {
-        "status": "ok",
-        "environment": settings.environment,
-        "implementation": settings.rag_backend,
-    }
-
-
-@app.get("/answer", response_model=AnswerResponse)
-def answer(question_id: str, question: str) -> AnswerResponse:
-    return answer_service.answer(question_id=question_id, question=question)
+# Stage implementations are injected here when the team integration is ready.
+# Keeping the app importable now preserves the deployment entrypoint.
+app = create_app()
