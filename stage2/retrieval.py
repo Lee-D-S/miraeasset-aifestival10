@@ -132,6 +132,24 @@ class Stage2Retriever(Protocol):
         ...
 
 
+class Reranker(Protocol):
+    """Rank merged candidates independently from keyword/vector retrieval."""
+
+    def rerank(self, query: str, documents: Sequence[Mapping[str, Any]], limit: int) -> list[Mapping[str, Any]]:
+        ...
+
+
+class DeterministicReranker:
+    """Explicit test/local reranker; production can inject CLOVA here."""
+
+    def rerank(self, query: str, documents: Sequence[Mapping[str, Any]], limit: int) -> list[Mapping[str, Any]]:
+        del query
+        return sorted(
+            (dict(document) for document in documents),
+            key=lambda document: (-float(document.get("hybrid_score", document.get("score", 0.0))), _document_id(document)),
+        )[:limit]
+
+
 @dataclass(frozen=True)
 class RetrievalConfig:
     candidate_limit: int = 50
@@ -139,6 +157,7 @@ class RetrievalConfig:
     final_limit: int = 8
     keyword_weight: float = 0.5
     vector_weight: float = 0.5
+    reranker: Reranker | None = None
 
 
 class InMemoryRetriever:
@@ -216,6 +235,7 @@ def retrieve(
     route: str,
     retriever: Stage2Retriever,
     config: RetrievalConfig = RetrievalConfig(),
+    search_query: str | None = None,
 ) -> dict[str, Any]:
     """Run Stage2 and return the canonical shared-state envelope."""
 
@@ -227,10 +247,19 @@ def retrieve(
     if not isinstance(manifest_filter, Mapping):
         return {**empty, "status": "error", "warnings": ["Stage1 manifest_filter가 없습니다."]}
 
-    query = build_search_query(question, intent)
+    query = _text(search_query) or build_search_query(question, intent)
     candidates = retriever.filter_candidates(manifest_filter, config.candidate_limit)
     keyword_results = retriever.keyword_search(query, candidates, config.branch_limit)
-    vector_results = retriever.vector_search(query, candidates, config.branch_limit)
+    try:
+        vector_results = retriever.vector_search(query, candidates, config.branch_limit)
+    except Exception as error:  # provider/backend boundary; never fake semantic success
+        classification = getattr(error, "classification", "embedding_unavailable")
+        return {
+            **empty,
+            "status": str(classification),
+            "retrieval_trace": [f"query={query}", f"candidate_count={len(candidates)}"],
+            "warnings": [str(error)],
+        }
 
     merged: dict[str, dict[str, Any]] = {}
     for branch, results in (("keyword", keyword_results), ("vector", vector_results)):
@@ -246,22 +275,15 @@ def retrieve(
                 item["vector"] = max(float(item["vector"]), float(result.get("vector_score", 0.0)))
             item["raw"].setdefault("_rank_" + branch, rank)
 
-    ranked = sorted(
-        merged.values(),
-        key=lambda item: (
-            -(config.keyword_weight * item["keyword"] + config.vector_weight * item["vector"]),
-            _document_id(item["raw"]),
-        ),
-    )
-    documents = [
-        _normalize_document(
-            item["raw"],
-            config.keyword_weight * item["keyword"] + config.vector_weight * item["vector"],
-            sorted(item["sources"]),
-        )
-        for item in ranked
-    ]
-    cited = documents[: config.final_limit]
+    merged_documents = []
+    for item in merged.values():
+        hybrid_score = config.keyword_weight * item["keyword"] + config.vector_weight * item["vector"]
+        document = _normalize_document(item["raw"], hybrid_score, sorted(item["sources"]))
+        document["hybrid_score"] = hybrid_score
+        merged_documents.append(document)
+    reranker = config.reranker or DeterministicReranker()
+    documents = reranker.rerank(query, merged_documents, config.final_limit)
+    cited = documents
     status = "ok" if cited else "not_found"
     return {
         "query_id": _text(question_id),

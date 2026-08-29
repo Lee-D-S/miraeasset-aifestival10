@@ -23,11 +23,18 @@ def build_stage2_node(
             route=str(state.get("route", "unanswerable")),
             retriever=retriever,
             config=config,
+            search_query=(
+                str(state.get("search_query"))
+                if state.get("search_query") and state.get("search_query") != state.get("original_question", state.get("question"))
+                else None
+            ),
         )
         return {
             "stage2_result": result,
             "documents": result["cited_documents"],
             "retry_num": int(state.get("retry_num", 0) or 0),
+            "search_attempts": int(state.get("search_attempts", 0) or 0) + 1,
+            "search_query": str(state.get("search_query") or ""),
         }
 
     return stage2_node
