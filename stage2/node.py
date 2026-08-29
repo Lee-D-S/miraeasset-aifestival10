@@ -1,0 +1,36 @@
+"""LangGraph boundary for the retrieval-only Stage2."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Any, Callable
+
+from stage2.retrieval import RetrievalConfig, Stage2Retriever, retrieve
+
+
+def build_stage2_node(
+    *,
+    retriever: Stage2Retriever,
+    config: RetrievalConfig = RetrievalConfig(),
+) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
+    """Build a node that writes only Stage2-owned State fields."""
+
+    def stage2_node(state: Mapping[str, Any]) -> dict[str, Any]:
+        result = retrieve(
+            question_id=str(state.get("question_id", "")),
+            question=str(state.get("question", "")),
+            intent=state.get("intent") if isinstance(state.get("intent"), Mapping) else {},
+            route=str(state.get("route", "unanswerable")),
+            retriever=retriever,
+            config=config,
+        )
+        return {
+            "stage2_result": result,
+            "documents": result["cited_documents"],
+            "retry_num": int(state.get("retry_num", 0) or 0),
+        }
+
+    return stage2_node
+
+
+__all__ = ["build_stage2_node"]
