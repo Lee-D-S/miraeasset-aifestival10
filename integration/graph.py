@@ -24,6 +24,7 @@ class StageNodes:
     stage4: StateNode
     supervisor: StateNode | None = None
     calculation_planner: StateNode | None = None
+    answer_regeneration: StateNode | None = None
 
 
 def _supervisor_route(state: Mapping[str, Any]) -> str:
@@ -61,6 +62,10 @@ def build_graph(nodes: StageNodes):
 
     supervisor = nodes.supervisor or build_supervisor_node()
     planner = nodes.calculation_planner or build_planner_tool()
+    regeneration = nodes.answer_regeneration or (lambda state: {
+        "answer": str(state.get("answer") or ""),
+        "regeneration_attempts": int(state.get("regeneration_attempts", 0) or 0) + 1,
+    })
     builder = StateGraph(AgentState)
     builder.add_node("stage1", _owned_stage("stage1", nodes.stage1))
     builder.add_node("phase_after_stage1", _set_phase("after_stage1"))
@@ -76,6 +81,7 @@ def build_graph(nodes: StageNodes):
     builder.add_node("stage4", _owned_stage("stage4", nodes.stage4))
     builder.add_node("phase_after_stage4", _set_phase("after_stage4"))
     builder.add_node("supervisor_after_stage4", supervisor)
+    builder.add_node("answer_regeneration", regeneration)
     builder.add_node("clarify", _blocked_route("need_clarify"))
     builder.add_node("unanswerable", _blocked_route("unanswerable"))
     builder.add_node("fail_closed", _blocked_route("unsafe"))
@@ -89,6 +95,10 @@ def build_graph(nodes: StageNodes):
         "request_clarification": "clarify",
         "unanswerable": "unanswerable",
         "fail_closed": "fail_closed",
+        "run_stage3": "fail_closed",
+        "run_stage4": "fail_closed",
+        "regenerate_answer": "fail_closed",
+        "finish": "fail_closed",
     })
     builder.add_conditional_edges("calculation_planner", _planner_return, {
         "supervisor_after_stage1": "supervisor_after_stage1",
@@ -105,6 +115,12 @@ def build_graph(nodes: StageNodes):
         "retry_search": "retry_search",
         "unanswerable": "unanswerable",
         "fail_closed": "fail_closed",
+        "run_stage2": "fail_closed",
+        "run_calculation_planner": "fail_closed",
+        "request_clarification": "clarify",
+        "run_stage4": "fail_closed",
+        "regenerate_answer": "fail_closed",
+        "finish": "fail_closed",
     })
     builder.add_edge("retry_search", "stage2")
 
@@ -114,10 +130,21 @@ def build_graph(nodes: StageNodes):
         "run_stage4": "stage4",
         "run_calculation_planner": "calculation_planner",
         "fail_closed": "fail_closed",
+        "run_stage2": "fail_closed",
+        "retry_search": "fail_closed",
+        "request_clarification": "clarify",
+        "unanswerable": "unanswerable",
+        "regenerate_answer": "fail_closed",
+        "finish": "fail_closed",
     })
     builder.add_edge("stage4", "phase_after_stage4")
     builder.add_edge("phase_after_stage4", "supervisor_after_stage4")
-    builder.add_edge("supervisor_after_stage4", END)
+    builder.add_conditional_edges("supervisor_after_stage4", _supervisor_route, {
+        "regenerate_answer": "answer_regeneration",
+        "finish": END,
+        "fail_closed": END,
+    })
+    builder.add_edge("answer_regeneration", "stage4")
     return builder.compile()
 
 

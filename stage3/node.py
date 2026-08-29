@@ -17,6 +17,7 @@ from stage3.deterministic.calculation_planner import SUPPORTED_OPERATIONS, build
 from stage3.deterministic.calculations import calculate_facts
 from stage3.deterministic.normalization import normalize_facts
 from stage3.state import Stage3NodeOutput
+from stage3.validation import validate_stage3_result
 
 
 _EVENT_QUESTION_TYPES = frozenset({"event", "exists", "event_link", "change", "contract", "correction"})
@@ -28,7 +29,11 @@ def _question_type(intent: Stage3Intent) -> str:
 
 
 def _needs_event_linking(intent: Stage3Intent) -> bool:
-    return _question_type(intent) in _EVENT_QUESTION_TYPES or intent.metric in _EVENT_METRICS
+    return (
+        _question_type(intent) in _EVENT_QUESTION_TYPES
+        or intent.metric in _EVENT_METRICS
+        or intent.correction_mode == "include_chain"
+    )
 
 
 def _documents_for_citations(documents: list[Any], used_ids: set[str]) -> list[dict[str, Any]]:
@@ -115,7 +120,15 @@ def _successful_analysis(
         return any(item.get("status") == "ok" for item in comparisons)
     if question_type in {"calculation", "calc"}:
         return any(item.get("status") == "ok" for item in calculations)
-    return bool(facts or events)
+    if not (facts or events):
+        return False
+    if question_type in {"lookup", "text", "exists", "event"} and facts:
+        requested = str(getattr(intent, "metric", "") or "").strip().lower()
+        if requested and not any(
+            requested in f.metric.lower() or requested in f.label.lower() for f in facts
+        ) and not events:
+            return False
+    return True
 
 
 def _execute_stage3(*, question: str, intent: Stage3Intent, stage2_result: Any, writer: AnswerWriter) -> Stage3Result:
@@ -193,6 +206,16 @@ def _execute_stage3(*, question: str, intent: Stage3Intent, stage2_result: Any, 
             f"comparisons={len(comparisons)}",
         ],
     )
+
+    valid, validation_warnings = validate_stage3_result(result, intent)
+    if not valid:
+        result = replace(
+            result,
+            status="insufficient_evidence",
+            warnings=[*result.warnings, *validation_warnings],
+            trace=[*result.trace, "stage3_validation_failed"],
+        )
+        analysis_success = False
 
     if analysis_success:
         try:
@@ -293,6 +316,7 @@ def build_stage3_node(
         update: Stage3NodeOutput = {"stage3_result": result.to_dict()}
         if not intent.is_processable:
             return update
+        update["facts"] = list(result.facts)
 
         current_retry = state.get("gen_retry_num", 0)
         try:

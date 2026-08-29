@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from typing import Any, Callable
 
@@ -56,26 +55,17 @@ def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any
         try:
             stage2_result = state.get("stage2_result") if isinstance(state.get("stage2_result"), Mapping) else None
             numeric, citation = validate_numeric_answer(answer, stage3_result), validate_citations(answer, stage3_result, stage2_result)
+            if not answer.strip():
+                numeric["pass"] = False
+                numeric.setdefault("errors", []).append("answer is empty")
+            if not citation.get("answer_has_source_marker"):
+                citation["pass"] = False
+                citation.setdefault("errors", []).append("answer source marker is missing")
             if numeric["pass"] and citation["pass"]:
                 semantic = validate_semantics(client, question=question, intent=intent, stage3_result=stage3_result, answer=answer)
             else:
                 semantic = {"pass": False, "issues": [*numeric.get("errors", []), *citation.get("errors", [])], "unsupported_claims": [], "missing_aspects": [], "summary": "결정론적 검증 실패"}
             valid = bool(numeric.get("pass") and citation.get("pass") and semantic.get("pass"))
-            if not valid:
-                if client is None:
-                    raise RuntimeError("Stage4 regeneration client is not configured")
-                regenerated = True
-                repair = {"numeric_check": numeric, "citation_check": citation, "semantic_check": semantic}
-                regenerated_answer = client.generate_text([{
-                    "role": "user",
-                    "content": "공시 근거만 사용해 답변을 수정하세요. 근거에 없는 수치·사실은 삭제하고, "
-                    "계산 결과를 변경하지 마세요. 출처 표기를 포함하세요. 한 번의 최종 답변만 출력하세요.\n"
-                    + json.dumps({"question": question, "intent": intent, "stage3_result": dict(stage3_result), "answer": answer, "validation": repair}, ensure_ascii=False),
-                }])
-                answer = str(regenerated_answer)
-                numeric, citation = validate_numeric_answer(answer, stage3_result), validate_citations(answer, stage3_result, stage2_result)
-                semantic = validate_semantics(client, question=question, intent=intent, stage3_result=stage3_result, answer=answer)
-                valid = bool(numeric.get("pass") and citation.get("pass") and semantic.get("pass"))
             if not valid:
                 answer = _FAILURE_ANSWER
                 status = "validation_failed"
@@ -90,9 +80,31 @@ def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any
             trace.append("validation_error")
 
         result = Stage4Result(status=status, answer=answer, numeric_check=numeric, citation_check=citation, semantic_check=semantic, regenerated=regenerated, warnings=warnings, trace=trace)
-        return {"stage4_result": result.to_dict(), "answer": answer, "messages": [_message(answer)]}
+        return {
+            "stage4_result": result.to_dict(),
+            "answer": answer,
+            "messages": [_message(answer)],
+            "validation_attempts": int(state.get("validation_attempts", 0) or 0) + 1,
+        }
 
     return stage4_node
 
 
-__all__ = ["build_stage4_node"]
+def build_answer_regeneration_node(*, answer_client: Any) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
+    """Regenerate the draft; a later Stage4 node remains the sole validator."""
+
+    def regenerate(state: Mapping[str, Any]) -> dict[str, Any]:
+        response = answer_client.generate_text([{
+            "role": "user",
+            "content": "공시 근거와 계산 결과만 사용해 답변을 다시 작성하고 출처 표기를 포함하세요.\n"
+            + str({"question": state.get("question", ""), "stage3_result": state.get("stage3_result", {})}),
+        }])
+        return {
+            "answer": str(response),
+            "regeneration_attempts": int(state.get("regeneration_attempts", 0) or 0) + 1,
+        }
+
+    return regenerate
+
+
+__all__ = ["build_answer_regeneration_node", "build_stage4_node"]

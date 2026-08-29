@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+import json
 from typing import Any, Literal, Protocol
 
 
@@ -37,6 +38,29 @@ class SupervisorClient(Protocol):
     """LLM adapter. Production code can implement this without changing graph code."""
 
     def decide(self, *, phase: SupervisorPhase, state: Mapping[str, Any]) -> SupervisorDecision | Mapping[str, Any]: ...
+
+
+class StructuredSupervisorClient:
+    """Adapter for a chat model that returns only an action JSON object."""
+
+    def __init__(self, model: Any):
+        self.model = model
+
+    def decide(self, *, phase: SupervisorPhase, state: Mapping[str, Any]) -> SupervisorDecision:
+        prompt = {
+            "phase": phase,
+            "state": {key: value for key, value in state.items() if key not in {"messages", "question"}},
+            "allowed_actions": sorted(ALLOWED_ACTIONS),
+        }
+        response = self.model.invoke([
+            {"role": "system", "content": "Return JSON only: {\\\"action\\\": allowed_action, \\\"reason\\\": string}. Do not modify state."},
+            {"role": "user", "content": json.dumps(prompt, ensure_ascii=False, default=str)},
+        ])
+        content = response if isinstance(response, Mapping) else getattr(response, "content", response)
+        if isinstance(content, list):
+            content = "".join(str(item.get("text", item)) if isinstance(item, Mapping) else str(item) for item in content)
+        payload = json.loads(str(content))
+        return normalize_decision(payload)
 
 
 def _intent(state: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -91,6 +115,10 @@ class DeterministicSupervisor:
                 return SupervisorDecision("run_stage4", "분석 결과가 생성되었습니다.")
             return SupervisorDecision("fail_closed", "분석 결과를 근거로 검증할 수 없습니다.")
 
+        result = state.get("stage4_result")
+        result = result if isinstance(result, Mapping) else {}
+        if result.get("status") == "validation_failed" and int(state.get("regeneration_attempts", 0) or 0) < 1:
+            return SupervisorDecision("regenerate_answer", "검증 실패를 제한된 1회 재생성으로 보완합니다.")
         return SupervisorDecision("finish", "Stage4 처리가 완료되었습니다.")
 
 
@@ -170,6 +198,7 @@ __all__ = [
     "SupervisorAction",
     "SupervisorClient",
     "SupervisorDecision",
+    "StructuredSupervisorClient",
     "ALLOWED_ACTIONS",
     "build_planner_tool",
     "build_supervisor_node",
