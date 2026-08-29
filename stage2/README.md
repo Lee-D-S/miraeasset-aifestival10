@@ -2,8 +2,10 @@
 
 Stage2는 Stage1 Intent를 받아 공시 근거 문서를 검색하고 Stage3에 넘기는 검색 전용 모듈이다.
 
-현재 구현은 DB나 임베딩 모델을 로드하지 않는다. `Stage2Retriever`를 주입하면 SQLite·Chroma
-adapter를 나중에 추가할 수 있으며, 테스트와 계약 검증에는 `InMemoryRetriever`를 사용한다.
+현재 canonical fixture 경로는 `legacy/test_data/disclosure_clova_local.json`을
+`JsonFixtureRetriever` adapter로 읽는다. query embedding은 `ClovaQueryEmbedding`을
+주입하며 provider가 없으면 `embedding_unavailable`로 종료한다. 테스트와 계약 검증에는
+`InMemoryRetriever`와 deterministic reranker를 명시적으로 주입한다.
 
 ```python
 from stage2 import InMemoryRetriever, build_stage2_node
