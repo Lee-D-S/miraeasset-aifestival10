@@ -141,6 +141,11 @@ class AgentState(MessagesState):
     # Control counters
     retry_num: int
     gen_retry_num: int
+    supervisor_steps: int
+    planner_retry_num: int
+    supervisor_phase: str | None
+    supervisor_action: str | None
+    supervisor_reason: str | None
 
 
 class AgentStateUpdate(TypedDict, total=False):
@@ -163,6 +168,11 @@ class AgentStateUpdate(TypedDict, total=False):
     stage4_result: dict[str, Any] | None
     retry_num: int
     gen_retry_num: int
+    supervisor_steps: int
+    planner_retry_num: int
+    supervisor_phase: str | None
+    supervisor_action: str | None
+    supervisor_reason: str | None
 
 
 IMMUTABLE_STATE_FIELDS = frozenset({"question_id", "question"})
@@ -208,6 +218,11 @@ def make_initial_agent_state(
         "stage4_result": None,
         "retry_num": 0,
         "gen_retry_num": 0,
+        "supervisor_steps": 0,
+        "planner_retry_num": 0,
+        "supervisor_phase": None,
+        "supervisor_action": None,
+        "supervisor_reason": None,
     }
 
 

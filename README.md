@@ -33,8 +33,8 @@ uvicorn app:app --reload
 필드만 partial update로 전달합니다.
 
 ```text
-Stage1 → Stage2 → Stage3 → Stage4 → API 응답
-             route != ok → Stage4
+Stage1 → Supervisor → Stage2 → Supervisor → Stage3 → Supervisor → Stage4 → Supervisor → API 응답
+             차단/문서 없음 → Stage4                         retry/planner → 제한된 loop
 ```
 
 Stage3는 `stage3`의 `build_stage3_node()`로 제공하고, 나머지 Stage 노드 함수는
@@ -57,6 +57,11 @@ pipeline = StagePipeline(StageNodes(
     stage4=build_stage4_node(validator_client=hyperclova_client),
 ))
 ```
+
+Supervisor는 `integration.supervisor`의 제한된 action 계약을 사용한다. 기본값은
+결정론적 bounded policy이며, 운영 환경에서는 `build_supervisor_node(client=...)`로
+LLM adapter를 주입할 수 있다. 검색 재시도·계산 계획 보완·Supervisor 전체 단계 수에는
+상한이 있고, 허용되지 않은 LLM action은 fail-closed 처리한다.
 
 Stage4는 Stage3의 Fact·계산·citation을 결정론적으로 검증한 뒤, 주입된
 HyperCLOVA X 클라이언트로 답변 의미를 검증한다. 검증 실패 시 답변을 한 번
