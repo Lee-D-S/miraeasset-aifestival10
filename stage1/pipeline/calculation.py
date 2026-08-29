@@ -1,0 +1,83 @@
+"""Stage1 calculation-plan extraction for the shared Stage3 contract."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from ..index.corpus_index import squash
+
+
+SUPPORTED_OPERATIONS = frozenset({
+    "add", "subtract", "multiply", "divide", "percentage_change", "cagr",
+    "ratio_percent", "margin", "sum", "average", "min", "max", "rank",
+})
+
+QUESTION_TYPES = {
+    "lookup": "lookup",
+    "calc": "calculation",
+    "compare": "compare",
+    "list": "text",
+    "change": "event",
+    "exists": "event",
+    "unknown": "text",
+}
+
+
+def canonical_question_type(intent: str) -> str:
+    return QUESTION_TYPES.get(intent, "text")
+
+
+def _has(text: str, *cues: str) -> bool:
+    return any(squash(cue) in text for cue in cues)
+
+
+def operation_for(question: str, *, intent: str, metric: str | None) -> str | None:
+    """Map explicit Korean calculation cues to Stage3's whitelist."""
+
+    text = squash(question)
+    if intent == "compare":
+        return "rank"
+    if intent != "calc":
+        if metric == "operating_profit" and _has(text, "영업이익률", "마진"):
+            return "margin"
+        return None
+    if _has(text, "연평균성장률", "cagr"):
+        return "cagr"
+    if _has(text, "영업이익률", "마진"):
+        return "margin"
+    if _has(text, "비중", "비율"):
+        return "ratio_percent"
+    if _has(text, "증가율", "감소율", "성장률", "증감률", "증감", "대비", "얼마나늘", "얼마나줄"):
+        return "percentage_change"
+    if _has(text, "평균"):
+        return "average"
+    if _has(text, "최대", "가장큰", "가장많", "최고"):
+        return "max"
+    if _has(text, "최소", "가장작", "가장적", "최저"):
+        return "min"
+    if _has(text, "합계", "총합", "합산"):
+        return "sum"
+    if _has(text, "더하기", "더한", "합쳐", "합산"):
+        return "add"
+    if _has(text, "차이", "차감", "뺀", "감소액"):
+        return "subtract"
+    if _has(text, "곱", "곱하기"):
+        return "multiply"
+    if _has(text, "몇배", "배수", "나누기"):
+        return "divide"
+    return None
+
+
+def build_calculation(intent: str, question: str, metric: str | None, *, denominator_metric: str | None = None) -> dict[str, Any]:
+    operation = operation_for(question, intent=intent, metric=metric)
+    if operation is None:
+        return {}
+    result: dict[str, Any] = {"operation": operation}
+    if metric:
+        result["metric"] = metric
+    if denominator_metric:
+        result["denominator_metric"] = denominator_metric
+    return result
+
+
+__all__ = ["SUPPORTED_OPERATIONS", "build_calculation", "canonical_question_type", "operation_for"]

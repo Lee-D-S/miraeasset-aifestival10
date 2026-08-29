@@ -1,0 +1,167 @@
+{
+  "_note": "지표 → manifest 필터 힌트. labels는 squash(소문자·공백/구두점 제거) 기준으로 매칭한다. confidence=low면 doc_group을 단일값으로 확정하지 않고 candidates로 넘겨 2단계가 넓게 검색한다.",
+
+  "metrics": [
+    {
+      "key": "revenue",
+      "labels": ["매출액", "매출", "영업수익", "총매출", "수익(매출액)"],
+      "doc_group": "periodic",
+      "confidence": "high"
+    },
+    {
+      "key": "operating_profit",
+      "labels": ["영업이익", "영업손실", "영업이익률"],
+      "doc_group": "periodic",
+      "confidence": "high"
+    },
+    {
+      "key": "net_income",
+      "labels": ["당기순이익", "순이익", "당기순손실", "지배주주순이익"],
+      "doc_group": "periodic",
+      "confidence": "high"
+    },
+    {
+      "key": "total_assets",
+      "labels": ["총자산", "자산총계", "부채총계", "자본총계", "부채비율"],
+      "doc_group": "periodic",
+      "confidence": "high"
+    },
+    {
+      "key": "capex",
+      "labels": ["설비투자", "시설투자", "capex", "유형자산취득", "설비투자규모", "투자규모", "capex규모"],
+      "doc_group": null,
+      "doc_group_candidates": ["periodic", "exchange"],
+      "doc_subtype_candidates": ["신규시설투자등"],
+      "confidence": "low"
+    },
+    {
+      "key": "supply_contract",
+      "labels": ["단일판매공급계약", "공급계약", "판매계약", "납품계약", "수주", "계약체결", "수주잔고"],
+      "doc_group": "exchange",
+      "doc_subtype": "단일판매공급계약체결",
+      "confidence": "high"
+    },
+    {
+      "key": "contract_termination",
+      "labels": ["계약해지", "공급계약해지", "해지된계약", "계약취소", "수주취소"],
+      "doc_group": "exchange",
+      "doc_subtype": "단일판매공급계약해지",
+      "confidence": "high"
+    },
+    {
+      "key": "facility_investment",
+      "labels": ["신규시설투자", "증설", "신규공장", "생산라인투자", "공장신설"],
+      "doc_group": "exchange",
+      "doc_subtype": "신규시설투자등",
+      "confidence": "high"
+    },
+    {
+      "key": "mgmt_judgement",
+      "labels": ["투자판단관련주요경영사항", "투자판단", "주요경영사항", "임상시험", "기술이전", "라이선스아웃"],
+      "doc_group": "exchange",
+      "doc_subtype": "투자판단관련주요경영사항",
+      "confidence": "medium"
+    },
+    {
+      "key": "fundraising",
+      "labels": ["자금조달", "유상증자", "무상증자", "전환사채", "cb", "교환사채", "eb", "신주인수권부사채", "bw", "증자", "사채발행", "조건부자본증권"],
+      "doc_group": "major",
+      "report_nm_contains": [
+        "유상증자결정",
+        "무상증자결정",
+        "전환사채권발행결정",
+        "교환사채권발행결정",
+        "신주인수권부사채권발행결정",
+        "조건부자본증권발행결정",
+        "자본으로인정되는채무증권발행결정"
+      ],
+      "confidence": "high"
+    },
+    {
+      "key": "treasury_stock",
+      "labels": ["자기주식", "자사주", "자기주식취득", "자기주식처분", "자사주매입", "자사주소각"],
+      "doc_group": "major",
+      "report_nm_contains": ["자기주식"],
+      "confidence": "high"
+    },
+    {
+      "key": "restructuring",
+      "labels": ["합병", "분할", "분할합병", "영업양수", "영업양도", "주식교환", "주식이전", "타법인주식양수"],
+      "doc_group": "major",
+      "report_nm_contains": [
+        "회사합병결정",
+        "회사분할결정",
+        "회사분할합병결정",
+        "영업양수결정",
+        "주식교환",
+        "타법인주식및출자증권양수결정",
+        "타법인주식및출자증권양도결정"
+      ],
+      "confidence": "medium"
+    },
+    {
+      "key": "major_shareholding",
+      "labels": ["대량보유상황보고서", "대량보유", "5%보고", "5%", "지분변동", "지분율", "주요주주", "보유지분"],
+      "doc_group": "holding",
+      "doc_subtype": "대량보유상황보고서",
+      "confidence": "high"
+    },
+    {
+      "key": "business_overview",
+      "labels": ["핵심사업", "주요사업", "사업개요", "사업내용", "사업부문", "사업의내용", "포트폴리오"],
+      "doc_group": "periodic",
+      "confidence": "medium"
+    },
+    {
+      "key": "investment_plan",
+      "labels": ["투자계획", "주요투자", "투자현황", "신규투자계획"],
+      "doc_group": "periodic",
+      "confidence": "medium"
+    },
+    {
+      "key": "rnd",
+      "labels": ["연구개발비", "연구개발", "r&d", "개발비용"],
+      "doc_group": "periodic",
+      "confidence": "medium"
+    },
+    {
+      "key": "dividend",
+      "labels": ["배당금", "배당성향", "배당", "주당배당"],
+      "doc_group": "periodic",
+      "confidence": "medium"
+    },
+    {
+      "key": "employees",
+      "labels": ["직원수", "임직원수", "종업원수", "평균급여"],
+      "doc_group": "periodic",
+      "confidence": "medium"
+    },
+    {
+      "key": "shareholders",
+      "labels": ["최대주주", "주주현황", "지배구조", "계열회사"],
+      "doc_group": "periodic",
+      "confidence": "medium"
+    },
+    {
+      "key": "litigation",
+      "labels": ["소송", "제재", "우발부채"],
+      "doc_group": null,
+      "doc_group_candidates": ["periodic", "major"],
+      "confidence": "low"
+    }
+  ],
+
+  "doc_keywords": [
+    { "labels": ["사업보고서"], "doc_group": "periodic", "doc_subtype": "annual" },
+    { "labels": ["반기보고서"], "doc_group": "periodic", "doc_subtype": "half" },
+    { "labels": ["분기보고서"], "doc_group": "periodic", "doc_subtype": "quarter" },
+    { "labels": ["감사보고서"], "doc_group": "periodic", "doc_subtype": "annual" },
+    { "labels": ["정기공시"], "doc_group": "periodic" },
+    { "labels": ["주요사항보고서"], "doc_group": "major" },
+    { "labels": ["거래소공시", "수시공시"], "doc_group": "exchange" },
+    { "labels": ["지분공시", "대량보유상황보고서"], "doc_group": "holding", "doc_subtype": "대량보유상황보고서" }
+  ],
+
+  "_known_empty_note": "코퍼스에 실제로 0건인 조합. 1단계에서 미리 경고만 남기고 unanswerable로 만들지 않는다(건수 0 ≠ 결측).",
+  "known_empty_report_nm": ["신주인수권부사채권발행결정"]
+}
