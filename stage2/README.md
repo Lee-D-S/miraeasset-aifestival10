@@ -13,5 +13,5 @@ from stage2 import InMemoryRetriever, build_stage2_node
 node = build_stage2_node(retriever=InMemoryRetriever([]))
 ```
 
-노드는 `stage2_result`와 호환용 `documents`만 작성한다. 답변 생성, 계산, context 작성,
-계약·정정공시 관계 해석은 Stage3 또는 Stage4의 책임이다.
+노드는 `stage2_result`, 호환용 `documents`, 검색 시도 횟수와 검색어를 작성한다. 답변 생성,
+계산, context 작성, 계약·정정공시 관계 해석은 Stage3 또는 Stage4의 책임이다.

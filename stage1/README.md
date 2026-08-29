@@ -51,3 +51,7 @@ python -m stage1.tests.run_checks
 ```
 
 골드 질의와 별칭·route·기간·필터 불변식을 검사한다.
+
+## 통합 시 주의점
+
+Stage1은 `intent`와 `route`만 반환하며 검색·계산·답변 검증을 수행하지 않는다. 이후 Supervisor가 제한된 action을 선택한다. 현재 Intent에는 `question_type`과 중첩 `calculation`이 포함되며, Stage3는 이 명시적 계획을 사용한다.

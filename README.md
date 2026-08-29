@@ -1,23 +1,24 @@
 # dis-164
 
-AI 페스티벌 2026 4단계 Agent 실행 엔진.
+AI Festival 2026 공시 질의 응답 Agent 실행 엔진.
 
-## 현재 구조
+## 현재 canonical 구조
 
 ```text
 app.py                  # FastAPI 진입점
-integration/            # Stage1~Stage4 LangGraph/API 구성
-shared_state.py         # 공용 AgentState 계약
-stage1/                 # 질의 정규화·Intent·manifest 필터 생성 노드
-stage3/                 # 표준 단일 Stage3 노드
-stage4/                 # 답변 수치·출처·의미 검증 및 최종화 노드
-tests/                  # 공용 통합 골격 테스트
+integration/            # LangGraph 조립, Supervisor, API adapter
+shared_state.py         # 공용 AgentState와 Stage write contract
+stage1/                 # 질의 정규화·Intent·manifest filter
+stage2/                 # fixture/hybrid retrieval·embedding·rerank
+stage3/                 # Fact·event·계산·답변 초안
+stage4/                 # 수치·출처·의미 검증
+legacy/                 # 과거 구현과 fixture 보관
+tests/                  # 현재 통합 계약 테스트
 ```
 
-이전 실험용 백엔드, 데이터, 스크립트와 통합 복제본은 `legacy/` 아래에 보존되어
-있습니다. 현재 진입점에서는 `legacy/`의 코드를 import하지 않습니다.
+실행 흐름은 `Stage1 → Supervisor → Stage2 → Supervisor → Stage3 → Supervisor → Stage4 → Supervisor`다. Supervisor는 허용된 action만 선택하고, 실제 Stage 작업과 반복 제한은 코드가 담당한다.
 
-## 실행
+## 설치 및 실행
 
 ```powershell
 python -m pip install -r requirements.txt
@@ -25,56 +26,41 @@ python -m pip install -r requirements-langgraph.txt
 uvicorn app:app --reload
 ```
 
-`GET /health`는 바로 사용할 수 있습니다. `GET /answer?question_id=...&question=...`
-는 팀의 Stage1, Stage2, Stage3, Stage4 구현을 `integration.StagePipeline`에
-주입하기 전까지 실행 골격으로 동작하며, 현재는 503을 반환합니다.
+기본 factory는 `integration/composition.py`에서 fixture backend를 조립한다. 기본 fixture는 `legacy/test_data/disclosure_clova_local.json`이며, 경로는 `STAGE2_FIXTURE_PATH`로 바꿀 수 있다. 현재 지원 backend는 `STAGE2_BACKEND=fixture`다.
 
-최종 그래프는 하나의 공용 `AgentState`를 사용하고, 각 노드 사이에는 변경된
-필드만 partial update로 전달합니다.
+`CLOVA_API_KEY` 또는 `CLOVASTUDIO_API_KEY`가 없으면 query embedding은 `embedding_unavailable`로 처리된다. 의미 검증 provider가 없으면 최종 답변을 성공으로 가장하지 않는다. 실제 SQLite·Chroma·PostgreSQL backend는 후속 작업이다.
+
+## API
 
 ```text
-Stage1 → Supervisor → Stage2 → Supervisor → Stage3 → Supervisor → Stage4 → Supervisor → API 응답
-             차단/문서 없음 → Stage4                         retry/planner → 제한된 loop
+GET /health
+GET /answer?question_id=Q-001&question=질문내용
 ```
 
-Stage3는 `stage3`의 `build_stage3_node()`로 제공하고, 나머지 Stage 노드 함수는
-팀 통합 계층에서 주입합니다. 전체 파이프라인은 다음과 같이 구성합니다.
+응답은 `question_id`, `question`, `retrieved_context`, `think_trace`, `answer`의 다섯 문자열 필드를 유지한다. `think_trace`에는 Supervisor action과 주요 시도 횟수가 포함된다.
 
-```python
-from integration.graph import StageNodes
-from integration.service import StagePipeline
-from stage1 import build_stage1_node
-from stage3 import build_stage3_node
-from stage4 import build_stage4_node
+## 검색과 안전 제어
 
-pipeline = StagePipeline(StageNodes(
-    stage1=build_stage1_node(
-        corpus_dir=corpus_dir,
-        llm_client=hyperclova_client,
-    ),
-    stage2=stage2_node,
-    stage3=build_stage3_node(answer_client=hyperclova_client),
-    stage4=build_stage4_node(validator_client=hyperclova_client),
-))
+```text
+Stage1 manifest_filter
+→ query embedding
+→ keyword search + vector search
+→ ID 기준 merge
+→ Reranker
+→ cited_documents
 ```
 
-Supervisor는 `integration.supervisor`의 제한된 action 계약을 사용한다. 기본값은
-결정론적 bounded policy이며, 운영 환경에서는 `build_supervisor_node(client=...)`로
-LLM adapter를 주입할 수 있다. 검색 재시도·계산 계획 보완·Supervisor 전체 단계 수에는
-상한이 있고, 허용되지 않은 LLM action은 fail-closed 처리한다.
+- `question_id`, `question`, `original_question`은 실행 중 불변이다.
+- Stage별 partial update는 `STAGE_WRITE_FIELDS`로 검증한다.
+- Supervisor 전체 단계는 기본 12회, 검색·planner 재시도는 기본 1회다.
+- 답변 재생성은 최대 1회다.
+- 잘못된 action, provider 오류, 근거 부족은 fail-closed 처리한다.
 
-Stage4는 Stage3의 Fact·계산·citation을 결정론적으로 검증한 뒤, 주입된
-HyperCLOVA X 클라이언트로 답변 의미를 검증한다. 검증 실패 시 답변을 한 번
-재생성하고 재검증하며, 재생성·검증 또는 모델 호출이 실패하면 확인 불가
-응답으로 보수적으로 종료한다. `route != ok` 경로는 LLM을 호출하지 않고
-고정된 안내문을 반환한다.
+## 검증
 
-Stage1은 `Intent` dataclass를 공용 State에 저장하지 않고 `to_dict()`로 변환해
-`intent`와 State-level `route`를 반환한다. `intent`에는 원래 Stage1 분류값과
-Stage3용 `question_type`, `calculation.operation`이 함께 포함된다. 코퍼스는
-`corpus_dir`, `CORPUS_DIR` 환경변수, 로컬 대회 자료 경로 순서로 탐색한다.
+```powershell
+python -m unittest discover -s tests -p "test_*.py"
+python -m compileall -q integration shared_state.py stage1 stage2 stage3 stage4
+```
 
-그래프는 `shared_state.py`의 공용 `AgentState`를 사용하며, 각 Stage는 자신의
-부분 업데이트(partial update)만 반환합니다. 외부 응답 어댑터는 대회 제출에 필요한 다음 필드만
-반환합니다.
-`question_id`, `question`, `retrieved_context`, `think_trace`, `answer`.
+`legacy/` 문서는 과거 backend의 설계·검증 기록이며, 현재 실행 경로의 기준은 `integration/composition.py`와 `integration/graph.py`다.

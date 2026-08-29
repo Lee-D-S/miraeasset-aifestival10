@@ -49,12 +49,9 @@ update = stage3_node(state)
 }
 ```
 
-단, 현재 확인된 Stage1의 `Intent.to_dict()`에는 아직
-`question_type`과 중첩 `calculation`이 포함되지 않는다. 현재 Stage1의
-`intent` 값은 `lookup`, `calc`, `compare`, `list`, `change`, `exists`,
-`unknown` 중 하나이며, 이 값을 `question_type`의 임시 대체값으로 읽는 것은
-Stage3 내부 호환 처리다. Stage1 또는 Stage1 후단 변환기가 아래 두 필드를
-실제로 채울지는 통합 시 확정해야 한다.
+현재 Stage1의 `Intent.to_dict()`에는 `question_type`과 중첩 `calculation`이
+포함된다. Stage3는 이 명시적 계획을 사용하며, 호환성을 위해 기존 `intent` 값도
+읽을 수 있지만 질문 문장을 다시 해석해 계산을 추측하지 않는다.
 
 따라서 `question_type=calculation`인데 `calculation.operation`이 없으면 Stage3는
 질문 문구를 분석해 연산을 추측하지 않고 `missing_calculation_plan`을 반환한다.
@@ -175,3 +172,7 @@ python -m compileall -q stage3
 - 계약·정정 이벤트의 조건부 연결
 - HyperCLOVA client 1회 호출과 deterministic fallback
 - `gen_retry_num`만 증가하고 `retry_num`과 Stage4 validation은 건드리지 않음
+
+통합 graph에서는 Stage3 canonical validation 결과와 `facts` mirror가 공용
+`AgentState`에 전달된다. `correction_mode=include_chain`이면 질문 유형과
+관계없이 event linker가 실행된다.
