@@ -9,6 +9,7 @@ app.py                  # FastAPI 진입점
 integration/            # Stage1~Stage4 LangGraph/API 구성
 shared_state.py         # 공용 AgentState 계약
 stage3/                 # 표준 단일 Stage3 노드
+stage4/                 # 답변 수치·출처·의미 검증 및 최종화 노드
 tests/                  # 공용 통합 골격 테스트
 ```
 
@@ -42,14 +43,21 @@ Stage3는 `stage3`의 `build_stage3_node()`로 제공하고, 나머지 Stage 노
 from integration.graph import StageNodes
 from integration.service import StagePipeline
 from stage3 import build_stage3_node
+from stage4 import build_stage4_node
 
 pipeline = StagePipeline(StageNodes(
     stage1=stage1_node,
     stage2=stage2_node,
     stage3=build_stage3_node(answer_client=hyperclova_client),
-    stage4=stage4_node,
+    stage4=build_stage4_node(validator_client=hyperclova_client),
 ))
 ```
+
+Stage4는 Stage3의 Fact·계산·citation을 결정론적으로 검증한 뒤, 주입된
+HyperCLOVA X 클라이언트로 답변 의미를 검증한다. 검증 실패 시 답변을 한 번
+재생성하고 재검증하며, 재생성·검증 또는 모델 호출이 실패하면 확인 불가
+응답으로 보수적으로 종료한다. `route != ok` 경로는 LLM을 호출하지 않고
+고정된 안내문을 반환한다.
 
 그래프는 `shared_state.py`의 공용 `AgentState`를 사용하며, 각 Stage는 자신의
 부분 업데이트(partial update)만 반환합니다. 외부 응답 어댑터는 대회 제출에 필요한 다음 필드만
