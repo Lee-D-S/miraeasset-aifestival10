@@ -75,7 +75,8 @@ class SupervisorGraphTests(unittest.TestCase):
             StageNodes(stage1, lambda _state: {"stage2_result": {"status": "ok", "cited_documents": [{"id": "d"}]}}, lambda _state: {"stage3_result": {"status": "success"}}, stage4, supervisor=build_supervisor_node(supervisor))
         ).invoke(question_id="Q-003", question="질문")
 
-        self.assertEqual(state["route"], "unsafe")
+        self.assertEqual(state["route"], "ok")
+        self.assertEqual(state["termination_reason"], "validation_failed")
 
 
 if __name__ == "__main__":

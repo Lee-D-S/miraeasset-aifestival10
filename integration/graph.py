@@ -40,6 +40,13 @@ def _blocked_route(route: str) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
     return lambda _state: {"route": route, "termination_reason": reason}
 
 
+def _fail_closed(state: Mapping[str, Any]) -> dict[str, Any]:
+    """Terminate safely without corrupting the user's original route."""
+    route = str(state.get("route") or "unanswerable")
+    reason = "unsafe" if route == "unsafe" else "validation_failed"
+    return {"termination_reason": reason}
+
+
 def _set_phase(phase: str) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
     return lambda _state: {"supervisor_phase": phase, "phase": phase}
 
@@ -84,7 +91,7 @@ def build_graph(nodes: StageNodes):
     builder.add_node("answer_regeneration", regeneration)
     builder.add_node("clarify", _blocked_route("need_clarify"))
     builder.add_node("unanswerable", _blocked_route("unanswerable"))
-    builder.add_node("fail_closed", _blocked_route("unsafe"))
+    builder.add_node("fail_closed", _fail_closed)
 
     builder.add_edge(START, "stage1")
     builder.add_edge("stage1", "phase_after_stage1")

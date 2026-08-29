@@ -14,8 +14,9 @@ from shared_state import AgentState, make_initial_agent_state
 class StagePipeline:
     """Invoke a compiled four-stage graph from an API or test boundary."""
 
-    def __init__(self, nodes: StageNodes):
+    def __init__(self, nodes: StageNodes, *, recursion_limit: int = 24):
         self.graph = build_graph(nodes)
+        self.recursion_limit = recursion_limit
 
     def invoke(
         self,
@@ -29,7 +30,7 @@ class StagePipeline:
             question=question,
             messages=messages,
         )
-        return self.graph.invoke(initial_state)
+        return self.graph.invoke(initial_state, config={"recursion_limit": self.recursion_limit})
 
 
 __all__ = ["StagePipeline"]

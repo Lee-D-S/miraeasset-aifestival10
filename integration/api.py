@@ -33,6 +33,16 @@ def _think_trace(state: dict[str, Any]) -> str:
                 for field in ("status", "warnings", "trace")
                 if field in value
             }
+    trace["supervisor"] = {
+        "phase": state.get("phase"),
+        "action": state.get("supervisor_action"),
+        "reason": state.get("supervisor_reason"),
+        "search_attempts": state.get("search_attempts", 0),
+        "planner_attempts": state.get("planner_attempts", 0),
+        "regeneration_attempts": state.get("regeneration_attempts", 0),
+        "validation_attempts": state.get("validation_attempts", 0),
+        "termination_reason": state.get("termination_reason"),
+    }
     return json.dumps(trace, ensure_ascii=False)
 
 
