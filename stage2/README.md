@@ -42,6 +42,26 @@ metadata, keyword, and vector search methods as the Stage2 retriever contract.
 The query embedder must be injected for vector search; the repository never
 silently substitutes a fake embedding provider.
 
+## Troubleshooting real-document smoke tests
+
+If Stage2 succeeds but Stage3 reports insufficient evidence, first check the
+indexed chunk range. The first chunks of a disclosure often contain cover and
+metadata sections rather than financial tables. Use `--doc-id` and `--term`
+to filter chunks *before* embedding:
+
+```bash
+python scripts/build_local_smoke_index.py --source-root "<competition-root>" \
+  --doc-id periodic_20260310002820 --term 매출액 \
+  --max-chunks-per-document 0 --request-delay 2
+```
+
+Do not interpret mojibake in a terminal as proof that the XML is corrupted.
+Check the decoded Python text and code points first. Also normalize disclosure
+folder and manifest paths to NFC because the supplied raw folder names may use
+NFD. If Stage4 fails after Stage3 creates facts and citations, inspect numeric,
+citation, and semantic checks independently; a provider HTTP error in semantic
+validation must remain a validation failure rather than a successful answer.
+
 실제 smoke corpus 전처리는 `stage2.ingestion.build_chunk_rows()`를 사용한다. 선택 목록은
 `data/local_smoke/selected_documents.json`이며, XML 원문·metadata를 읽어 deterministic chunk를
 생성한다. 이 함수는 embedder를 명시적으로 주입하지 않으면 임베딩을 생성하지 않는다.
