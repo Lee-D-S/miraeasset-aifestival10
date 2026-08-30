@@ -81,7 +81,9 @@ def extract(pre: PreprocessResult, entities: EntityResult, index: CorpusIndex) -
     _extract_intent(sq, slots, entities, cfg)
     from .calculation import build_calculation, canonical_question_type
     slots.question_type = canonical_question_type(slots.intent)
-    slots.calculation = build_calculation(slots.intent, text, slots.metric)
+    slots.calculation = build_calculation(
+        slots.intent, text, slots.metric, metric_matches=slots.metric_matches
+    )
     _resolve_time_mode(sq, slots, cfg)
     return slots
 

@@ -163,6 +163,26 @@ def run_invariants(index: CorpusIndex) -> None:
         "state에는 dict만 실리므로 요약 문자열도 함께 넘긴다",
     )
 
+    print("\n[비중 계산은 metric_matches에서 분모를 넘긴다]")
+    intent = build_intent("삼성전자의 2025년 영업이익 대비 연구개발비 비중은?", index, use_llm=False)
+    check(
+        intent.calculation.get("operation") == "ratio_percent"
+        and intent.calculation.get("metric") == "rnd"
+        and intent.calculation.get("denominator_metric") == "operating_profit",
+        "영업이익 대비 연구개발비 → 분모=operating_profit",
+    )
+    intent = build_intent("삼성전자의 2025년 매출 대비 설비투자 비중은?", index, use_llm=False)
+    check(
+        intent.calculation.get("denominator_metric") == "revenue",
+        "매출 대비 설비투자 → 분모=revenue",
+    )
+    intent = build_intent("삼성전자의 2025년 영업이익률은?", index, use_llm=False)
+    check(
+        intent.calculation.get("operation") == "margin"
+        and intent.calculation.get("denominator_metric") == "revenue",
+        "영업이익률 → margin, 분모=revenue",
+    )
+
 
 def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):

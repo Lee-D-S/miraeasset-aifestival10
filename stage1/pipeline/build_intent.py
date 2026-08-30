@@ -40,7 +40,12 @@ def build_intent(
 
     slots.question_type = canonical_question_type(slots.intent)
     if not slots.calculation:
-        slots.calculation = build_calculation(slots.intent, pre.text, slots.metric)
+        slots.calculation = build_calculation(
+            slots.intent,
+            pre.text,
+            slots.metric,
+            metric_matches=slots.metric_matches,
+        )
 
     build = filter_builder.build(entities, slots, index)
     decision = router.decide(pre.squashed, entities, slots, build, index)

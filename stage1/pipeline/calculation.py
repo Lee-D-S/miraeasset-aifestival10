@@ -68,10 +68,42 @@ def operation_for(question: str, *, intent: str, metric: str | None) -> str | No
     return None
 
 
-def build_calculation(intent: str, question: str, metric: str | None, *, denominator_metric: str | None = None) -> dict[str, Any]:
+def infer_denominator_metric(
+    metric: str | None,
+    metric_matches: list[str],
+    *,
+    operation: str | None,
+) -> str | None:
+    """비중·마진 계산의 분모 지표를 metric_matches에서 고른다.
+
+    "A 대비 B 비중"처럼 질의에 지표가 두 개 잡히면 slots.metric(분자)이 아닌
+    나머지 하나가 분모다. 영업이익률(margin)은 분모가 항상 매출이다.
+    """
+    if operation == "margin":
+        return "revenue"
+    if operation != "ratio_percent":
+        return None
+    if not metric or len(metric_matches) < 2:
+        return None
+    others = [key for key in metric_matches if key != metric]
+    return others[0] if len(others) == 1 else None
+
+
+def build_calculation(
+    intent: str,
+    question: str,
+    metric: str | None,
+    *,
+    denominator_metric: str | None = None,
+    metric_matches: list[str] | None = None,
+) -> dict[str, Any]:
     operation = operation_for(question, intent=intent, metric=metric)
     if operation is None:
         return {}
+    if denominator_metric is None:
+        denominator_metric = infer_denominator_metric(
+            metric, list(metric_matches or []), operation=operation
+        )
     result: dict[str, Any] = {"operation": operation}
     if metric:
         result["metric"] = metric
@@ -80,4 +112,10 @@ def build_calculation(intent: str, question: str, metric: str | None, *, denomin
     return result
 
 
-__all__ = ["SUPPORTED_OPERATIONS", "build_calculation", "canonical_question_type", "operation_for"]
+__all__ = [
+    "SUPPORTED_OPERATIONS",
+    "build_calculation",
+    "canonical_question_type",
+    "infer_denominator_metric",
+    "operation_for",
+]
