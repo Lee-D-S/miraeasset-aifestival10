@@ -24,7 +24,12 @@ stage1_node = build_stage1_node(
 
 `intent`의 원래 분류값(`lookup`, `calc`, `compare` 등)은 보존하며,
 `question_type`은 Stage3 계약에 맞춰 canonical 값으로 추가한다. 계산 질문에는
-Stage3 whitelist에 포함된 `calculation.operation`과 `metric`을 기록한다.
+Stage3 whitelist에 포함된 `calculation.operation`과 `metric`을 기록한다. 비중·마진
+질의는 `metric_matches`에서 분모를 추론해 `calculation.denominator_metric`에 넣는다.
+
+**제외 조건:** "A를 제외한 <섹터>" 질의는 `exclude_corp_names` / `excluded_corps`로
+기록하고, 섹터는 멤버 목록으로 펼쳐 `manifest_filter.corp_names`에 반영한다.
+`think_trace`에는 `trace_summary()` 결과가 직렬화되어 state로 넘어간다.
 
 ## 코퍼스 경로
 

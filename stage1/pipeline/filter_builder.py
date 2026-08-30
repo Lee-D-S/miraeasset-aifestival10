@@ -44,9 +44,7 @@ def build(
     result = BuildResult(manifest_filter=ManifestFilter())
     flt = result.manifest_filter
 
-    flt.corp_names = [c.corp_name for c in entities.corps]
-    # 기업이 확정되면 섹터는 참고 정보일 뿐이라 필터에서 뺀다.
-    flt.sector = None if flt.corp_names else entities.sector
+    _apply_targets(entities, flt, result)
 
     flt.doc_group = slots.doc_group
     flt.doc_group_candidates = list(slots.doc_group_candidates)
@@ -90,6 +88,36 @@ def build(
 
     result.assumptions.extend(slots.notes)
     return result
+
+
+def _apply_targets(entities: EntityResult, flt: ManifestFilter, result: BuildResult) -> None:
+    """검색 대상 기업·섹터를 확정한다.
+
+    manifest 필터는 corp_names가 비었을 때만 sector를 본다. 그래서 "A를 제외한 <섹터>"를
+    sector 그대로 넘기면 제외 대상 A가 후보에 그대로 남는다. 이 경우에는 섹터를 멤버
+    목록으로 펼쳐서 A를 빼고 명시된 기업과 합친다.
+    """
+    included = [corp.corp_name for corp in entities.corps]
+    excluded = list(dict.fromkeys(corp.corp_name for corp in entities.excluded_corps))
+    flt.exclude_corp_names = excluded
+
+    if excluded and entities.sector:
+        members = [name for name in entities.sector_members if name not in set(excluded)]
+        flt.corp_names = list(dict.fromkeys(members + included))
+        flt.sector = None
+        result.assumptions.append(
+            f"'{', '.join(excluded)}'을(를) 제외하라는 요청으로 섹터 '{entities.sector}' "
+            f"{len(members)}개사를 대상으로 봅니다."
+        )
+        return
+
+    flt.corp_names = list(dict.fromkeys(included))
+    # 기업이 확정되면 섹터는 참고 정보일 뿐이라 필터에서 뺀다.
+    flt.sector = None if flt.corp_names else entities.sector
+    if excluded:
+        result.assumptions.append(
+            f"'{', '.join(excluded)}'은(는) 제외 대상으로 보고 검색에서 뺍니다."
+        )
 
 
 def _apply_periodic_period(

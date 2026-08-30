@@ -75,12 +75,6 @@ def _find_corpus_dir(explicit: Optional[Path]) -> Path:
     if env:
         return Path(env)
 
-    standard_local = Path(
-        r"C:\Users\idong\OneDrive\바탕 화면\공모전\2026 미래에셋 ai 페스티벌\data\3.공시\corpus"
-    )
-    if (standard_local / "universe.csv").exists():
-        return standard_local
-
     here = Path(__file__).resolve()
     for base in [here.parent.parent, *here.parents]:
         for candidate in sorted(base.glob("*/*/corpus")) + sorted(base.glob("*/corpus")):
@@ -226,10 +220,13 @@ class CorpusIndex:
         groups = set(flt.effective_doc_groups())
         subtypes = set(flt.effective_doc_subtypes())
         corp_names = set(flt.corp_names)
+        exclude_corp_names = set(flt.exclude_corp_names)
         base_years = set(flt.base_years)
         base_months = set(flt.base_months)
 
         for doc in self.manifest:
+            if exclude_corp_names and doc["corp_name"] in exclude_corp_names:
+                continue
             if corp_names and doc["corp_name"] not in corp_names:
                 continue
             if not corp_names and flt.sector and doc.get("sector") != flt.sector:
