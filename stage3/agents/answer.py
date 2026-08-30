@@ -77,6 +77,21 @@ def _citation_for_fact(fact: Stage3Fact, citations: list[dict[str, Any]]) -> dic
     return citations[0] if citations else None
 
 
+def _compact_prompt_citations(citations: list[dict[str, Any]], facts: list[Stage3Fact]) -> list[dict[str, Any]]:
+    """Keep only bounded evidence in the LLM prompt; preserve full result citations."""
+    fact_ids = {fact.document_id for fact in facts if fact.document_id}
+    selected = [item for item in citations if str(item.get("document_id", "")) in fact_ids]
+    selected += [item for item in citations if item not in selected]
+    return [
+        {
+            "document_id": item.get("document_id"),
+            "source": item.get("source"),
+            "evidence": str(item.get("evidence", ""))[:800],
+        }
+        for item in selected[:8]
+    ]
+
+
 def _lookup_claim(fact: Stage3Fact, intent: Stage3Intent, citations: list[dict[str, Any]]) -> str:
     """Render a compact, explicit claim for semantic validation.
 
@@ -121,6 +136,7 @@ class AnswerWriter:
         warnings: list[str],
     ) -> tuple[str, str]:
         selected_facts = _relevant_facts(intent, facts)
+        prompt_citations = _compact_prompt_citations(citations, selected_facts)
         payload = {
             "question": question,
             "intent": intent.to_dict(),
@@ -128,7 +144,7 @@ class AnswerWriter:
             "calculations": calculations,
             "comparisons": comparisons,
             "events": events,
-            "citations": citations,
+            "citations": prompt_citations,
             "warnings": warnings,
         }
         if self.client is not None:

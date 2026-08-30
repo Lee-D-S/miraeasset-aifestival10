@@ -20,19 +20,19 @@ SEMANTIC_SCHEMA = {
 def _compact_stage3_result(stage3_result: Mapping[str, Any]) -> dict[str, Any]:
     """Keep semantic validation within the model context window."""
     facts = []
-    for fact in stage3_result.get("facts", [])[:50]:
+    for fact in stage3_result.get("facts", [])[:20]:
         if isinstance(fact, Mapping):
             facts.append({key: fact.get(key) for key in (
                 "metric", "label", "value", "unit", "normalized_value", "period",
                 "basis", "company", "document_id",
             )})
     citations = []
-    for citation in stage3_result.get("citations", [])[:12]:
+    for citation in stage3_result.get("citations", [])[:8]:
         if isinstance(citation, Mapping):
             citations.append({
                 "document_id": citation.get("document_id"),
                 "source": citation.get("source"),
-                "evidence": str(citation.get("evidence", ""))[:1200],
+                "evidence": str(citation.get("evidence", ""))[:800],
             })
     return {
         "facts": facts,
