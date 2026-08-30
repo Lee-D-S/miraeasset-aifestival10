@@ -47,8 +47,9 @@ class ClovaQueryEmbedding:
                 retryable=error.code == 429,
             ) from error
         except (URLError, TimeoutError) as error:
+            reason = getattr(error, "reason", None) or str(error)
             raise EmbeddingUnavailable(
-                f"CLOVA embedding request failed: {type(error).__name__}",
+                f"CLOVA embedding request failed: {type(error).__name__}: {reason}",
                 retryable=True,
             ) from error
         vector = payload.get("result", {}).get("embedding", [])
