@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 
 from stage2 import InMemoryRetriever, RetrievalConfig, build_stage2_node
+from integration.supervisor import retry_search_tool
 from stage2.retrieval import matches_manifest_filter
 
 
@@ -134,3 +135,31 @@ def test_stage3_consumes_cited_documents_from_stage2_result():
     result = build_stage2_node(retriever=retriever)(_state())["stage2_result"]
     bundle = adapt_stage2_bundle(result)
     assert [document.id for document in bundle.effective_documents()] == ["samsung-2025-revenue"]
+
+
+def test_stage2_injects_reranker_and_records_query():
+    class RecordingReranker:
+        def __init__(self):
+            self.calls = []
+
+        def rerank(self, query, documents, limit):
+            self.calls.append((query, [item["id"] for item in documents], limit))
+            return list(reversed(documents))[:limit]
+
+    reranker = RecordingReranker()
+    node = build_stage2_node(
+        retriever=InMemoryRetriever(DOCUMENTS, vector_scores={"samsung-2025-revenue": 1.0}),
+        config=RetrievalConfig(final_limit=2, reranker=reranker),
+    )
+    update = node(_state())
+    assert reranker.calls
+    assert update["search_query"] == reranker.calls[0][0]
+    assert len(update["stage2_result"]["cited_documents"]) <= 2
+
+
+def test_retry_search_changes_query_and_preserves_original_question():
+    state = _state(original_question="original question", search_query="first search", retry_num=0)
+    update = retry_search_tool(state)
+    assert update["search_query"] != state["search_query"]
+    assert state["original_question"] == "original question"
+    assert update["search_attempts"] == 1
