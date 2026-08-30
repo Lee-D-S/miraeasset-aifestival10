@@ -1,12 +1,15 @@
-"""CLOVA query-embedding adapter used by the fixture and future stores."""
+"""CLOVA query-embedding adapters used by the fixture and local stores."""
 
 from __future__ import annotations
 
 import json
 import os
 import re
+from collections.abc import Sequence
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+from langchain_core.embeddings import Embeddings
 
 from stage2.json_fixture import EmbeddingUnavailable
 
@@ -58,4 +61,20 @@ class ClovaQueryEmbedding:
         return [float(value) for value in vector]
 
 
-__all__ = ["ClovaQueryEmbedding"]
+class ClovaEmbeddings(Embeddings):
+    """LangChain ``Embeddings`` adapter so vector stores (Chroma) own the
+    embed-then-rank pipeline instead of Stage2 computing cosine similarity by
+    hand. Wraps the same CLOVA HTTP call as :class:`ClovaQueryEmbedding`.
+    """
+
+    def __init__(self, *, timeout: float = 30.0):
+        self._embed_one = ClovaQueryEmbedding(timeout=timeout)
+
+    def embed_query(self, text: str) -> list[float]:
+        return list(self._embed_one(text))
+
+    def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
+        return [list(self._embed_one(text)) for text in texts]
+
+
+__all__ = ["ClovaEmbeddings", "ClovaQueryEmbedding"]

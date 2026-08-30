@@ -9,7 +9,7 @@ app.py                  # FastAPI 진입점
 integration/            # LangGraph 조립, Supervisor, API adapter
 shared_state.py         # 공용 AgentState와 Stage write contract
 stage1/                 # 질의 정규화·Intent·manifest filter
-stage2/                 # fixture/hybrid retrieval·embedding·rerank
+stage2/                 # fixture(CLOVA API)/local(SQL+VectorDB) hybrid retrieval·embedding·rerank
 stage3/                 # Fact·event·계산·답변 초안
 stage4/                 # 수치·출처·의미 검증
 legacy/                 # 과거 구현과 fixture 보관
@@ -17,6 +17,21 @@ tests/                  # 현재 통합 계약 테스트
 ```
 
 실행 흐름은 `Stage1 → Supervisor → Stage2 → Supervisor → Stage3 → Supervisor → Stage4 → Supervisor`다. Supervisor는 허용된 action만 선택하고, 실제 Stage 작업과 반복 제한은 코드가 담당한다.
+
+## 그래프 구조
+
+`integration/graph.py`가 조립하는 실제 LangGraph 상태머신이다. Stage별 phase 갱신과 소유권 검증은
+각 Stage 노드를 감싸는 훅으로 처리되어 별도 노드로 나타나지 않고, 4단계 Supervisor는 하나의
+`supervisor` 노드로 합쳐져 있다.
+
+![integration/graph.py의 LangGraph 상태머신](integration/graph.png)
+
+그래프 구조(노드·엣지)가 바뀌면 다음 명령으로 다시 뽑는다. 저장된 이미지가 실제 코드와 항상
+일치하도록, 손으로 그리지 않고 이 스크립트로만 갱신한다.
+
+```powershell
+python scripts/render_graph.py --png integration/graph.png
+```
 
 ## 설치 및 실행
 
@@ -28,24 +43,34 @@ uvicorn app:app --reload
 ```
 
 기본 factory는 `integration/composition.py`에서 Stage1~Stage4를 조립한다. Stage2는
-`STAGE2_BACKEND=fixture`와 `STAGE2_BACKEND=sqlite`를 지원한다. fixture 기본값은
-`legacy/test_data/disclosure_clova_local.json`이며, `STAGE2_FIXTURE_PATH`로 바꿀 수 있다.
-SQLite를 선택하면 `STAGE2_INDEX_PATH`의 chunk·metadata·embedding index를 사용한다.
-두 경로 모두 환경변수가 빈 문자열이면 안전한 기본 경로를 사용한다.
+`STAGE2_BACKEND=fixture`와 `STAGE2_BACKEND=sqlite` 두 백엔드를 지원한다(`stage2/local_store.py`,
+`stage2/backends.py`).
 
-`CLOVA_API_KEY` 또는 `CLOVASTUDIO_API_KEY`가 없으면 query embedding은 `embedding_unavailable`로 처리된다. 의미 검증 provider가 없으면 최종 답변을 성공으로 가장하지 않는다. Chroma·PostgreSQL 운영 backend는 후속 작업이다.
+- `fixture` (기본값, 테스트용): "DB"가 CLOVA API로 사전 계산한 임베딩 JSON 파일이다
+  (`legacy/test_data/disclosure_clova_local.json`, `STAGE2_FIXTURE_PATH`로 변경 가능). 쿼리는
+  같은 CLOVA 임베딩 엔드포인트로 실시간 계산한다. 로컬 SQL·VectorDB가 전혀 필요 없다.
+- `sqlite`: 로컬 SQLite(`STAGE2_INDEX_PATH`)로 `manifest_filter`를 SQL `WHERE`절로 필터링하고,
+  로컬 Chroma(`STAGE2_CHROMA_PATH`)로 임베딩·유사도·정렬을 위임한다(`LocalHybridRetriever`).
+  두 경로 모두 환경변수가 빈 문자열이면 안전한 기본 경로(`data/local_smoke/`)를 쓴다.
 
-실제 SQLite smoke index를 사용하려면 다음처럼 설정한다.
+`LocalHybridRetriever`는 SQL과 벡터 저장소를 각각 주입받을 수 있어(`engine=`/`vectorstore=`),
+`STAGE2_RDB_URL`(Dockerized Postgres DSN)과 `STAGE2_CHROMA_HOST`/`STAGE2_CHROMA_PORT`(Chroma
+서버)를 설정하면 코드 변경 없이 컨테이너 기반 RDB·VectorDB로 바꿀 수 있다 — 지금은 둘 다
+비워두면 로컬 파일을 그대로 쓴다.
+
+`CLOVA_API_KEY` 또는 `CLOVASTUDIO_API_KEY`가 없으면 query embedding은 `embedding_unavailable`로 처리된다. 의미 검증 provider가 없으면 최종 답변을 성공으로 가장하지 않는다.
+
+실제 SQLite smoke index를 사용하려면 먼저 `scripts/build_local_sqlite.py`로 SQLite+Chroma
+인덱스를 만든 뒤 다음처럼 설정한다. (Chroma가 문서 임베딩을 자체 계산하므로 CLOVA 임베딩
+provider가 필요하다.)
 
 ```powershell
 $env:STAGE2_BACKEND = "sqlite"
 $env:STAGE2_INDEX_PATH = "data/local_smoke/smoke.db"
+$env:STAGE2_CHROMA_PATH = "data/local_smoke/smoke_chroma"
 $env:CLOVA_LLM_ENABLED = "true"  # 답변 생성·semantic validation을 CLOVA로 활성화
 uvicorn app:app --reload
 ```
-
-SQLite adapter는 연결되어 있지만, Chroma·PostgreSQL 운영 adapter는 아직 canonical
-factory에 연결하지 않았다.
 
 ## API
 
