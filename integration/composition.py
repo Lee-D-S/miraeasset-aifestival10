@@ -11,11 +11,13 @@ except ImportError:  # pragma: no cover - optional in minimal environments
     load_dotenv = None
 
 from integration.graph import StageNodes
+from integration.clova import ClovaChatClient
 from integration.service import StagePipeline
 from stage1 import build_stage1_node
 from stage2 import ClovaQueryEmbedding, JsonFixtureRetriever, RetrievalConfig, SQLiteStage2Repository, build_stage2_node
 from stage3 import build_stage3_node
 from stage4 import build_stage4_node
+from stage3.agents.answer import AnswerWriter
 
 
 def build_pipeline() -> StagePipeline:
@@ -23,6 +25,8 @@ def build_pipeline() -> StagePipeline:
     if load_dotenv is not None:
         load_dotenv()
     stage1 = build_stage1_node()
+    live_llm = os.getenv("CLOVA_LLM_ENABLED", "false").strip().lower() == "true"
+    answer_client = ClovaChatClient() if live_llm else None
     backend = os.getenv("STAGE2_BACKEND", "fixture").strip().lower()
     if backend == "fixture":
         fixture = Path(os.getenv(
@@ -41,8 +45,8 @@ def build_pipeline() -> StagePipeline:
     return StagePipeline(StageNodes(
         stage1=stage1,
         stage2=build_stage2_node(retriever=retriever, config=RetrievalConfig(final_limit=8)),
-        stage3=build_stage3_node(),
-        stage4=build_stage4_node(),
+        stage3=build_stage3_node(answer_writer=AnswerWriter(answer_client)),
+        stage4=build_stage4_node(validator_client=answer_client),
     ))
 
 
