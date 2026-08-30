@@ -70,6 +70,16 @@ def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any
                 answer = _FAILURE_ANSWER
                 status = "validation_failed"
                 trace.append("validation_failed")
+                if not semantic.get("pass", False):
+                    trace.append("semantic_validation_failed")
+                    warnings.append(
+                        "semantic_failure: "
+                        + str(semantic.get("summary") or "semantic validator rejected the answer")
+                    )
+                    for key in ("issues", "unsupported_claims", "missing_aspects"):
+                        values = semantic.get(key)
+                        if isinstance(values, list) and values:
+                            warnings.append(f"semantic_{key}: {values}")
             else:
                 status = "regenerated" if regenerated else "success"
                 trace.append("validated")

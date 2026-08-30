@@ -241,7 +241,7 @@ def _execute_stage3(*, question: str, intent: Stage3Intent, stage2_result: Any, 
                 warnings=[*warnings, f"answer_provider_error: {type(error).__name__}"],
             )
             answer_mode = "deterministic_fallback"
-            result.warnings.append(f"answer_provider_error: {type(error).__name__}")
+            result.warnings.append(f"answer_provider_error: {type(error).__name__}: {error}")
     else:
         answer = writer.deterministic(
             intent=intent,
