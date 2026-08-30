@@ -13,7 +13,7 @@ except ImportError:  # pragma: no cover - optional in minimal environments
 from integration.graph import StageNodes
 from integration.service import StagePipeline
 from stage1 import build_stage1_node
-from stage2 import ClovaQueryEmbedding, JsonFixtureRetriever, RetrievalConfig, build_stage2_node
+from stage2 import ClovaQueryEmbedding, JsonFixtureRetriever, RetrievalConfig, SQLiteStage2Repository, build_stage2_node
 from stage3 import build_stage3_node
 from stage4 import build_stage4_node
 
@@ -24,13 +24,20 @@ def build_pipeline() -> StagePipeline:
         load_dotenv()
     stage1 = build_stage1_node()
     backend = os.getenv("STAGE2_BACKEND", "fixture").strip().lower()
-    if backend != "fixture":
-        raise RuntimeError(f"unsupported Stage2 backend: {backend}; production stores are not enabled yet")
-    fixture = Path(os.getenv(
-        "STAGE2_FIXTURE_PATH",
-        str(Path(__file__).resolve().parents[1] / "legacy" / "test_data" / "disclosure_clova_local.json"),
-    ))
-    retriever = JsonFixtureRetriever.from_path(fixture, query_embedder=ClovaQueryEmbedding())
+    if backend == "fixture":
+        fixture = Path(os.getenv(
+            "STAGE2_FIXTURE_PATH",
+            str(Path(__file__).resolve().parents[1] / "legacy" / "test_data" / "disclosure_clova_local.json"),
+        ))
+        retriever = JsonFixtureRetriever.from_path(fixture, query_embedder=ClovaQueryEmbedding())
+    elif backend == "sqlite":
+        index_path = Path(os.getenv(
+            "STAGE2_INDEX_PATH",
+            str(Path(__file__).resolve().parents[1] / "data" / "local_smoke" / "smoke.db"),
+        ))
+        retriever = SQLiteStage2Repository(index_path, query_embedder=ClovaQueryEmbedding())
+    else:
+        raise RuntimeError(f"unsupported Stage2 backend: {backend}; choose fixture or sqlite")
     return StagePipeline(StageNodes(
         stage1=stage1,
         stage2=build_stage2_node(retriever=retriever, config=RetrievalConfig(final_limit=8)),
