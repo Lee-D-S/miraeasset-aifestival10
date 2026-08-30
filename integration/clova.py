@@ -55,7 +55,14 @@ class ClovaChatClient:
                 break
             except HTTPError as error:
                 if error.code != 429 or attempt >= self.max_retries:
-                    raise RuntimeError(f"CLOVA chat HTTP {error.code}") from error
+                    detail = ""
+                    try:
+                        body = json.loads(error.read().decode("utf-8"))
+                        detail = str(body.get("status", {}).get("code") or body.get("status", {}).get("message") or "")
+                    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                        pass
+                    suffix = f" ({detail})" if detail else ""
+                    raise RuntimeError(f"CLOVA chat HTTP {error.code}{suffix}") from error
                 reset = error.headers.get("x-ratelimit-reset-requests") or error.headers.get("Retry-After")
                 match = re.search(r"\d+(?:\.\d+)?", str(reset or ""))
                 time.sleep(max(float(match.group(0)) if match else min(60.0, 2.0 ** attempt), 1.0))
