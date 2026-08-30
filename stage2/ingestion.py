@@ -79,11 +79,14 @@ def build_chunk_rows(
     source_root: str | Path,
     embedder: Callable[[str], Sequence[float]] | None = None,
     max_chars: int = 1200,
+    max_chunks_per_document: int | None = None,
 ) -> list[dict[str, Any]]:
     """Read only selected documents and return Stage2-compatible chunk rows."""
 
     selection = load_selection(selection_path)
     root = Path(source_root).resolve()
+    if max_chunks_per_document is not None and max_chunks_per_document <= 0:
+        raise ValueError("max_chunks_per_document must be positive")
     rows: list[dict[str, Any]] = []
     for selected in selection["documents"]:
         if not isinstance(selected, Mapping):
@@ -96,7 +99,10 @@ def build_chunk_rows(
         source_hash = hashlib.sha256(combined.encode("utf-8")).hexdigest()
         metadata = {key: value for key, value in selected.items() if key not in {"file_path", "test_roles"}}
         metadata.update({"source_hash": source_hash, "source_path": str(relative_path)})
-        for index, text in enumerate(chunk_text(combined, max_chars=max_chars)):
+        chunks = chunk_text(combined, max_chars=max_chars)
+        if max_chunks_per_document is not None:
+            chunks = chunks[:max_chunks_per_document]
+        for index, text in enumerate(chunks):
             chunk_id = hashlib.sha1(f"{selected['doc_id']}:{source_hash}:{index}:{text}".encode("utf-8")).hexdigest()
             row: dict[str, Any] = {
                 "id": chunk_id,
