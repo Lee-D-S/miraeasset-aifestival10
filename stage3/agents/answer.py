@@ -151,7 +151,15 @@ class AnswerWriter:
     ) -> str:
         """Render the local fallback without calling an external model."""
 
-        return AnswerWriter._template(intent, facts, calculations, comparisons, events, citations, warnings)
+        return AnswerWriter._template(
+            intent,
+            _relevant_facts(intent, facts),
+            calculations,
+            comparisons,
+            events,
+            citations,
+            warnings,
+        )
 
     @staticmethod
     def _template(intent: Stage3Intent, facts: list[Stage3Fact], calculations: list[dict[str, Any]], comparisons: list[dict[str, Any]], events: list[dict[str, Any]], citations: list[dict[str, Any]], warnings: list[str]) -> str:
