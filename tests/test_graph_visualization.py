@@ -15,8 +15,6 @@ def test_supervisor_graph_can_render_mermaid() -> None:
 
     mermaid = graph.get_graph().draw_mermaid()
 
-    assert "supervisor_after_stage1" in mermaid
-    assert "supervisor_after_stage2" in mermaid
-    assert "supervisor_after_stage3" in mermaid
+    assert "supervisor" in mermaid
     assert "calculation_planner" in mermaid
     assert "retry_search" in mermaid

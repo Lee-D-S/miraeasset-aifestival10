@@ -53,9 +53,10 @@ exceeded and `42902` indicates service overload, so callers must still retry
 with a bounded delay. See the [CLOVA usage control policy](https://guide.ncloud-docs.com/docs/clovastudio-ratelimiting).
 
 `build_local_sqlite.py` reads `data/local_smoke/embedded_chunks.json` and writes
-`data/local_smoke/smoke.db`. `SQLiteStage2Repository` stores chunk text,
-canonical metadata, and 1024-dimensional embeddings, and exposes the same
-metadata, keyword, and vector search methods as the Stage2 retriever contract.
+`data/local_smoke/smoke.db`. `LocalHybridRetriever` stores chunk metadata in SQL
+and embeddings in Chroma, and exposes the same metadata, keyword, and vector
+search methods as the Stage2 retriever contract. The SQL and Chroma stores are
+written together; the existing fixture JSON remains the offline default.
 The query embedder must be injected for vector search; the repository never
 silently substitutes a fake embedding provider.
 
