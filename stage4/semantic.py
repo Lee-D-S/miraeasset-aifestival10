@@ -17,17 +17,39 @@ SEMANTIC_SCHEMA = {
 }
 
 
+def _compact_stage3_result(stage3_result: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep semantic validation within the model context window."""
+    facts = []
+    for fact in stage3_result.get("facts", [])[:50]:
+        if isinstance(fact, Mapping):
+            facts.append({key: fact.get(key) for key in (
+                "metric", "label", "value", "unit", "normalized_value", "period",
+                "basis", "company", "document_id",
+            )})
+    citations = []
+    for citation in stage3_result.get("citations", [])[:12]:
+        if isinstance(citation, Mapping):
+            citations.append({
+                "document_id": citation.get("document_id"),
+                "source": citation.get("source"),
+                "evidence": str(citation.get("evidence", ""))[:1200],
+            })
+    return {
+        "facts": facts,
+        "calculations": list(stage3_result.get("calculations", []))[:20],
+        "comparison_results": list(stage3_result.get("comparison_results", []))[:10],
+        "linked_events": list(stage3_result.get("linked_events", []))[:10],
+        "citations": citations,
+    }
+
+
 def validate_semantics(client: Any, *, question: str, intent: Any, stage3_result: Mapping[str, Any], answer: str) -> dict[str, Any]:
     if client is None:
         raise RuntimeError("Stage4 semantic validator client is not configured")
     payload = {
         "question": question,
         "intent": intent,
-        "facts": stage3_result.get("facts", []),
-        "calculations": stage3_result.get("calculations", []),
-        "comparison_results": stage3_result.get("comparison_results", []),
-        "linked_events": stage3_result.get("linked_events", []),
-        "citations": stage3_result.get("citations", []),
+        **_compact_stage3_result(stage3_result),
         "answer": answer,
     }
     result = client.generate_json([{

@@ -76,7 +76,7 @@ def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any
         except Exception as error:  # workflow boundary must fail closed
             answer = _FAILURE_ANSWER
             status = "validation_failed"
-            warnings.append(f"stage4_error: {type(error).__name__}")
+            warnings.append(f"stage4_error: {type(error).__name__}: {error}")
             trace.append("validation_error")
 
         result = Stage4Result(status=status, answer=answer, numeric_check=numeric, citation_check=citation, semantic_check=semantic, regenerated=regenerated, warnings=warnings, trace=trace)
