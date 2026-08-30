@@ -68,3 +68,15 @@ pytest
 ```
 
 `legacy/` 문서는 과거 backend의 설계·검증 기록이며, 현재 실행 경로의 기준은 `integration/composition.py`와 `integration/graph.py`다.
+
+## 로컬 무비용 E2E
+
+외부 CLOVA·DB·임베딩 서버 없이 검증하려면 `integration.testing.build_deterministic_pipeline()`에
+deterministic Intent와 fixture 문서를 주입한다. 이 factory는 테스트 전용이며 production
+fallback으로 사용하지 않는다.
+
+```powershell
+pytest tests/test_local_e2e.py
+```
+
+실제 CLOVA 호출은 provider 환경변수가 설정된 별도 smoke test에서만 수행한다.

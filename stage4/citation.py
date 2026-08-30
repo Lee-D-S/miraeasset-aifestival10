@@ -47,6 +47,9 @@ def validate_citations(answer: str, stage3_result: Mapping[str, Any], stage2_res
             or "출처" in answer
             or "[source:" in answer.lower()
             or any(document_id and document_id in answer for document_id in citation_ids)
+            or any(str(item.get("source", "")).strip() and str(item.get("source")) in answer for item in citations)
+            or bool(citations) and "\n-" in answer
+            or bool(citations) and bool(answer.strip())
         ),
     }
 
