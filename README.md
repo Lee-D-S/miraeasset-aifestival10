@@ -102,6 +102,10 @@ embedding timeout은 `CLOVA_EMBEDDING_TIMEOUT`, 답변·semantic timeout은
 `CLOVA_CHAT_TIMEOUT`, 429 재시도 대기 상한은 `CLOVA_RATE_LIMIT_MAX_WAIT`로 조정한다.
 실행 중 adapter의 `last_rate_limit`에서 API가 반환한 `x-ratelimit-*` 헤더를 확인할 수
 있으며, API key와 요청 본문은 기록하지 않는다.
+호출 전에는 process-local QPM·TPM limiter가 예상 입력·출력 토큰 예산과 provider 잔여량을
+확인해 한도 부족 요청을 차단한다.
+답변·semantic 출력 토큰 기본값은 각각 512·256이며 `CLOVA_ANSWER_MAX_TOKENS`와
+`CLOVA_SEMANTIC_MAX_TOKENS`로 조정할 수 있다.
 
 Stage3 답변 생성은 질문과 관련된 Fact를 우선 전달한다. strict grounding client가 핵심
 수치 또는 citation ID를 포함하지 않은 답변을 반환하면 deterministic grounding fallback으로

@@ -17,6 +17,7 @@ def test_clova_chat_adapter_parses_text_and_json_without_network(monkeypatch):
 
 def test_clova_chat_adapter_bounds_rate_limit_wait_and_labels_operation(monkeypatch):
     client = ClovaChatClient(api_key="test", max_retries=1, timeout=1)
+    client.rate_limiter.min_interval = 0
     waits = []
 
     def raise_rate_limit(*_args, **_kwargs):

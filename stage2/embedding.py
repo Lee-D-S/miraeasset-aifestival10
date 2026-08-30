@@ -9,6 +9,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from stage2.json_fixture import EmbeddingUnavailable
+from integration.rate_limit import ClovaRateLimiter, RateLimitBlocked, estimate_tokens
 
 try:
     from dotenv import load_dotenv
@@ -17,7 +18,7 @@ except ImportError:  # pragma: no cover - optional for direct adapter imports
 
 
 class ClovaQueryEmbedding:
-    def __init__(self, *, timeout: float | None = None):
+    def __init__(self, *, timeout: float | None = None, rate_limiter: ClovaRateLimiter | None = None):
         if load_dotenv is not None:
             load_dotenv()
         try:
@@ -26,6 +27,7 @@ class ClovaQueryEmbedding:
             configured = 30.0
         self.timeout = timeout if timeout is not None else max(configured, 0.1)
         self.last_rate_limit: dict[str, str] = {}
+        self.rate_limiter = rate_limiter or ClovaRateLimiter(default_qpm=60, default_tpm=40000)
 
     def _capture_rate_limit(self, headers) -> None:
         self.last_rate_limit = {
@@ -46,6 +48,7 @@ class ClovaQueryEmbedding:
             method="POST",
         )
         try:
+            self.rate_limiter.before_call(estimate_tokens(text))
             with urlopen(request, timeout=self.timeout) as response:
                 self._capture_rate_limit(response.headers)
                 payload = json.loads(response.read().decode("utf-8"))

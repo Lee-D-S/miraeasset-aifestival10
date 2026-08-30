@@ -1,0 +1,86 @@
+"""Process-local QPM/TPM guard for CLOVA requests."""
+
+from __future__ import annotations
+
+from collections import deque
+import re
+import threading
+import time
+from collections.abc import Mapping
+
+
+def estimate_tokens(value: object) -> int:
+    """Conservative token estimate used only for local admission control."""
+    return max(1, (len(str(value)) + 3) // 4)
+
+
+def parse_reset_seconds(value: object) -> float:
+    match = re.search(r"-?\d+(?:\.\d+)?", str(value or ""))
+    if not match:
+        return 0.0
+    return max(float(match.group(0)), 0.0)
+
+
+class RateLimitBlocked(RuntimeError):
+    """Raised before a request when the local/provider budget is exhausted."""
+
+    def __init__(self, reason: str, retry_after: float = 0.0):
+        super().__init__(reason)
+        self.retry_after = retry_after
+
+
+class ClovaRateLimiter:
+    def __init__(self, *, default_qpm: int, default_tpm: int, min_interval: float = 0.0):
+        self.default_qpm = default_qpm
+        self.default_tpm = default_tpm
+        self.min_interval = max(min_interval, 0.0)
+        self._calls: deque[tuple[float, int]] = deque()
+        self._last_call = 0.0
+        self._blocked_until = 0.0
+        self._remaining_requests: int | None = None
+        self._remaining_tokens: int | None = None
+        self._lock = threading.Lock()
+
+    def observe(self, headers: Mapping[str, object]) -> None:
+        normalized = {str(key).lower(): str(value) for key, value in headers.items()}
+        with self._lock:
+            self._remaining_requests = self._int_or_none(normalized.get("x-ratelimit-remaining-requests"))
+            self._remaining_tokens = self._int_or_none(normalized.get("x-ratelimit-remaining-tokens"))
+            reset_values = [
+                parse_reset_seconds(normalized.get("x-ratelimit-reset-requests")),
+                parse_reset_seconds(normalized.get("x-ratelimit-reset-tokens")),
+            ]
+            reset = max(reset_values, default=0.0)
+            if (self._remaining_requests == 0 or self._remaining_tokens == 0) and reset > 0:
+                self._blocked_until = max(self._blocked_until, time.monotonic() + reset)
+
+    def before_call(self, estimated_tokens: int) -> None:
+        now = time.monotonic()
+        with self._lock:
+            while self._calls and now - self._calls[0][0] >= 60.0:
+                self._calls.popleft()
+            if now < self._blocked_until:
+                raise RateLimitBlocked("CLOVA rate-limit reset 전이라 호출을 차단했습니다.", self._blocked_until - now)
+            if self._remaining_requests is not None and self._remaining_requests <= 0:
+                raise RateLimitBlocked("CLOVA remaining requests가 0이라 호출을 차단했습니다.")
+            if self._remaining_tokens is not None and self._remaining_tokens < estimated_tokens:
+                raise RateLimitBlocked("CLOVA remaining tokens가 요청 예산보다 작아 호출을 차단했습니다.")
+            if len(self._calls) >= self.default_qpm:
+                raise RateLimitBlocked("로컬 QPM 예산을 초과해 CLOVA 호출을 차단했습니다.")
+            used_tokens = sum(tokens for _, tokens in self._calls)
+            if used_tokens + estimated_tokens > self.default_tpm:
+                raise RateLimitBlocked("로컬 TPM 예산을 초과해 CLOVA 호출을 차단했습니다.")
+            if self.min_interval and now - self._last_call < self.min_interval:
+                raise RateLimitBlocked("CLOVA 호출 간 최소 간격 전이라 호출을 차단했습니다.", self.min_interval - (now - self._last_call))
+            self._calls.append((now, estimated_tokens))
+            self._last_call = now
+
+    @staticmethod
+    def _int_or_none(value: object) -> int | None:
+        try:
+            return int(str(value)) if value is not None else None
+        except ValueError:
+            return None
+
+
+__all__ = ["ClovaRateLimiter", "RateLimitBlocked", "estimate_tokens", "parse_reset_seconds"]

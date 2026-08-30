@@ -91,3 +91,8 @@ validation must remain a validation failure rather than a successful answer.
 재시도 횟수는 `CLOVA_CHAT_MAX_RETRIES`(기본 1회), 재시도 대기 상한은
 `CLOVA_RATE_LIMIT_MAX_WAIT`(기본 15초)로 제한한다.
 각 adapter는 마지막 응답의 `x-ratelimit-*` 헤더를 `last_rate_limit`에 보존한다.
+호출 전 process-local limiter가 embedding은 60 QPM/40,000 TPM, chat은 90 QPM/80,000
+TPM의 기본 예산을 기준으로 부족한 요청을 차단한다. 실제 provider header를 관찰하면
+잔여량과 reset 시간을 우선 반영한다.
+chat 출력 토큰은 답변 512, semantic validation 256을 기본 상한으로 두며
+`CLOVA_ANSWER_MAX_TOKENS`, `CLOVA_SEMANTIC_MAX_TOKENS`로 조정할 수 있다.

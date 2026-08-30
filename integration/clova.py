@@ -11,6 +11,8 @@ from typing import Any
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+from integration.rate_limit import ClovaRateLimiter, RateLimitBlocked, estimate_tokens
+
 
 def _env_float(name: str, default: float) -> float:
     try:
@@ -41,7 +43,7 @@ class ClovaChatClient:
     endpoint = "/v3/chat-completions"
     strict_grounding = True
 
-    def __init__(self, *, host: str | None = None, api_key: str | None = None, model: str | None = None, timeout: float | None = None, max_retries: int | None = None):
+    def __init__(self, *, host: str | None = None, api_key: str | None = None, model: str | None = None, timeout: float | None = None, max_retries: int | None = None, rate_limiter: ClovaRateLimiter | None = None):
         self.host = (host or os.getenv("CLOVA_API_HOST", "clovastudio.stream.ntruss.com")).strip()
         self.api_key = (api_key or os.getenv("CLOVA_API_KEY", "")).strip()
         self.model = model or os.getenv("CLOVA_CHAT_MODEL", "HCX-DASH-002")
@@ -49,6 +51,7 @@ class ClovaChatClient:
         self.max_retries = max_retries if max_retries is not None else _env_int("CLOVA_CHAT_MAX_RETRIES", 1)
         self.rate_limit_max_wait = _env_float("CLOVA_RATE_LIMIT_MAX_WAIT", 15.0)
         self.last_rate_limit: dict[str, str] = {}
+        self.rate_limiter = rate_limiter or ClovaRateLimiter(default_qpm=90, default_tpm=80000, min_interval=_env_float("CLOVA_CHAT_MIN_INTERVAL", 0.2))
 
     def _capture_rate_limit(self, headers: Any) -> None:
         self.last_rate_limit = {
@@ -56,6 +59,7 @@ class ClovaChatClient:
             for key, value in headers.items()
             if str(key).lower().startswith("x-ratelimit-")
         }
+        self.rate_limiter.observe(self.last_rate_limit)
 
     def _request(self, messages: list[dict[str, Any]], *, max_tokens: int = 1024, operation: str = "chat") -> str:
         if not self.api_key:
@@ -73,6 +77,7 @@ class ClovaChatClient:
             method="POST",
         )
         for attempt in range(self.max_retries + 1):
+            self.rate_limiter.before_call(estimate_tokens(json.dumps(messages, ensure_ascii=False)) + max_tokens)
             try:
                 with urlopen(request, timeout=self.timeout) as response:
                     self._capture_rate_limit(response.headers)
@@ -102,14 +107,27 @@ class ClovaChatClient:
         return answer
 
     def generate_text(self, messages: list[dict[str, Any]], **_: Any) -> str:
-        return self._request(messages, operation="answer_generation")
+        return self._request(
+            messages,
+            max_tokens=_env_int("CLOVA_ANSWER_MAX_TOKENS", 512),
+            operation="answer_generation",
+        )
 
     def generate_json(self, messages: list[dict[str, Any]], *, schema: Mapping[str, Any], **_: Any) -> dict[str, Any]:
         prompt = list(messages) + [{
             "role": "user",
             "content": "Return one JSON object only. Follow this schema exactly:\n" + json.dumps(schema, ensure_ascii=False),
         }]
-        value = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", self._request(prompt, operation="semantic_validation"), flags=re.IGNORECASE | re.DOTALL).strip()
+        value = re.sub(
+            r"^\s*```(?:json)?\s*|\s*```\s*$",
+            "",
+            self._request(
+                prompt,
+                max_tokens=_env_int("CLOVA_SEMANTIC_MAX_TOKENS", 256),
+                operation="semantic_validation",
+            ),
+            flags=re.IGNORECASE | re.DOTALL,
+        ).strip()
         parsed = json.loads(value)
         if not isinstance(parsed, dict):
             raise ValueError("CLOVA semantic response must be a JSON object")
