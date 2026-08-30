@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from collections.abc import Mapping
 from typing import Any
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 
@@ -24,11 +26,12 @@ def _content(result: Mapping[str, Any]) -> str:
 class ClovaChatClient:
     endpoint = "/v3/chat-completions"
 
-    def __init__(self, *, host: str | None = None, api_key: str | None = None, model: str | None = None, timeout: float = 120.0):
+    def __init__(self, *, host: str | None = None, api_key: str | None = None, model: str | None = None, timeout: float = 120.0, max_retries: int = 2):
         self.host = (host or os.getenv("CLOVA_API_HOST", "clovastudio.stream.ntruss.com")).strip()
         self.api_key = (api_key or os.getenv("CLOVA_API_KEY", "")).strip()
         self.model = model or os.getenv("CLOVA_CHAT_MODEL", "HCX-DASH-002")
         self.timeout = timeout
+        self.max_retries = max_retries
 
     def _request(self, messages: list[dict[str, Any]], *, max_tokens: int = 1024) -> str:
         if not self.api_key:
@@ -45,8 +48,17 @@ class ClovaChatClient:
             headers={"Content-Type": "application/json; charset=utf-8", "Authorization": f"Bearer {self.api_key}"},
             method="POST",
         )
-        with urlopen(request, timeout=self.timeout) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+        for attempt in range(self.max_retries + 1):
+            try:
+                with urlopen(request, timeout=self.timeout) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                break
+            except HTTPError as error:
+                if error.code != 429 or attempt >= self.max_retries:
+                    raise RuntimeError(f"CLOVA chat HTTP {error.code}") from error
+                reset = error.headers.get("x-ratelimit-reset-requests") or error.headers.get("Retry-After")
+                match = re.search(r"\d+(?:\.\d+)?", str(reset or ""))
+                time.sleep(max(float(match.group(0)) if match else min(60.0, 2.0 ** attempt), 1.0))
         if payload.get("status", {}).get("code") not in (None, "20000"):
             raise RuntimeError(f"CLOVA chat request failed: {payload.get('status')}")
         answer = _content(payload.get("result", payload))
