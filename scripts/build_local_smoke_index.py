@@ -46,7 +46,7 @@ def main() -> int:
     rows = build_chunk_rows(
         args.selection,
         source_root=args.source_root,
-        embedder=throttled_embed,
+        embedder=None,
         max_chars=1200,
         max_chunks_per_document=None if args.max_chunks_per_document == 0 else args.max_chunks_per_document,
     )
@@ -56,6 +56,8 @@ def main() -> int:
         rows = [row for row in rows if any(term in row["text"] for term in args.term)]
     if not rows:
         raise ValueError("no chunks matched the requested document/term filters")
+    for row in rows:
+        row["embedding"] = throttled_embed(row["text"])
     invalid = [row["id"] for row in rows if len(row.get("embedding", [])) != 1024]
     if invalid:
         raise RuntimeError(f"embedding dimension validation failed for {len(invalid)} chunks")
