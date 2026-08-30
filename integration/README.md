@@ -35,3 +35,13 @@ from integration.graph import StageNodes, build_graph
 compiled_graph = build_graph(StageNodes(stage1, stage2, stage3, stage4))
 print(compiled_graph.get_graph().draw_mermaid())
 ```
+
+## 로컬 무비용 E2E
+
+외부 provider 없이 검증할 때는 `integration.testing.build_deterministic_pipeline()`에
+Intent, fixture 문서, deterministic vector score를 주입한다. 이 factory는 테스트 전용이며
+production의 semantic fallback으로 사용하지 않는다.
+
+```powershell
+pytest tests/test_local_e2e.py
+```
