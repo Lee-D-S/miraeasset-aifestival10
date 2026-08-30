@@ -18,7 +18,13 @@ from stage2.retrieval import matches_manifest_filter
 
 
 class EmbeddingUnavailable(RuntimeError):
-    """Raised when semantic retrieval has no query embedding provider."""
+    """Raised when semantic retrieval has no usable query embedding."""
+
+    def __init__(self, message: str, *, retry_after: float | None = None, status_code: int | None = None, retryable: bool = False):
+        super().__init__(message)
+        self.retry_after = retry_after
+        self.status_code = status_code
+        self.retryable = retryable
 
 
 def _period(value: Any) -> tuple[int | None, int | None]:

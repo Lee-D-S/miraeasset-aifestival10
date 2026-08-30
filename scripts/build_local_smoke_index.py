@@ -36,10 +36,11 @@ def main() -> int:
                 if args.request_delay:
                     time.sleep(args.request_delay)
                 return vector
-            except EmbeddingUnavailable:
-                if attempt >= args.max_retries:
+            except EmbeddingUnavailable as error:
+                if attempt >= args.max_retries or not error.retryable:
                     raise
-                time.sleep(min(30.0, 2.0 ** attempt))
+                wait = error.retry_after if error.retry_after is not None else min(60.0, 2.0 ** attempt)
+                time.sleep(max(wait, 1.0))
         raise AssertionError("unreachable")
 
     rows = build_chunk_rows(

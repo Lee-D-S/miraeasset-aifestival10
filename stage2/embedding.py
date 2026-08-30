@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -35,8 +36,21 @@ class ClovaQueryEmbedding:
         try:
             with urlopen(request, timeout=self.timeout) as response:
                 payload = json.loads(response.read().decode("utf-8"))
-        except (HTTPError, URLError, TimeoutError) as error:
-            raise EmbeddingUnavailable(f"CLOVA embedding request failed: {type(error).__name__}") from error
+        except HTTPError as error:
+            reset = error.headers.get("x-ratelimit-reset-requests") or error.headers.get("Retry-After")
+            match = re.search(r"\d+(?:\.\d+)?", str(reset or ""))
+            retry_after = float(match.group(0)) if match else None
+            raise EmbeddingUnavailable(
+                f"CLOVA embedding request failed: HTTP {error.code}",
+                retry_after=retry_after,
+                status_code=error.code,
+                retryable=error.code == 429,
+            ) from error
+        except (URLError, TimeoutError) as error:
+            raise EmbeddingUnavailable(
+                f"CLOVA embedding request failed: {type(error).__name__}",
+                retryable=True,
+            ) from error
         vector = payload.get("result", {}).get("embedding", [])
         if payload.get("status", {}).get("code") != "20000" or not isinstance(vector, list) or len(vector) != 1024:
             raise EmbeddingUnavailable("CLOVA embedding response is invalid")

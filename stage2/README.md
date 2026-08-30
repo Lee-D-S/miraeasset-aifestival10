@@ -24,6 +24,17 @@ python scripts/build_local_smoke_index.py --source-root "<competition-root>"
 python scripts/build_local_sqlite.py
 ```
 
+The embedding builder sends requests sequentially. `--request-delay` controls
+the delay after successful calls, and HTTP 429 responses use the provider's
+`Retry-After` or `x-ratelimit-reset-requests` header when available; otherwise
+exponential backoff is used. The builder also supports `--doc-id` and `--term`
+to create a small targeted index without embedding the entire corpus.
+
+CLOVA's published test/web limit for Embedding v2 is 60 QPM and 40,000 TPM,
+but the limit is not a processing guarantee. `42901` means the usage limit was
+exceeded and `42902` indicates service overload, so callers must still retry
+with a bounded delay. See the [CLOVA usage control policy](https://guide.ncloud-docs.com/docs/clovastudio-ratelimiting).
+
 `build_local_sqlite.py` reads `data/local_smoke/embedded_chunks.json` and writes
 `data/local_smoke/smoke.db`. `SQLiteStage2Repository` stores chunk text,
 canonical metadata, and 1024-dimensional embeddings, and exposes the same
