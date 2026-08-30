@@ -138,6 +138,20 @@ class Stage3NodeTests(unittest.TestCase):
         self.assertEqual(lookup["stage3_result"]["linked_events"], [])
         self.assertTrue(event["stage3_result"]["linked_events"])
 
+    def test_correction_chain_links_events_even_for_lookup_questions(self):
+        state = _state()
+        state["intent"]["correction_mode"] = "include_chain"
+        state["stage2_result"]["documents"] = [
+            {"id": "origin", "source": "origin.xml", "text": "怨꾩빟紐?A 泥닿껐", "metadata": {"corp_name": "湲곗뾽A", "report_nm": "怨꾩빟泥닿껐"}},
+            {"id": "correction", "source": "correction.xml", "text": "怨꾩빟紐?A [湲곗옱?뺤젙] ?뺤젙?ъ쑀: 湲곗쟻", "metadata": {"corp_name": "湲곗뾽A", "is_correction": True, "report_nm": "怨꾩빟泥닿껐"}},
+        ]
+
+        update = build_stage3_node()(state)
+
+        events = update["stage3_result"]["linked_events"]
+        self.assertTrue(events)
+        self.assertEqual(events[0]["source_ids"], ["origin", "correction"])
+
 
 if __name__ == "__main__":
     unittest.main()
