@@ -12,6 +12,13 @@ except ImportError:  # pragma: no cover - optional in minimal environments
 
 from integration.graph import StageNodes
 from integration.clova import ClovaChatClient
+from integration.readiness import (
+    raise_if_invalid,
+    validate_corpus_directory,
+    validate_environment,
+    validate_fixture,
+    validate_sqlite_path,
+)
 from integration.service import StagePipeline
 from stage1 import build_stage1_node
 from stage2 import (
@@ -33,10 +40,14 @@ def build_pipeline() -> StagePipeline:
     """Compose the executable pipeline from environment-selected adapters."""
     if load_dotenv is not None:
         load_dotenv()
+    configured_corpus = os.getenv("CORPUS_DIR", "").strip()
+    if configured_corpus:
+        raise_if_invalid(validate_corpus_directory(Path(configured_corpus)))
     stage1 = build_stage1_node()
     live_llm = os.getenv("CLOVA_LLM_ENABLED", "false").strip().lower() == "true"
     answer_client = ClovaChatClient() if live_llm else None
     backend = os.getenv("STAGE2_BACKEND", "fixture").strip().lower()
+    raise_if_invalid(validate_environment(backend))
     if backend == "fixture":
         # Test/offline backend: the "database" is a JSON file of
         # CLOVA-precomputed document embeddings; queries are embedded live
@@ -45,6 +56,7 @@ def build_pipeline() -> StagePipeline:
         default_fixture = Path(__file__).resolve().parents[1] / "legacy" / "test_data" / "disclosure_clova_local.json"
         fixture = Path(os.getenv("STAGE2_FIXTURE_PATH", "").strip() or str(default_fixture))
         retriever = JsonFixtureRetriever.from_path(fixture, query_embedder=ClovaQueryEmbedding())
+        raise_if_invalid(validate_fixture(retriever))
     elif backend == "sqlite":
         # Local-first by default: a SQLite file for filtering + a Chroma
         # persist directory for vector search. Setting STAGE2_RDB_URL and/or
@@ -57,6 +69,7 @@ def build_pipeline() -> StagePipeline:
         else:
             default_index = Path(__file__).resolve().parents[1] / "data" / "local_smoke" / "smoke.db"
             engine, sqlite_path = None, Path(os.getenv("STAGE2_INDEX_PATH", "").strip() or str(default_index))
+            raise_if_invalid(validate_sqlite_path(sqlite_path))
 
         chroma_host = os.getenv("STAGE2_CHROMA_HOST", "").strip()
         if chroma_host:
@@ -73,6 +86,9 @@ def build_pipeline() -> StagePipeline:
             vectorstore=vectorstore,
             embedding_function=ClovaEmbeddings(),
         )
+        raise_if_invalid(retriever.readiness_issues())
+        if configured_corpus:
+            raise_if_invalid(retriever.manifest_consistency_issues(Path(configured_corpus) / "manifest.jsonl"))
     else:
         raise RuntimeError(f"unsupported Stage2 backend: {backend}; choose fixture or sqlite")
     return StagePipeline(StageNodes(

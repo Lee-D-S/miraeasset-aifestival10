@@ -17,7 +17,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine, inspect, text
 
 from stage2.backends import local_chroma, local_sqlite_engine
 from stage2.embedding import ClovaEmbeddings
@@ -210,6 +210,64 @@ class LocalHybridRetriever:
                 collection_name=collection_name,
             )
         self._initialized = False
+
+    def readiness_issues(self) -> list[str]:
+        """Validate the SQL/vector index without calling the embedding API."""
+
+        issues: list[str] = []
+        try:
+            self.initialize()
+            with self.engine.connect() as connection:
+                columns = {str(column["name"]) for column in inspect(self.engine).get_columns("chunks")}
+                required = {"id", "doc_id", "chunk_id", "text", "metadata_json"}
+                missing = sorted(required - columns)
+                if missing:
+                    issues.append("SQLite chunks schema missing: " + ", ".join(missing))
+                rows = connection.exec_driver_sql("SELECT chunk_id FROM chunks").fetchall()
+            sql_ids = {str(row[0]) for row in rows}
+            if not sql_ids:
+                issues.append("SQLite chunks table is empty")
+        except Exception as error:  # noqa: BLE001 - readiness boundary
+            return [f"SQLite index is not readable: {type(error).__name__}"]
+
+        try:
+            collection = getattr(self.vectorstore, "_collection", None)
+            if collection is None:
+                return [*issues, "Chroma collection is not available"]
+            chroma_ids = {str(value) for value in collection.get(include=[]).get("ids", [])}
+            if not chroma_ids:
+                issues.append("Chroma collection is empty")
+            missing_in_chroma = sql_ids - chroma_ids
+            if missing_in_chroma:
+                issues.append("Chroma is missing SQLite chunk IDs")
+        except Exception as error:  # noqa: BLE001 - readiness boundary
+            issues.append(f"Chroma index is not readable: {type(error).__name__}")
+        return issues
+
+    def manifest_consistency_issues(self, manifest_path: str | Path) -> list[str]:
+        """Check that every manifest document is represented in the SQL index."""
+
+        manifest_ids: set[str] = set()
+        path = Path(manifest_path)
+        try:
+            with path.open(encoding="utf-8") as handle:
+                for line in handle:
+                    if line.strip():
+                        value = json.loads(line).get("doc_id")
+                        if value:
+                            manifest_ids.add(str(value))
+        except (OSError, json.JSONDecodeError):
+            return ["manifest.jsonl is not readable"]
+        if not manifest_ids:
+            return ["manifest.jsonl contains no document IDs"]
+        self.initialize()
+        with self.engine.connect() as connection:
+            indexed_ids = {
+                str(row[0])
+                for row in connection.execute(text("SELECT DISTINCT doc_id FROM chunks")).fetchall()
+            }
+        missing = manifest_ids - indexed_ids
+        return ["manifest contains documents absent from Stage2 index"] if missing else []
 
     def initialize(self) -> None:
         if self._initialized:
