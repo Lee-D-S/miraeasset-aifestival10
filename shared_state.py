@@ -45,6 +45,7 @@ class Stage1Intent(TypedDict, total=False):
     question_type: str
     route: Route
     corps: list[dict[str, Any]]
+    excluded_corps: list[dict[str, Any]]
     sector: str | None
     sector_members: list[str]
     ambiguous_mentions: list[str]
@@ -65,6 +66,7 @@ class Stage1Intent(TypedDict, total=False):
     reject_reason: str | None
     clarify_message: str | None
     llm_used: bool
+    think_trace: str
 
 
 class Stage2Document(TypedDict, total=False):

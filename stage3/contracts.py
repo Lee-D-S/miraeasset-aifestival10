@@ -262,6 +262,7 @@ class Stage3Intent:
     correction_mode: str | None = None
     manifest_filter: dict[str, Any] = field(default_factory=dict)
     companies: list[str] = field(default_factory=list)
+    excluded_corps: list[dict[str, Any]] = field(default_factory=list)
     sector: str | None = None
     sector_members: list[str] = field(default_factory=list)
     ambiguous_mentions: list[Any] = field(default_factory=list)
@@ -278,6 +279,7 @@ class Stage3Intent:
     reject_reason: str | None = None
     clarify_message: str | None = None
     llm_used: bool | None = None
+    think_trace: str = ""
     source: dict[str, Any] = field(default_factory=dict, repr=False)
 
     @property
@@ -298,6 +300,7 @@ class Stage3Intent:
             "correction_mode": self.correction_mode,
             "manifest_filter": dict(self.manifest_filter),
             "companies": list(self.companies),
+            "excluded_corps": [dict(item) for item in self.excluded_corps],
             "sector": self.sector,
             "sector_members": list(self.sector_members),
             "ambiguous_mentions": list(self.ambiguous_mentions),
@@ -312,6 +315,7 @@ class Stage3Intent:
             "reject_reason": self.reject_reason,
             "clarify_message": self.clarify_message,
             "llm_used": self.llm_used,
+            "think_trace": self.think_trace,
         }
 
 
@@ -394,6 +398,7 @@ def adapt_stage1_intent(intent: Mapping[str, Any], *, question: str | None = Non
         correction_mode=str(source["correction_mode"]) if source.get("correction_mode") is not None else None,
         manifest_filter=_mapping(source.get("manifest_filter")),
         companies=companies,
+        excluded_corps=[dict(item) for item in source.get("excluded_corps", []) if isinstance(item, Mapping)],
         sector=str(source["sector"]) if source.get("sector") is not None else None,
         sector_members=_list_of_strings(source.get("sector_members")),
         ambiguous_mentions=_list_preserving_items(source.get("ambiguous_mentions")),
@@ -408,5 +413,6 @@ def adapt_stage1_intent(intent: Mapping[str, Any], *, question: str | None = Non
         reject_reason=str(source["reject_reason"]) if source.get("reject_reason") is not None else None,
         clarify_message=str(source["clarify_message"]) if source.get("clarify_message") is not None else None,
         llm_used=_optional_bool(source.get("llm_used")),
+        think_trace=str(source.get("think_trace", "")),
         source=source,
     )

@@ -33,6 +33,9 @@ def _think_trace(state: dict[str, Any]) -> str:
                 for field in ("status", "warnings", "trace")
                 if field in value
             }
+    intent = state.get("intent")
+    if isinstance(intent, dict) and intent.get("think_trace"):
+        trace["stage1_think_trace"] = str(intent["think_trace"])
     trace["supervisor"] = {
         "phase": state.get("phase"),
         "action": state.get("supervisor_action"),

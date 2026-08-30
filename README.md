@@ -54,7 +54,7 @@ GET /health
 GET /answer?question_id=Q-001&question=질문내용
 ```
 
-응답은 `question_id`, `question`, `retrieved_context`, `think_trace`, `answer`의 다섯 문자열 필드를 유지한다. `think_trace`에는 Supervisor action과 주요 시도 횟수가 포함된다.
+응답은 `question_id`, `question`, `retrieved_context`, `think_trace`, `answer`의 다섯 문자열 필드를 유지한다. `think_trace`에는 Supervisor action과 주요 시도 횟수가 포함된다. Stage1이 생성한 `intent.think_trace`도 `stage1_think_trace`로 함께 기록된다.
 
 ## 검색과 안전 제어
 

@@ -1,6 +1,8 @@
 # Stage2
 
 Stage2는 Stage1 Intent를 받아 공시 근거 문서를 검색하고 Stage3에 넘기는 검색 전용 모듈이다.
+`manifest_filter.exclude_corp_names`가 있으면 기업 목록·섹터 조건보다 우선해 해당 기업의
+문서를 제외한다.
 
 현재 canonical fixture 경로는 `legacy/test_data/disclosure_clova_local.json`을
 `JsonFixtureRetriever` adapter로 읽는다. query embedding은 `ClovaQueryEmbedding`을

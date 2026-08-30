@@ -4,6 +4,7 @@ import unittest
 
 from integration import StageNodes, StagePipeline
 from integration.api import to_submission_response
+from stage2.retrieval import matches_manifest_filter
 
 
 def _stage1(state):
@@ -43,6 +44,21 @@ def _stage4(state):
 
 
 class IntegrationSkeletonTests(unittest.TestCase):
+    def test_stage2_honors_excluded_corp_names(self) -> None:
+        document = {"metadata": {"corp_name": "삼성전자"}}
+        manifest_filter = {"exclude_corp_names": ["삼성전자"]}
+        self.assertFalse(matches_manifest_filter(document, manifest_filter))
+
+    def test_submission_trace_includes_stage1_think_trace(self) -> None:
+        response = to_submission_response(
+            {
+                "question_id": "Q-TRACE",
+                "question": "질문",
+                "intent": {"think_trace": "intent=lookup | 제외=삼성전자"},
+            }
+        )
+        self.assertIn("stage1_think_trace", response["think_trace"])
+
     def test_processable_route_runs_all_four_nodes(self) -> None:
         pipeline = StagePipeline(StageNodes(_stage1, _stage2, _stage3, _stage4))
         state = pipeline.invoke(question_id="Q-001", question="질문")

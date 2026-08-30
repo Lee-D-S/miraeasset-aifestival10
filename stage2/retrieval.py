@@ -57,6 +57,11 @@ def matches_manifest_filter(document: Mapping[str, Any], manifest_filter: Mappin
     metadata = _metadata(document)
     corp_names = {_text(item) for item in _as_list(manifest_filter.get("corp_names")) if _text(item)}
     corp_name = _text(metadata.get("corp_name"))
+    excluded_corp_names = {
+        _text(item) for item in _as_list(manifest_filter.get("exclude_corp_names")) if _text(item)
+    }
+    if excluded_corp_names and corp_name in excluded_corp_names:
+        return False
     if corp_names and corp_name not in corp_names:
         return False
 

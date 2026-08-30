@@ -97,6 +97,20 @@ class Stage1AdapterTests(unittest.TestCase):
         self.assertEqual(intent.ambiguous_mentions, [{"mention": "기업"}])
         self.assertEqual(intent.unknown_entities, ["알 수 없는 대상"])
 
+    def test_preserves_excluded_corps_and_think_trace(self):
+        intent = adapt_stage1_intent(
+            {
+                "raw_question": "삼성전자를 제외한 기업의 매출은?",
+                "normalized_question": "삼성전자를 제외한 기업의 매출은?",
+                "route": "ok",
+                "intent": "lookup",
+                "excluded_corps": [{"corp_name": "삼성전자", "corp_code": "00126380"}],
+                "think_trace": "intent=lookup | 제외=삼성전자",
+            }
+        )
+        self.assertEqual(intent.excluded_corps[0]["corp_name"], "삼성전자")
+        self.assertEqual(intent.think_trace, "intent=lookup | 제외=삼성전자")
+
     def test_preserves_stage1_fields_without_reclassification(self):
         intent = adapt_stage1_intent(
             {
