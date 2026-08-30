@@ -13,6 +13,7 @@ from shared_state import (
     IMMUTABLE_STATE_FIELDS,
     STAGE_WRITE_FIELDS,
     make_initial_agent_state,
+    validate_node_update,
 )
 
 
@@ -80,6 +81,34 @@ class SharedStateTests(unittest.TestCase):
     def test_initial_state_rejects_missing_request_id(self) -> None:
         with self.assertRaises(ValueError):
             make_initial_agent_state(question_id="", question="질문")
+
+    def test_stage_updates_cannot_change_request_identity_or_original_question(self) -> None:
+        state = make_initial_agent_state(question_id="Q-IMMUTABLE", question="question")
+        with self.assertRaises(ValueError):
+            validate_node_update("stage1", state, {"question": "changed"})
+        with self.assertRaises(ValueError):
+            validate_node_update("stage1", state, {"question_id": "Q-OTHER"})
+        with self.assertRaises(ValueError):
+            validate_node_update("stage1", state, {"original_question": "changed"})
+
+    def test_stage_ownership_rejects_cross_stage_fields(self) -> None:
+        state = make_initial_agent_state(question_id="Q-OWNER", question="question")
+        with self.assertRaises(ValueError):
+            validate_node_update("stage1", state, {"stage2_result": {}})
+        with self.assertRaises(ValueError):
+            validate_node_update("stage4", state, {"facts": []})
+
+    def test_control_counters_are_independent(self) -> None:
+        state = make_initial_agent_state(question_id="Q-COUNTERS", question="question")
+        self.assertEqual(
+            {state[key] for key in ("search_attempts", "planner_attempts", "regeneration_attempts", "validation_attempts")},
+            {0},
+        )
+        state.update(search_attempts=1, planner_attempts=2, regeneration_attempts=3, validation_attempts=4)
+        self.assertEqual(state["search_attempts"], 1)
+        self.assertEqual(state["planner_attempts"], 2)
+        self.assertEqual(state["regeneration_attempts"], 3)
+        self.assertEqual(state["validation_attempts"], 4)
 
     def test_stage3_node_accepts_full_state_and_returns_a_partial_update(self) -> None:
         state = make_initial_agent_state(question_id="Q-003", question="질문")

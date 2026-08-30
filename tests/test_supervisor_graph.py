@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from integration import StageNodes, StagePipeline
-from integration.supervisor import SupervisorDecision
+from integration.supervisor import SupervisorDecision, build_supervisor_node
 
 
 class SupervisorGraphTests(unittest.TestCase):
@@ -77,6 +77,15 @@ class SupervisorGraphTests(unittest.TestCase):
 
         self.assertEqual(state["route"], "ok")
         self.assertEqual(state["termination_reason"], "validation_failed")
+
+    def test_supervisor_phase_and_step_limits_fail_closed(self) -> None:
+        node = build_supervisor_node(max_supervisor_steps=1)
+        first = node({"supervisor_phase": "after_stage1", "route": "ok", "supervisor_steps": 0})
+        self.assertEqual(first["supervisor_action"], "run_stage2")
+        limited = node({"supervisor_phase": "after_stage1", "route": "ok", "supervisor_steps": 1})
+        self.assertEqual(limited["supervisor_action"], "fail_closed")
+        invalid = node({"supervisor_phase": "invalid", "route": "ok", "supervisor_steps": 0})
+        self.assertEqual(invalid["supervisor_action"], "fail_closed")
 
 
 if __name__ == "__main__":
