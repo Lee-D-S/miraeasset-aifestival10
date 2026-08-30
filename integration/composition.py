@@ -5,6 +5,11 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - optional in minimal environments
+    load_dotenv = None
+
 from integration.graph import StageNodes
 from integration.service import StagePipeline
 from stage1 import build_stage1_node
@@ -15,6 +20,8 @@ from stage4 import build_stage4_node
 
 def build_pipeline() -> StagePipeline:
     """Compose the executable pipeline from environment-selected adapters."""
+    if load_dotenv is not None:
+        load_dotenv()
     stage1 = build_stage1_node()
     backend = os.getenv("STAGE2_BACKEND", "fixture").strip().lower()
     if backend != "fixture":

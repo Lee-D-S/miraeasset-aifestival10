@@ -9,9 +9,16 @@ from urllib.request import Request, urlopen
 
 from stage2.json_fixture import EmbeddingUnavailable
 
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - optional for direct adapter imports
+    load_dotenv = None
+
 
 class ClovaQueryEmbedding:
     def __init__(self, *, timeout: float = 30.0):
+        if load_dotenv is not None:
+            load_dotenv()
         self.timeout = timeout
 
     def __call__(self, text: str) -> list[float]:
