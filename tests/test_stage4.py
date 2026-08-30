@@ -72,10 +72,10 @@ def test_stage4_passes_verified_answer():
         "route": "ok",
         "question": "매출은?",
         "intent": {"question_type": "lookup"},
-        "answer": "매출은 1.2억원입니다.",
+        "answer": "매출은 1.2억원입니다. [source:doc-1]",
         "stage3_result": _stage3(),
     })
-    assert update["answer"] == "매출은 1.2억원입니다."
+    assert update["answer"] == "매출은 1.2억원입니다. [source:doc-1]"
     assert update["stage4_result"]["status"] == "success"
     assert client.text_calls == 0
 
@@ -86,42 +86,43 @@ def test_stage4_rejects_citation_not_present_in_stage2_results():
         "route": "ok",
         "question": "매출은?",
         "intent": {"question_type": "lookup"},
-        "answer": "매출은 1.2억원입니다.",
+        "answer": "매출은 1.2억원입니다. [source:doc-1]",
         "stage2_result": {"documents": [{"id": "other-doc", "text": "다른 근거"}]},
         "stage3_result": _stage3(),
     })
     assert update["stage4_result"]["status"] == "validation_failed"
-    assert client.text_calls == 1
+    assert client.text_calls == 0
+    assert client.json_calls == 1
 
 
-def test_stage4_regenerates_once_after_numeric_failure():
+def test_stage4_only_validates_and_does_not_regenerate():
     client = SemanticClient(regenerated="매출은 1.2억원입니다.")
     update = build_stage4_node(validator_client=client)({
         "route": "ok",
         "question": "매출은?",
         "intent": {"question_type": "lookup"},
-        "answer": "매출은 2억원입니다.",
+        "answer": "매출은 2억원입니다. [source:doc-1]",
         "stage3_result": _stage3(),
     })
-    assert update["answer"] == "매출은 1.2억원입니다."
-    assert update["stage4_result"]["status"] == "regenerated"
-    assert update["stage4_result"]["regenerated"] is True
-    assert client.text_calls == 1
+    assert update["stage4_result"]["status"] == "validation_failed"
+    assert update["stage4_result"]["regenerated"] is False
+    assert client.text_calls == 0
     assert client.json_calls == 1
 
 
-def test_stage4_fails_closed_when_regenerated_answer_is_still_invalid():
+def test_stage4_fails_closed_when_answer_is_invalid():
     client = SemanticClient(regenerated="매출은 9억원입니다.")
     update = build_stage4_node(validator_client=client)({
         "route": "ok",
         "question": "매출은?",
         "intent": {"question_type": "lookup"},
-        "answer": "매출은 2억원입니다.",
+        "answer": "매출은 2억원입니다. [source:doc-1]",
         "stage3_result": _stage3(),
     })
     assert update["stage4_result"]["status"] == "validation_failed"
     assert update["answer"] == "제공된 공시 근거만으로 답변을 검증할 수 없습니다."
-    assert client.text_calls == 1
+    assert client.text_calls == 0
+    assert client.json_calls == 1
 
 
 def test_blocked_route_uses_deterministic_answer_without_llm():
@@ -135,7 +136,7 @@ def test_stage4_fails_closed_when_llm_is_unavailable():
         "route": "ok",
         "question": "매출은?",
         "intent": {"question_type": "lookup"},
-        "answer": "매출은 1.2억원입니다.",
+        "answer": "매출은 1.2억원입니다. [source:doc-1]",
         "stage3_result": _stage3(),
     })
     assert update["stage4_result"]["status"] == "validation_failed"
@@ -146,10 +147,10 @@ def test_stage4_runs_in_shared_langgraph_and_preserves_api_contract():
     client = SemanticClient()
     nodes = StageNodes(
         stage1=lambda _state: {"intent": {"route": "ok"}, "route": "ok"},
-        stage2=lambda _state: {"stage2_result": {"documents": []}},
+        stage2=lambda _state: {"stage2_result": {"documents": [{"id": "doc-1", "text": "evidence"}], "cited_documents": [{"id": "doc-1", "text": "evidence"}]}},
         stage3=lambda _state: {
             "stage3_result": _stage3(),
-            "answer": "매출은 1.2억원입니다.",
+            "answer": "매출은 1.2억원입니다. [source:doc-1]",
             "context": "",
             "messages": [],
         },

@@ -42,7 +42,7 @@ def extract_answer_numbers(answer: str) -> list[dict[str, Any]]:
         start, end = match.span()
         before = answer[max(0, start - 12):start]
         after = answer[end:end + 12]
-        if re.search(r"문서\s*ID|Q[-_]?$|질의\s*ID", before, re.IGNORECASE):
+        if re.search(r"문서\s*ID|Q[-_]?$|질의\s*ID|\[?source:\s*", before, re.IGNORECASE):
             continue
         if re.match(r"\s*(년|월|일|위|분기|분기말)", after):
             continue

@@ -42,7 +42,12 @@ def validate_citations(answer: str, stage3_result: Mapping[str, Any], stage2_res
         "missing_document_ids": missing,
         "missing_upstream_document_ids": missing_upstream,
         "errors": errors,
-        "answer_has_source_marker": bool("문서ID" in answer or "출처" in answer),
+        "answer_has_source_marker": bool(
+            "문서ID" in answer
+            or "출처" in answer
+            or "[source:" in answer.lower()
+            or any(document_id and document_id in answer for document_id in citation_ids)
+        ),
     }
 
 

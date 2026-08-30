@@ -61,7 +61,7 @@ def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any
             if not citation.get("answer_has_source_marker"):
                 citation["pass"] = False
                 citation.setdefault("errors", []).append("answer source marker is missing")
-            if numeric["pass"] and citation["pass"]:
+            if True:  # Numeric, citation, and semantic checks are independent.
                 semantic = validate_semantics(client, question=question, intent=intent, stage3_result=stage3_result, answer=answer)
             else:
                 semantic = {"pass": False, "issues": [*numeric.get("errors", []), *citation.get("errors", [])], "unsupported_claims": [], "missing_aspects": [], "summary": "결정론적 검증 실패"}
