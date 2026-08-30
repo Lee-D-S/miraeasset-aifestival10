@@ -48,6 +48,14 @@ class ClovaChatClient:
         self.timeout = timeout if timeout is not None else _env_float("CLOVA_CHAT_TIMEOUT", 60.0)
         self.max_retries = max_retries if max_retries is not None else _env_int("CLOVA_CHAT_MAX_RETRIES", 1)
         self.rate_limit_max_wait = _env_float("CLOVA_RATE_LIMIT_MAX_WAIT", 15.0)
+        self.last_rate_limit: dict[str, str] = {}
+
+    def _capture_rate_limit(self, headers: Any) -> None:
+        self.last_rate_limit = {
+            str(key).lower(): str(value)
+            for key, value in headers.items()
+            if str(key).lower().startswith("x-ratelimit-")
+        }
 
     def _request(self, messages: list[dict[str, Any]], *, max_tokens: int = 1024, operation: str = "chat") -> str:
         if not self.api_key:
@@ -67,9 +75,11 @@ class ClovaChatClient:
         for attempt in range(self.max_retries + 1):
             try:
                 with urlopen(request, timeout=self.timeout) as response:
+                    self._capture_rate_limit(response.headers)
                     payload = json.loads(response.read().decode("utf-8"))
                 break
             except HTTPError as error:
+                self._capture_rate_limit(error.headers)
                 if error.code != 429 or attempt >= self.max_retries:
                     detail = ""
                     try:
@@ -78,7 +88,8 @@ class ClovaChatClient:
                     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
                         pass
                     suffix = f" ({detail})" if detail else ""
-                    raise RuntimeError(f"CLOVA {operation} HTTP {error.code}{suffix}") from error
+                    rate_suffix = f" [rate_limit={self.last_rate_limit}]" if self.last_rate_limit else ""
+                    raise RuntimeError(f"CLOVA {operation} HTTP {error.code}{suffix}{rate_suffix}") from error
                 reset = error.headers.get("x-ratelimit-reset-requests") or error.headers.get("Retry-After")
                 match = re.search(r"\d+(?:\.\d+)?", str(reset or ""))
                 requested_wait = float(match.group(0)) if match else 2.0 ** attempt

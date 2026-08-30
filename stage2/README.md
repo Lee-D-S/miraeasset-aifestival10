@@ -90,3 +90,4 @@ validation must remain a validation failure rather than a successful answer.
 설정한다. 답변 생성·semantic validation은 `CLOVA_CHAT_TIMEOUT`(기본 60초), 429
 재시도 횟수는 `CLOVA_CHAT_MAX_RETRIES`(기본 1회), 재시도 대기 상한은
 `CLOVA_RATE_LIMIT_MAX_WAIT`(기본 15초)로 제한한다.
+각 adapter는 마지막 응답의 `x-ratelimit-*` 헤더를 `last_rate_limit`에 보존한다.

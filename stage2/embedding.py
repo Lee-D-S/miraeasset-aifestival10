@@ -25,6 +25,14 @@ class ClovaQueryEmbedding:
         except ValueError:
             configured = 30.0
         self.timeout = timeout if timeout is not None else max(configured, 0.1)
+        self.last_rate_limit: dict[str, str] = {}
+
+    def _capture_rate_limit(self, headers) -> None:
+        self.last_rate_limit = {
+            str(key).lower(): str(value)
+            for key, value in headers.items()
+            if str(key).lower().startswith("x-ratelimit-")
+        }
 
     def __call__(self, text: str) -> list[float]:
         api_key = os.getenv("CLOVA_API_KEY", "").strip() or os.getenv("CLOVASTUDIO_API_KEY", "").strip()
@@ -39,13 +47,15 @@ class ClovaQueryEmbedding:
         )
         try:
             with urlopen(request, timeout=self.timeout) as response:
+                self._capture_rate_limit(response.headers)
                 payload = json.loads(response.read().decode("utf-8"))
         except HTTPError as error:
+            self._capture_rate_limit(error.headers)
             reset = error.headers.get("x-ratelimit-reset-requests") or error.headers.get("Retry-After")
             match = re.search(r"\d+(?:\.\d+)?", str(reset or ""))
             retry_after = float(match.group(0)) if match else None
             raise EmbeddingUnavailable(
-                f"CLOVA embedding request failed: HTTP {error.code}",
+                f"CLOVA embedding request failed: HTTP {error.code}; rate_limit={self.last_rate_limit}",
                 retry_after=retry_after,
                 status_code=error.code,
                 retryable=error.code == 429,

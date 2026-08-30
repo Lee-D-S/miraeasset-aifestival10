@@ -34,3 +34,27 @@ def test_clova_chat_adapter_bounds_rate_limit_wait_and_labels_operation(monkeypa
         raise AssertionError("expected a bounded retry failure")
 
     assert waits == [15.0]
+
+
+def test_clova_chat_adapter_captures_rate_limit_headers(monkeypatch):
+    client = ClovaChatClient(api_key="test", max_retries=0, timeout=1)
+
+    class Response:
+        headers = {
+            "x-ratelimit-limit-requests": "90",
+            "x-ratelimit-remaining-requests": "89",
+            "x-ratelimit-reset-requests": "23s",
+        }
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return b'{"status": {"code": "20000"}, "result": {"message": {"content": "ok"}}}'
+
+    monkeypatch.setattr("integration.clova.urlopen", lambda *_args, **_kwargs: Response())
+    assert client.generate_text([]) == "ok"
+    assert client.last_rate_limit["x-ratelimit-remaining-requests"] == "89"
