@@ -35,6 +35,7 @@ def finalize(
         question_type=slots.question_type,
         calculation=dict(slots.calculation),
         corps=entities.corps,
+        excluded_corps=entities.excluded_corps,
         sector=entities.sector,
         sector_members=entities.sector_members,
         ambiguous_mentions=entities.ambiguous,
@@ -80,6 +81,7 @@ def finalize(
             f"기업이 특정되지 않아 섹터 '{intent.sector}' {len(intent.sector_members)}개사를 후보로 넘깁니다."
         )
 
+    intent.think_trace = intent.trace_summary()
     return intent
 
 

@@ -18,11 +18,15 @@ from .preprocess import PreprocessResult
 
 _ASCII_SHORT_MAX = 3
 _SPAN_SEP = "\u0000"
+# "삼성SDI를 제외한"에서 기업명과 제외 단서 사이에 허용하는 조사 길이.
+_EXCLUSION_PARTICLE_MAX = 2
 
 
 @dataclass
 class EntityResult:
     corps: list[CorpRef] = field(default_factory=list)
+    # "A를 제외한 ..."으로 명시적으로 빠진 기업. corps에는 넣지 않는다.
+    excluded_corps: list[CorpRef] = field(default_factory=list)
     sector: Optional[str] = None
     sector_members: list[str] = field(default_factory=list)
     ambiguous: list[dict[str, Any]] = field(default_factory=list)
@@ -44,6 +48,23 @@ def _boundary_ok(text: str, start: int, end: int, key: str) -> bool:
     before = text[start - 1] if start > 0 else ""
     after = text[end] if end < len(text) else ""
     return not (_is_ascii_alnum(before) or _is_ascii_alnum(after))
+
+
+def _is_excluded_mention(text: str, end: int, cues: list[str], particles: str) -> bool:
+    """기업명 바로 뒤가 제외 표현인지 본다.
+
+    "삼성SDI를 제외한 2차전지 기업"에서 삼성SDI만 빼야 하는데, 질의 전체에서 '제외'를
+    찾으면 어느 기업을 빼라는 것인지 알 수 없다. 그래서 매칭된 기업명 직후(조사 최대
+    2자)에 단서가 붙은 경우만 제외로 인정한다.
+    """
+    if not cues:
+        return False
+    tail = text[end : end + 12]
+    offset = 0
+    while offset < len(tail) and offset < _EXCLUSION_PARTICLE_MAX and tail[offset] in particles:
+        offset += 1
+    rest = tail[offset:]
+    return any(cue and rest.startswith(cue) for cue in cues)
 
 
 def _consume(text: str, spans: list[tuple[int, int]]) -> str:
@@ -91,6 +112,10 @@ def link(pre: PreprocessResult, index: CorpusIndex) -> EntityResult:
         return result
 
     guards = index.config.guards
+    exclusion = index.config.defaults.get("exclusion_cues", {})
+    exclusion_cues = [squash(cue) for cue in exclusion.get("cues", [])]
+    exclusion_particles = exclusion.get("particles", "")
+
     blocklist = {squash(name): name for name in guards.get("external_corp_blocklist", [])}
     blocklist = {k: v for k, v in blocklist.items() if len(k) >= 2}
 
@@ -112,18 +137,20 @@ def link(pre: PreprocessResult, index: CorpusIndex) -> EntityResult:
         if row is None:
             continue
         seen.add(corp_name)
-        result.corps.append(
-            CorpRef(
-                corp_name=corp_name,
-                corp_code=row["corp_code"],
-                stock_code=row["stock_code"],
-                listed_name=row["listed_name"],
-                sector=row["sector"],
-                listing_date=row["listing_date"],
-                matched_text=pre.original_slice(start, end) or key,
-                match_source="alias",
-            )
+        ref = CorpRef(
+            corp_name=corp_name,
+            corp_code=row["corp_code"],
+            stock_code=row["stock_code"],
+            listed_name=row["listed_name"],
+            sector=row["sector"],
+            listing_date=row["listing_date"],
+            matched_text=pre.original_slice(start, end) or key,
+            match_source="alias",
         )
+        if _is_excluded_mention(text, end, exclusion_cues, exclusion_particles):
+            result.excluded_corps.append(ref)
+        else:
+            result.corps.append(ref)
     text = _consume(text, [(s, e) for s, e, _, _ in alias_hits])
 
     # 3) 섹터
@@ -148,18 +175,20 @@ def link(pre: PreprocessResult, index: CorpusIndex) -> EntityResult:
                 row = index.corp(corp_name)
                 if row is not None:
                     seen.add(corp_name)
-                    result.corps.append(
-                        CorpRef(
-                            corp_name=corp_name,
-                            corp_code=row["corp_code"],
-                            stock_code=row["stock_code"],
-                            listed_name=row["listed_name"],
-                            sector=row["sector"],
-                            listing_date=row["listing_date"],
-                            matched_text=pre.original_slice(start, end) or key,
-                            match_source="prefix_unique",
-                        )
+                    ref = CorpRef(
+                        corp_name=corp_name,
+                        corp_code=row["corp_code"],
+                        stock_code=row["stock_code"],
+                        listed_name=row["listed_name"],
+                        sector=row["sector"],
+                        listing_date=row["listing_date"],
+                        matched_text=pre.original_slice(start, end) or key,
+                        match_source="prefix_unique",
                     )
+                    if _is_excluded_mention(text, end, exclusion_cues, exclusion_particles):
+                        result.excluded_corps.append(ref)
+                    else:
+                        result.corps.append(ref)
         elif len(candidates) > 1:
             result.ambiguous.append(
                 {
@@ -175,6 +204,14 @@ def link(pre: PreprocessResult, index: CorpusIndex) -> EntityResult:
         for name in _suffix_candidates(text, heuristic, index):
             if name not in result.suspect_entities:
                 result.suspect_entities.append(name)
+
+    # 제외 대상은 섹터 멤버 목록에서도 빼야 한다. 남겨두면 2·3단계가
+    # "섹터 전원의 수치가 필요하다"고 판단해 빠진 기업을 다시 찾는다.
+    if result.excluded_corps and result.sector_members:
+        excluded_names = {corp.corp_name for corp in result.excluded_corps}
+        result.sector_members = [
+            name for name in result.sector_members if name not in excluded_names
+        ]
 
     result.leftover = text
     return result

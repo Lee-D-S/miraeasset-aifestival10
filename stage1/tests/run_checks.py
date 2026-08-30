@@ -124,6 +124,45 @@ def run_invariants(index: CorpusIndex) -> None:
     intent = build_intent("삼성전자 2025년 사업보고서 정정공시가 있었나?", index, use_llm=False)
     check(intent.manifest_filter.is_correction is None, "correction_mode=include_chain")
 
+    print("\n[제외 요청한 기업은 검색 대상에서 뺀다]")
+    intent = build_intent(
+        "삼성SDI를 제외한 2차전지 기업 중 2025년 설비투자가 가장 큰 기업은?", index, use_llm=False
+    )
+    flt = intent.manifest_filter
+    check(
+        "삼성SDI" not in flt.corp_names
+        and flt.exclude_corp_names == ["삼성SDI"]
+        and flt.sector is None
+        and sorted(flt.corp_names) == ["LG에너지솔루션", "에코프로비엠"],
+        "섹터를 멤버로 펼치고 제외 대상을 뺀다",
+    )
+    check(
+        "삼성SDI" not in intent.sector_members
+        and [c.corp_name for c in intent.excluded_corps] == ["삼성SDI"],
+        "sector_members에서도 빠지고 excluded_corps에 기록된다",
+    )
+    check(
+        all(doc["corp_name"] != "삼성SDI" for doc in index.iter_docs(flt)),
+        "manifest 조회 결과에 제외 기업 문서가 없다",
+    )
+
+    print("\n[제외 단서가 없으면 나열된 기업을 빼지 않는다]")
+    intent = build_intent(
+        "LG에너지솔루션과 삼성SDI 중 2025년 매출이 더 큰 기업은?", index, use_llm=False
+    )
+    check(
+        intent.manifest_filter.exclude_corp_names == []
+        and sorted(intent.manifest_filter.corp_names) == ["LG에너지솔루션", "삼성SDI"],
+        "'A와 B 중'은 비교 대상이지 제외가 아니다",
+    )
+
+    print("\n[think_trace가 Intent JSON에 직렬화된다]")
+    intent = build_intent("삼성전자의 2025년 연결기준 매출액은?", index, use_llm=False)
+    check(
+        bool(intent.think_trace) and intent.to_dict()["think_trace"] == intent.trace_summary(),
+        "state에는 dict만 실리므로 요약 문자열도 함께 넘긴다",
+    )
+
 
 def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):

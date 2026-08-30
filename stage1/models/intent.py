@@ -47,6 +47,8 @@ class CorpRef:
 @dataclass
 class ManifestFilter:
     corp_names: list[str] = field(default_factory=list)
+    # "A를 제외한 ..." 질의의 제외 대상. corp_names/sector로 고른 뒤 마지막에 뺀다.
+    exclude_corp_names: list[str] = field(default_factory=list)
     sector: Optional[str] = None
     doc_group: Optional[str] = None
     doc_group_candidates: list[str] = field(default_factory=list)
@@ -97,6 +99,8 @@ class Intent:
     calculation: dict[str, Any] = field(default_factory=dict)
 
     corps: list[CorpRef] = field(default_factory=list)
+    # 질의가 명시적으로 제외한 기업. corps/sector_members에서는 이미 빠져 있다.
+    excluded_corps: list[CorpRef] = field(default_factory=list)
     sector: Optional[str] = None
     sector_members: list[str] = field(default_factory=list)
     ambiguous_mentions: list[dict[str, Any]] = field(default_factory=list)
@@ -120,6 +124,9 @@ class Intent:
     reject_reason: Optional[str] = None
     clarify_message: Optional[str] = None
     llm_used: bool = False
+    # trace_summary()와 같은 문자열. state에는 Intent dict만 실려서 3·4단계가
+    # 메서드를 호출할 수 없으므로 직렬화된 값으로도 남긴다.
+    think_trace: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -129,6 +136,8 @@ class Intent:
         parts = [f"intent={self.intent}", f"route={self.route}"]
         if self.corps:
             parts.append("기업=" + ",".join(c.corp_name for c in self.corps))
+        if self.excluded_corps:
+            parts.append("제외=" + ",".join(c.corp_name for c in self.excluded_corps))
         if self.sector:
             parts.append(f"섹터={self.sector}")
         if self.time.years:
