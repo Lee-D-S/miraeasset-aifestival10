@@ -131,7 +131,8 @@ def create_app(
         except Exception as error:  # noqa: BLE001 - HTTP boundary
             if current_pipeline is None:
                 raise HTTPException(status_code=503, detail="pipeline is not ready") from error
-            raise HTTPException(status_code=503, detail=str(error)) from error
+            logger.exception("pipeline request failed")
+            raise HTTPException(status_code=503, detail="pipeline request failed") from error
         return to_submission_response(state)
 
     return app
