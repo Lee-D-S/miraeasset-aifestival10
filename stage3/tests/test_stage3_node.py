@@ -16,6 +16,10 @@ class CountingAnswerClient:
         return self.answer
 
 
+class StrictAnswerClient(CountingAnswerClient):
+    strict_grounding = True
+
+
 class FailingAnswerClient(CountingAnswerClient):
     def generate_text(self, _messages):
         self.calls += 1
@@ -121,6 +125,15 @@ class Stage3NodeTests(unittest.TestCase):
         self.assertIn("100", update["answer"])
         self.assertIn("answer_mode=deterministic_fallback", update["stage3_result"]["trace"])
         self.assertTrue(any("answer_provider_error" in warning for warning in update["stage3_result"]["warnings"]))
+
+    def test_strict_client_missing_core_claim_uses_explicit_grounding_answer(self):
+        client = StrictAnswerClient(answer="관련 내용을 확인할 수 없습니다.")
+
+        update = build_stage3_node(answer_client=client)(_state())
+
+        self.assertIn("100", update["answer"])
+        self.assertIn("doc-a", update["answer"])
+        self.assertIn("answer_mode=deterministic_grounding_fallback", update["stage3_result"]["trace"])
 
     def test_event_linking_requires_stage1_event_marker(self):
         state = _state()

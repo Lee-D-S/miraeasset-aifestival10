@@ -25,6 +25,7 @@ def _content(result: Mapping[str, Any]) -> str:
 
 class ClovaChatClient:
     endpoint = "/v3/chat-completions"
+    strict_grounding = True
 
     def __init__(self, *, host: str | None = None, api_key: str | None = None, model: str | None = None, timeout: float = 120.0, max_retries: int = 2):
         self.host = (host or os.getenv("CLOVA_API_HOST", "clovastudio.stream.ntruss.com")).strip()

@@ -29,16 +29,12 @@ def build_pipeline() -> StagePipeline:
     answer_client = ClovaChatClient() if live_llm else None
     backend = os.getenv("STAGE2_BACKEND", "fixture").strip().lower()
     if backend == "fixture":
-        fixture = Path(os.getenv(
-            "STAGE2_FIXTURE_PATH",
-            str(Path(__file__).resolve().parents[1] / "legacy" / "test_data" / "disclosure_clova_local.json"),
-        ))
+        default_fixture = Path(__file__).resolve().parents[1] / "legacy" / "test_data" / "disclosure_clova_local.json"
+        fixture = Path(os.getenv("STAGE2_FIXTURE_PATH", "").strip() or str(default_fixture))
         retriever = JsonFixtureRetriever.from_path(fixture, query_embedder=ClovaQueryEmbedding())
     elif backend == "sqlite":
-        index_path = Path(os.getenv(
-            "STAGE2_INDEX_PATH",
-            str(Path(__file__).resolve().parents[1] / "data" / "local_smoke" / "smoke.db"),
-        ))
+        default_index = Path(__file__).resolve().parents[1] / "data" / "local_smoke" / "smoke.db"
+        index_path = Path(os.getenv("STAGE2_INDEX_PATH", "").strip() or str(default_index))
         retriever = SQLiteStage2Repository(index_path, query_embedder=ClovaQueryEmbedding())
     else:
         raise RuntimeError(f"unsupported Stage2 backend: {backend}; choose fixture or sqlite")

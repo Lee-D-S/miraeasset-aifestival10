@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from stage3.contracts import AgentResult, Stage3Fact, Stage3Intent
@@ -12,6 +13,87 @@ def _citation_lines(citations: list[dict[str, Any]]) -> list[str]:
         f"- {item.get('source') or item.get('document_id', '')} ({item.get('document_id', '')})"
         for item in citations
     ]
+
+
+def _relevant_facts(intent: Stage3Intent, facts: list[Stage3Fact], limit: int = 12) -> list[Stage3Fact]:
+    """Prioritize facts matching the requested metric, period, and company."""
+    requested_metric = str(intent.metric or "").strip().lower()
+    years = {str(year) for year in intent.time.get("years", [])} if isinstance(intent.time, dict) else set()
+    companies = {str(company).strip().lower() for company in intent.companies if str(company).strip()}
+    companies.update(str(company).strip().lower() for company in intent.manifest_filter.get("corp_names", []) if str(company).strip())
+    basis = str(intent.basis or "").strip().lower()
+
+    def score(fact: Stage3Fact) -> tuple[int, float, str]:
+        value = str(fact.value)
+        fact_period = str(fact.period or "")
+        fact_company = str(fact.company or "").strip().lower()
+        points = 0
+        if requested_metric and fact.metric.lower() == requested_metric:
+            points += 100
+        if requested_metric and requested_metric in fact.label.lower():
+            points += 30
+        if years and any(year in fact_period for year in years):
+            points += 20
+        if companies and fact_company in companies:
+            points += 20
+        if basis and str(fact.basis or "").strip().lower() == basis:
+            points += 10
+        if fact.kind != "date":
+            points += 5
+        if re.search(r"\d", value):
+            points += 5
+        try:
+            magnitude = abs(float(fact.value)) if fact.kind != "date" else 0.0
+        except (TypeError, ValueError):
+            magnitude = 0.0
+        return (-points, -magnitude, fact.document_id)
+
+    return sorted(facts, key=score)[:limit]
+
+
+def _has_required_claim(answer: str, facts: list[Stage3Fact], citations: list[dict[str, Any]]) -> bool:
+    numeric_facts = [fact for fact in facts if fact.kind != "date" and re.search(r"\d", str(fact.value))]
+    if numeric_facts:
+        answer_digits = re.sub(r"\D", "", answer)
+        if not any(re.sub(r"\D", "", str(fact.value).split(".", 1)[0]) in answer_digits for fact in numeric_facts[:3]):
+            return False
+    if citations and not any(str(item.get("document_id", "")) in answer for item in citations if item.get("document_id")):
+        return False
+    return bool(answer.strip())
+
+
+def _citation_for_fact(fact: Stage3Fact, citations: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Return the citation that supports the primary fact when available."""
+
+    for citation in citations:
+        if str(citation.get("document_id", "")) == fact.document_id:
+            return citation
+    return citations[0] if citations else None
+
+
+def _lookup_claim(fact: Stage3Fact, intent: Stage3Intent, citations: list[dict[str, Any]]) -> str:
+    """Render a compact, explicit claim for semantic validation.
+
+    A list of extracted facts is useful for debugging but is not a good answer:
+    the semantic validator needs an unambiguous subject, period, metric, value,
+    and citation.  This renderer deliberately does not invent a unit that the
+    source parser did not provide.
+    """
+
+    subject = fact.company or (intent.companies[0] if intent.companies else "요청 기업")
+    period = fact.period or ", ".join(
+        str(year) for year in intent.time.get("years", [])
+    ) or "요청 기간"
+    basis = fact.basis or intent.basis or "공시 기준"
+    metric = fact.label or fact.metric or intent.metric or "요청 지표"
+    value = f"{fact.value}{fact.unit}".strip()
+    citation = _citation_for_fact(fact, citations)
+    source_line = ""
+    if citation:
+        document_id = str(citation.get("document_id", "")).strip()
+        source = str(citation.get("source", "")).strip()
+        source_line = f"\n\n출처: {source or '공시 문서'} [문서ID: {document_id}]"
+    return f"결론\n{subject}의 {period} {basis} {metric}은 {value}입니다.{source_line}"
 
 
 class AnswerWriter:
@@ -32,10 +114,11 @@ class AnswerWriter:
         citations: list[dict[str, Any]],
         warnings: list[str],
     ) -> tuple[str, str]:
+        selected_facts = _relevant_facts(intent, facts)
         payload = {
             "question": question,
             "intent": intent.to_dict(),
-            "facts": [fact.to_dict() for fact in facts],
+            "facts": [fact.to_dict() for fact in selected_facts],
             "calculations": calculations,
             "comparisons": comparisons,
             "events": events,
@@ -49,8 +132,11 @@ class AnswerWriter:
                 "답변은 결론, 핵심 근거, 계산·비교 결과, 정보 한계 순서로 작성하세요.\n"
                 f"자료:\n{json.dumps(payload, ensure_ascii=False)}"
             )
-            return self.client.generate_text([{"role": "user", "content": prompt}]), "hyperclova_x"
-        return self._template(intent, facts, calculations, comparisons, events, citations, warnings), "deterministic_template"
+            answer = self.client.generate_text([{"role": "user", "content": prompt}])
+            if getattr(self.client, "strict_grounding", False) and not _has_required_claim(answer, selected_facts, citations):
+                return self._template(intent, selected_facts, calculations, comparisons, events, citations, warnings), "deterministic_grounding_fallback"
+            return answer, "hyperclova_x"
+        return self._template(intent, selected_facts, calculations, comparisons, events, citations, warnings), "deterministic_template"
 
     @staticmethod
     def deterministic(
@@ -84,8 +170,14 @@ class AnswerWriter:
             calculation = calculations[0]
             sections.append(f"결론\n{calculation['result']}{calculation.get('unit', '')}\n\n계산식\n{calculation.get('formula', '')}")
         else:
-            lines = [f"- {fact.label}: {fact.value} {fact.unit} ({fact.period or '기간 미상'}, {fact.basis or '기준 미상'})" for fact in facts[:8]]
-            sections.append("핵심 근거\n" + "\n".join(lines))
+            facts_to_render = facts[:8]
+            if str(intent.question_type or intent.intent).lower() in {"lookup", "text", "exists"}:
+                facts_to_render = facts[:1]
+            if facts_to_render and str(intent.question_type or intent.intent).lower() in {"lookup", "text", "exists"}:
+                sections.append(_lookup_claim(facts_to_render[0], intent, citations))
+            else:
+                lines = [f"- {fact.label}: {fact.value} {fact.unit} ({fact.period or '기간 미상'}, {fact.basis or '기준 미상'})" for fact in facts_to_render]
+                sections.append("핵심 근거\n" + "\n".join(lines))
         if events:
             sections.append("공시 이력\n" + "\n".join(f"- {event.get('relation')}: {event.get('source_ids')}" for event in events))
         if citations:
