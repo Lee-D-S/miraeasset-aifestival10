@@ -32,6 +32,8 @@ uvicorn app:app --reload
 `legacy/test_data/disclosure_clova_local.json`이며, `STAGE2_FIXTURE_PATH`로 바꿀 수 있다.
 SQLite를 선택하면 `STAGE2_INDEX_PATH`의 chunk·metadata·embedding index를 사용한다.
 두 경로 모두 환경변수가 빈 문자열이면 안전한 기본 경로를 사용한다.
+Stage1 corpus 자동 탐색이 실패하는 실행 환경에서는 `CORPUS_DIR`에 `universe.csv`와
+`manifest.jsonl`이 있는 corpus 디렉터리를 명시해야 한다.
 
 `CLOVA_API_KEY` 또는 `CLOVASTUDIO_API_KEY`가 없으면 query embedding은 `embedding_unavailable`로 처리된다. 의미 검증 provider가 없으면 최종 답변을 성공으로 가장하지 않는다. Chroma·PostgreSQL 운영 backend는 후속 작업이다.
 
