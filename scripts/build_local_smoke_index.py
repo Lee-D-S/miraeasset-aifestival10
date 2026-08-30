@@ -23,6 +23,8 @@ def main() -> int:
     parser.add_argument("--max-chunks-per-document", type=int, default=10)
     parser.add_argument("--request-delay", type=float, default=1.0)
     parser.add_argument("--max-retries", type=int, default=4)
+    parser.add_argument("--doc-id", action="append", default=[], help="Only embed these document IDs")
+    parser.add_argument("--term", action="append", default=[], help="Only embed chunks containing one of these terms")
     args = parser.parse_args()
 
     embedder = ClovaQueryEmbedding()
@@ -45,8 +47,14 @@ def main() -> int:
         source_root=args.source_root,
         embedder=throttled_embed,
         max_chars=1200,
-        max_chunks_per_document=args.max_chunks_per_document,
+        max_chunks_per_document=None if args.max_chunks_per_document == 0 else args.max_chunks_per_document,
     )
+    if args.doc_id:
+        rows = [row for row in rows if row["doc_id"] in set(args.doc_id)]
+    if args.term:
+        rows = [row for row in rows if any(term in row["text"] for term in args.term)]
+    if not rows:
+        raise ValueError("no chunks matched the requested document/term filters")
     invalid = [row["id"] for row in rows if len(row.get("embedding", [])) != 1024]
     if invalid:
         raise RuntimeError(f"embedding dimension validation failed for {len(invalid)} chunks")
