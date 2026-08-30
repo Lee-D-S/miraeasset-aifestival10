@@ -22,12 +22,18 @@ def _relevant_facts(intent: Stage3Intent, facts: list[Stage3Fact], limit: int = 
     companies = {str(company).strip().lower() for company in intent.companies if str(company).strip()}
     companies.update(str(company).strip().lower() for company in intent.manifest_filter.get("corp_names", []) if str(company).strip())
     basis = str(intent.basis or "").strip().lower()
+    excluded_terms = {
+        "revenue": ("매출채권", "매출원가", "매출총이익", "매출채권회전율"),
+    }.get(requested_metric, ())
 
     def score(fact: Stage3Fact) -> tuple[int, float, str]:
         value = str(fact.value)
         fact_period = str(fact.period or "")
         fact_company = str(fact.company or "").strip().lower()
+        fact_context = f"{fact.label} {fact.evidence}".lower()
         points = 0
+        if excluded_terms and any(term in fact_context for term in excluded_terms):
+            points -= 1_000
         if requested_metric and fact.metric.lower() == requested_metric:
             points += 100
         if requested_metric and requested_metric in fact.label.lower():

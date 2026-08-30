@@ -47,6 +47,17 @@ class FactExtractionTests(unittest.TestCase):
         self.assertEqual(numeric.basis, "연결")
         self.assertFalse(warnings)
 
+    def test_does_not_classify_revenue_receivables_as_revenue(self):
+        bundle = adapt_stage2_bundle([{
+            "id": "financial-position",
+            "text": "매출채권 76,710,079 매출액 333,605,938",
+            "metadata": {"corp_name": "삼성전자", "report_period": "2025-12"},
+        }])
+
+        facts = extract_facts(bundle.documents, self.intent)
+
+        self.assertEqual([item.value for item in facts if item.metric == "revenue"], [333605938.0])
+
     def test_unknown_unit_is_warned(self):
         bundle = adapt_stage2_bundle([{"id": "d1", "text": "매출액 100단위", "metadata": {"corp_name": "기업A"}}])
         facts = extract_facts(bundle.documents, self.intent)

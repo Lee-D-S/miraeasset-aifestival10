@@ -18,7 +18,9 @@ STAGE2_INDEX_PATH=data/local_smoke/smoke.db
 `STAGE2_FIXTURE_PATH` 또는 `STAGE2_INDEX_PATH`가 빈 문자열이면 factory의 기본 경로를
 사용한다. SQLite 경로에서도 사용자 질의는 저장된 문서와 동일한 CLOVA Embedding v2
 차원으로 임베딩되어 hybrid 검색에 사용된다. provider가 없으면 fake embedding으로
-대체하지 않고 `embedding_unavailable`로 종료한다.
+대체하지 않고 `embedding_unavailable`로 종료한다. canonical runtime은 Stage3가
+종속기업·사업부 행보다 연결 총계 행을 회복할 수 있도록 최종 cited 문서를 최대 20개
+전달하며, deterministic 테스트 factory는 기존 8개 제한을 유지한다.
 
 ```python
 from stage2 import InMemoryRetriever, build_stage2_node

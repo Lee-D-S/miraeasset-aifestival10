@@ -151,7 +151,14 @@ def extract_facts(documents: Iterable[Stage3Document], intent: Stage3Intent) -> 
         extra_metrics.append("operating_profit")
     labels = _metric_pattern(intent.metric, extra_metrics=extra_metrics)
     label_pattern = "|".join(re.escape(label) for label in sorted(labels, key=len, reverse=True)) or r"(?!)"
-    numeric_pattern = re.compile(rf"(?P<label>{label_pattern})[^\d\-△▲]*(?P<value>{NUMBER_PATTERN})\s*(?P<unit>{UNIT_PATTERN}|단위)?")
+    # Do not treat a metric prefix as a standalone label.  For example,
+    # ``매출채권`` must not become a ``매출`` Fact.  Korean case particles
+    # (such as ``매출액은``) remain valid after the metric label.
+    numeric_pattern = re.compile(
+        rf"(?P<label>{label_pattern})(?!채권|원가|총이익)"
+        rf"(?:(?!(?:{label_pattern}))[^\d\-△▲]){{0,80}}"
+        rf"(?P<value>{NUMBER_PATTERN})\s*(?P<unit>{UNIT_PATTERN}|단위)?"
+    )
     for document in documents:
         structured = parse_structured_evidence(document.text or "")
         text = structured.text
