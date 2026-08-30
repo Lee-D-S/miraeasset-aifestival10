@@ -131,6 +131,7 @@ pytest tests/test_local_e2e.py
 ```
 
 실제 CLOVA 호출은 provider 환경변수가 설정된 별도 smoke test에서만 수행한다.
+배포 전 오프라인 구성 검사는 `python scripts/check_deployment.py`로 실행한다. 이 검사는 CLOVA endpoint를 호출하지 않고 corpus, SQLite·Chroma index의 일관성까지 검사한다.
 embedding timeout은 `CLOVA_EMBEDDING_TIMEOUT`, 답변·semantic timeout은
 `CLOVA_CHAT_TIMEOUT`, 429 재시도 대기 상한은 `CLOVA_RATE_LIMIT_MAX_WAIT`로 조정한다.
 실행 중 adapter의 `last_rate_limit`에서 API가 반환한 `x-ratelimit-*` 헤더를 확인할 수
