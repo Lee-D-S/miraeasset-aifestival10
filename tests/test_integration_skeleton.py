@@ -3,7 +3,8 @@ from __future__ import annotations
 import unittest
 
 from integration import StageNodes, StagePipeline
-from integration.api import to_submission_response
+from integration.api import create_app, to_submission_response
+from fastapi import HTTPException
 from stage2.retrieval import matches_manifest_filter
 
 
@@ -44,6 +45,24 @@ def _stage4(state):
 
 
 class IntegrationSkeletonTests(unittest.TestCase):
+    def test_health_does_not_initialize_pipeline(self) -> None:
+        calls = []
+
+        def factory():
+            calls.append("factory")
+            raise FileNotFoundError("missing corpus")
+
+        app = create_app(pipeline_factory=factory)
+        health = next(route.endpoint for route in app.routes if getattr(route, "path", "") == "/health")
+        ready = next(route.endpoint for route in app.routes if getattr(route, "path", "") == "/ready")
+
+        self.assertEqual(health()["status"], "ok")
+        self.assertEqual(calls, [])
+        with self.assertRaises(HTTPException) as context:
+            ready()
+        self.assertEqual(context.exception.status_code, 503)
+        self.assertEqual(calls, ["factory"])
+
     def test_stage2_honors_excluded_corp_names(self) -> None:
         document = {"metadata": {"corp_name": "삼성전자"}}
         manifest_filter = {"exclude_corp_names": ["삼성전자"]}
