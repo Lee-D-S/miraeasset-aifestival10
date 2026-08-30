@@ -85,3 +85,8 @@ validation must remain a validation failure rather than a successful answer.
 
 노드는 `stage2_result`, 호환용 `documents`, 검색 시도 횟수와 검색어를 작성한다. 답변 생성,
 계산, context 작성, 계약·정정공시 관계 해석은 Stage3 또는 Stage4의 책임이다.
+
+실제 CLOVA query embedding timeout은 `CLOVA_EMBEDDING_TIMEOUT`(기본 30초)으로
+설정한다. 답변 생성·semantic validation은 `CLOVA_CHAT_TIMEOUT`(기본 60초), 429
+재시도 횟수는 `CLOVA_CHAT_MAX_RETRIES`(기본 1회), 재시도 대기 상한은
+`CLOVA_RATE_LIMIT_MAX_WAIT`(기본 15초)로 제한한다.

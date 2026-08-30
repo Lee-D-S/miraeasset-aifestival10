@@ -17,10 +17,14 @@ except ImportError:  # pragma: no cover - optional for direct adapter imports
 
 
 class ClovaQueryEmbedding:
-    def __init__(self, *, timeout: float = 30.0):
+    def __init__(self, *, timeout: float | None = None):
         if load_dotenv is not None:
             load_dotenv()
-        self.timeout = timeout
+        try:
+            configured = float(os.getenv("CLOVA_EMBEDDING_TIMEOUT", "30"))
+        except ValueError:
+            configured = 30.0
+        self.timeout = timeout if timeout is not None else max(configured, 0.1)
 
     def __call__(self, text: str) -> list[float]:
         api_key = os.getenv("CLOVA_API_KEY", "").strip() or os.getenv("CLOVASTUDIO_API_KEY", "").strip()

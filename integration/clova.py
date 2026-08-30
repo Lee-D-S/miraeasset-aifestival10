@@ -12,6 +12,20 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 
+def _env_float(name: str, default: float) -> float:
+    try:
+        return max(float(os.getenv(name, str(default))), 0.1)
+    except ValueError:
+        return default
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return max(int(os.getenv(name, str(default))), 0)
+    except ValueError:
+        return default
+
+
 def _content(result: Mapping[str, Any]) -> str:
     message = result.get("message", {})
     if not message:
@@ -27,14 +41,15 @@ class ClovaChatClient:
     endpoint = "/v3/chat-completions"
     strict_grounding = True
 
-    def __init__(self, *, host: str | None = None, api_key: str | None = None, model: str | None = None, timeout: float = 120.0, max_retries: int = 2):
+    def __init__(self, *, host: str | None = None, api_key: str | None = None, model: str | None = None, timeout: float | None = None, max_retries: int | None = None):
         self.host = (host or os.getenv("CLOVA_API_HOST", "clovastudio.stream.ntruss.com")).strip()
         self.api_key = (api_key or os.getenv("CLOVA_API_KEY", "")).strip()
         self.model = model or os.getenv("CLOVA_CHAT_MODEL", "HCX-DASH-002")
-        self.timeout = timeout
-        self.max_retries = max_retries
+        self.timeout = timeout if timeout is not None else _env_float("CLOVA_CHAT_TIMEOUT", 60.0)
+        self.max_retries = max_retries if max_retries is not None else _env_int("CLOVA_CHAT_MAX_RETRIES", 1)
+        self.rate_limit_max_wait = _env_float("CLOVA_RATE_LIMIT_MAX_WAIT", 15.0)
 
-    def _request(self, messages: list[dict[str, Any]], *, max_tokens: int = 1024) -> str:
+    def _request(self, messages: list[dict[str, Any]], *, max_tokens: int = 1024, operation: str = "chat") -> str:
         if not self.api_key:
             raise RuntimeError("CLOVA_API_KEY is not configured")
         request = Request(
@@ -63,26 +78,27 @@ class ClovaChatClient:
                     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
                         pass
                     suffix = f" ({detail})" if detail else ""
-                    raise RuntimeError(f"CLOVA chat HTTP {error.code}{suffix}") from error
+                    raise RuntimeError(f"CLOVA {operation} HTTP {error.code}{suffix}") from error
                 reset = error.headers.get("x-ratelimit-reset-requests") or error.headers.get("Retry-After")
                 match = re.search(r"\d+(?:\.\d+)?", str(reset or ""))
-                time.sleep(max(float(match.group(0)) if match else min(60.0, 2.0 ** attempt), 1.0))
+                requested_wait = float(match.group(0)) if match else 2.0 ** attempt
+                time.sleep(min(max(requested_wait, 1.0), self.rate_limit_max_wait))
         if payload.get("status", {}).get("code") not in (None, "20000"):
-            raise RuntimeError(f"CLOVA chat request failed: {payload.get('status')}")
+            raise RuntimeError(f"CLOVA {operation} request failed: {payload.get('status')}")
         answer = _content(payload.get("result", payload))
         if not answer.strip():
             raise ValueError("CLOVA chat returned an empty answer")
         return answer
 
     def generate_text(self, messages: list[dict[str, Any]], **_: Any) -> str:
-        return self._request(messages)
+        return self._request(messages, operation="answer_generation")
 
     def generate_json(self, messages: list[dict[str, Any]], *, schema: Mapping[str, Any], **_: Any) -> dict[str, Any]:
         prompt = list(messages) + [{
             "role": "user",
             "content": "Return one JSON object only. Follow this schema exactly:\n" + json.dumps(schema, ensure_ascii=False),
         }]
-        value = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", self._request(prompt), flags=re.IGNORECASE | re.DOTALL).strip()
+        value = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", self._request(prompt, operation="semantic_validation"), flags=re.IGNORECASE | re.DOTALL).strip()
         parsed = json.loads(value)
         if not isinstance(parsed, dict):
             raise ValueError("CLOVA semantic response must be a JSON object")

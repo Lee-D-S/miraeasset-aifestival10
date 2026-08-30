@@ -98,6 +98,8 @@ pytest tests/test_local_e2e.py
 ```
 
 실제 CLOVA 호출은 provider 환경변수가 설정된 별도 smoke test에서만 수행한다.
+embedding timeout은 `CLOVA_EMBEDDING_TIMEOUT`, 답변·semantic timeout은
+`CLOVA_CHAT_TIMEOUT`, 429 재시도 대기 상한은 `CLOVA_RATE_LIMIT_MAX_WAIT`로 조정한다.
 
 Stage3 답변 생성은 질문과 관련된 Fact를 우선 전달한다. strict grounding client가 핵심
 수치 또는 citation ID를 포함하지 않은 답변을 반환하면 deterministic grounding fallback으로
