@@ -23,6 +23,7 @@ tests/                  # 현재 통합 계약 테스트
 ```powershell
 python -m pip install -r requirements.txt
 python -m pip install -r requirements-langgraph.txt
+python -m pip install -r requirements-dev.txt
 uvicorn app:app --reload
 ```
 
@@ -60,7 +61,10 @@ Stage1 manifest_filter
 
 ```powershell
 python -m unittest discover -s tests -p "test_*.py"
+python -m stage1.tests.run_checks
+pytest stage1/tests
 python -m compileall -q integration shared_state.py stage1 stage2 stage3 stage4
+pytest
 ```
 
 `legacy/` 문서는 과거 backend의 설계·검증 기록이며, 현재 실행 경로의 기준은 `integration/composition.py`와 `integration/graph.py`다.

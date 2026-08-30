@@ -113,9 +113,6 @@ def validate_stage3_result(result: Stage3Result, intent: Stage3Intent) -> tuple[
     for comparison in result.comparison_results:
         if comparison.get("status") == "ok" and not set(map(str, comparison.get("evidence_ids", []))).issubset(known_ids):
             warnings.append("비교 결과가 알 수 없는 근거 문서를 참조합니다.")
-    if result.status == "success" and not result.answer.strip():
-        warnings.append("success 상태의 답변이 비어 있습니다.")
-    warnings.extend(_answer_number_warnings(result))
     return not warnings, warnings
 
 

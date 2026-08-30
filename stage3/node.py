@@ -111,6 +111,7 @@ def _context_from_result(result: Stage3Result) -> str:
 
 def _successful_analysis(
     question_type: str,
+    intent: Stage3Intent,
     facts: list[Stage3Fact],
     calculations: list[dict[str, Any]],
     comparisons: list[dict[str, Any]],
@@ -186,7 +187,7 @@ def _execute_stage3(*, question: str, intent: Stage3Intent, stage2_result: Any, 
                 warnings.append(str(calculations[-1]["error"]))
 
     citations = _build_citations(documents, facts, calculations, comparisons, events)
-    analysis_success = _successful_analysis(question_type, facts, calculations, comparisons, events)
+    analysis_success = _successful_analysis(question_type, intent, facts, calculations, comparisons, events)
     result_status = "success" if analysis_success else "insufficient_evidence"
     result = Stage3Result(
         status=result_status,
