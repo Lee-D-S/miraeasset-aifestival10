@@ -134,6 +134,11 @@ stage3_node = build_stage3_node(answer_client=hyperclova_client)
 
 client는 `generate_text(messages)` 인터페이스를 제공해야 한다. client가 없거나
 호출에 실패하면 Fact·계산·citation만 사용하는 deterministic fallback을 사용한다.
+질문과 직접 관련된 Fact를 우선 선별해 답변 client에 전달하며, strict grounding client가
+핵심 수치 또는 citation ID를 빠뜨린 답변을 반환하면 이를 채택하지 않는다. 이 경우
+`deterministic_grounding_fallback`이 lookup·text·exists 질의의 답변을 생성한다. 해당
+fallback은 기업·기간·기준·지표·값·출처 문서ID를 명시하고, 원문 Fact에 없는 단위는
+임의로 추가하지 않는다.
 Stage3는 답변 재생성·수치 검증·출처 검증·의미 검증을 수행하지 않는다. 이 작업은
 Stage4가 담당한다.
 

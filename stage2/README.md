@@ -7,6 +7,19 @@ Stage2는 Stage1 Intent를 받아 공시 근거 문서를 검색하고 Stage3에
 주입하며 provider가 없으면 `embedding_unavailable`로 종료한다. 테스트와 계약 검증에는
 `InMemoryRetriever`와 deterministic reranker를 명시적으로 주입한다.
 
+실행 factory는 다음 backend 선택을 지원한다.
+
+```text
+STAGE2_BACKEND=fixture
+STAGE2_BACKEND=sqlite
+STAGE2_INDEX_PATH=data/local_smoke/smoke.db
+```
+
+`STAGE2_FIXTURE_PATH` 또는 `STAGE2_INDEX_PATH`가 빈 문자열이면 factory의 기본 경로를
+사용한다. SQLite 경로에서도 사용자 질의는 저장된 문서와 동일한 CLOVA Embedding v2
+차원으로 임베딩되어 hybrid 검색에 사용된다. provider가 없으면 fake embedding으로
+대체하지 않고 `embedding_unavailable`로 종료한다.
+
 ```python
 from stage2 import InMemoryRetriever, build_stage2_node
 

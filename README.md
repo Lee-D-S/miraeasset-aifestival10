@@ -27,9 +27,25 @@ python -m pip install -r requirements-dev.txt
 uvicorn app:app --reload
 ```
 
-기본 factory는 `integration/composition.py`에서 fixture backend를 조립한다. 기본 fixture는 `legacy/test_data/disclosure_clova_local.json`이며, 경로는 `STAGE2_FIXTURE_PATH`로 바꿀 수 있다. 현재 지원 backend는 `STAGE2_BACKEND=fixture`다.
+기본 factory는 `integration/composition.py`에서 Stage1~Stage4를 조립한다. Stage2는
+`STAGE2_BACKEND=fixture`와 `STAGE2_BACKEND=sqlite`를 지원한다. fixture 기본값은
+`legacy/test_data/disclosure_clova_local.json`이며, `STAGE2_FIXTURE_PATH`로 바꿀 수 있다.
+SQLite를 선택하면 `STAGE2_INDEX_PATH`의 chunk·metadata·embedding index를 사용한다.
+두 경로 모두 환경변수가 빈 문자열이면 안전한 기본 경로를 사용한다.
 
-`CLOVA_API_KEY` 또는 `CLOVASTUDIO_API_KEY`가 없으면 query embedding은 `embedding_unavailable`로 처리된다. 의미 검증 provider가 없으면 최종 답변을 성공으로 가장하지 않는다. 실제 SQLite·Chroma·PostgreSQL backend는 후속 작업이다.
+`CLOVA_API_KEY` 또는 `CLOVASTUDIO_API_KEY`가 없으면 query embedding은 `embedding_unavailable`로 처리된다. 의미 검증 provider가 없으면 최종 답변을 성공으로 가장하지 않는다. Chroma·PostgreSQL 운영 backend는 후속 작업이다.
+
+실제 SQLite smoke index를 사용하려면 다음처럼 설정한다.
+
+```powershell
+$env:STAGE2_BACKEND = "sqlite"
+$env:STAGE2_INDEX_PATH = "data/local_smoke/smoke.db"
+$env:CLOVA_LLM_ENABLED = "true"  # 답변 생성·semantic validation을 CLOVA로 활성화
+uvicorn app:app --reload
+```
+
+SQLite adapter는 연결되어 있지만, Chroma·PostgreSQL 운영 adapter는 아직 canonical
+factory에 연결하지 않았다.
 
 ## API
 
@@ -80,3 +96,7 @@ pytest tests/test_local_e2e.py
 ```
 
 실제 CLOVA 호출은 provider 환경변수가 설정된 별도 smoke test에서만 수행한다.
+
+Stage3 답변 생성은 질문과 관련된 Fact를 우선 전달한다. strict grounding client가 핵심
+수치 또는 citation ID를 포함하지 않은 답변을 반환하면 deterministic grounding fallback으로
+교체하여, lookup 답변에 기업·기간·기준·지표·값·출처 문서ID가 남도록 한다.
