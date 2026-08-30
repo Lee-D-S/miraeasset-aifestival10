@@ -12,6 +12,17 @@ Stage3 result + answer
 
 semantic validator가 없으면 검증 불가로 종료한다. 빈 답변과 출처 표기가 없는 답변도 성공으로 처리하지 않는다.
 
+semantic prompt는 Stage3 답변에 실제로 포함된 수치와 일치하는 Fact 및 citation을
+우선 전달한다. 한 공시에서 연결·부문·종속기업 Fact가 함께 추출될 수 있으므로 단순히
+앞부분만 절단해 대표 근거가 누락되지 않도록 한다.
+
+semantic provider가 판단을 유보하더라도 Stage4는 numeric·citation 검증을 모두 통과한
+명시적 근거 답변만 제한적으로 보완 통과시킨다. numeric Fact가 있는데 답변에 숫자가
+없으면 실패시켜 일반적인 안내문을 성공 답변으로 허용하지 않는다.
+
+Stage4는 provider의 generic한 불확실성만 있고 unsupported claim·missing aspect가 없을
+때에 한해, 결정론적 numeric·citation 검증 결과를 최종 grounding 근거로 사용한다.
+
 검증 실패 시 Supervisor가 `regenerate_answer`를 선택할 수 있다. 별도 regeneration node가 최대 한 번 답변을 재작성하고 Stage4가 다시 검증한다. 재생성은 검증 판정을 담당하지 않는다.
 
 ```python

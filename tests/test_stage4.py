@@ -110,6 +110,26 @@ def test_stage4_only_validates_and_does_not_regenerate():
     assert client.json_calls == 1
 
 
+def test_stage4_accepts_explicit_grounding_when_semantic_provider_is_uncertain():
+    client = SemanticClient(verdict={
+        "pass": False,
+        "issues": ["provider was uncertain"],
+        "unsupported_claims": [],
+        "missing_aspects": [],
+        "summary": "uncertain",
+    })
+    update = build_stage4_node(validator_client=client)({
+        "route": "ok",
+        "question": "매출액은?",
+        "intent": {"question_type": "lookup"},
+        "answer": "매출액은 1.2억원입니다. [source:doc-1]",
+        "stage3_result": _stage3(),
+    })
+
+    assert update["stage4_result"]["status"] == "success"
+    assert update["stage4_result"]["semantic_check"]["pass"] is True
+
+
 def test_stage4_fails_closed_when_answer_is_invalid():
     client = SemanticClient(regenerated="매출은 9억원입니다.")
     update = build_stage4_node(validator_client=client)({

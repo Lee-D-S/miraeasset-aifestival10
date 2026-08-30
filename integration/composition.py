@@ -40,9 +40,11 @@ def build_pipeline() -> StagePipeline:
         raise RuntimeError(f"unsupported Stage2 backend: {backend}; choose fixture or sqlite")
     return StagePipeline(StageNodes(
         stage1=stage1,
-        # Keep enough lexical candidates for Stage3 to recover aggregate rows
-        # that may rank below subsidiary/segment rows in the hybrid score.
-        stage2=build_stage2_node(retriever=retriever, config=RetrievalConfig(final_limit=20)),
+        # Keep all metadata-filtered chunks in the small smoke corpus so
+        # Stage3 can recover aggregate rows that rank below subsidiary or
+        # segment rows in the hybrid score.  Retrieval prompt compaction still
+        # bounds what is sent to external LLMs.
+        stage2=build_stage2_node(retriever=retriever, config=RetrievalConfig(final_limit=50)),
         stage3=build_stage3_node(answer_writer=AnswerWriter(answer_client)),
         stage4=build_stage4_node(validator_client=answer_client),
     ))

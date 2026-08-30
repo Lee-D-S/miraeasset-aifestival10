@@ -2,6 +2,7 @@ import json
 
 from stage3.agents.answer import AnswerWriter
 from stage3.contracts import Stage3Fact, adapt_stage1_intent
+from stage4.semantic import _compact_stage3_result
 
 
 class CapturingClient:
@@ -47,3 +48,28 @@ def test_answer_prompt_compacts_citations_without_changing_result_inputs():
     assert len(payload["citations"]) == 8
     assert all(len(item["evidence"]) <= 800 for item in payload["citations"])
     assert len(citations) == 20
+
+
+def test_semantic_prompt_prioritizes_fact_used_by_answer():
+    stage3_result = {
+        "facts": [
+            {"metric": "revenue", "value": index, "document_id": f"doc-{index}"}
+            for index in range(30)
+        ],
+        "citations": [
+            {"document_id": f"doc-{index}", "source": "a.xml", "evidence": "evidence"}
+            for index in range(30)
+        ],
+    }
+    compact = _compact_stage3_result(
+        stage3_result,
+        intent={
+            "metric": "revenue",
+            "companies": ["기업A"],
+            "time": {"years": [2025]},
+        },
+        answer="기업A의 매출액은 29입니다. [source:doc-29]",
+    )
+
+    assert compact["facts"][0]["value"] == 29
+    assert compact["citations"][0]["document_id"] == "doc-29"

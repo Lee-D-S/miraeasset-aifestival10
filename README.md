@@ -107,6 +107,10 @@ embedding timeout은 `CLOVA_EMBEDDING_TIMEOUT`, 답변·semantic timeout은
 답변·semantic 출력 토큰 기본값은 각각 512·256이며 `CLOVA_ANSWER_MAX_TOKENS`와
 `CLOVA_SEMANTIC_MAX_TOKENS`로 조정할 수 있다.
 
+기본 factory는 metadata-filtered 후보를 최대 50개까지 Stage3에 전달한다. 소규모
+smoke corpus에서 연결·부문·종속기업 chunk가 함께 검색될 때 aggregate 근거가 hybrid
+상위 순위에서 탈락하지 않도록 하기 위한 설정이며, 외부 LLM prompt는 별도로 축약된다.
+
 Stage3 답변 생성은 질문과 관련된 Fact를 우선 전달한다. strict grounding client가 핵심
 수치 또는 citation ID를 포함하지 않은 답변을 반환하면 deterministic grounding fallback으로
 교체하여, lookup 답변에 기업·기간·기준·지표·값·출처 문서ID가 남도록 한다.
