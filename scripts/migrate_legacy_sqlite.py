@@ -15,6 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import config
 from stage2.embedding import ClovaEmbeddings
 from stage2.local_store import LocalHybridRetriever
 
@@ -51,9 +52,10 @@ def load_rows(source: Path) -> list[dict]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", type=Path, default=Path("data/local_smoke/smoke.db"))
-    parser.add_argument("--output", type=Path, default=Path("data/local_smoke/refactor_smoke.db"))
-    parser.add_argument("--chroma-dir", type=Path, default=Path("data/local_smoke/refactor_smoke_chroma"))
+    parser.add_argument("--input", type=Path, default=config.DB_DIR / "smoke.db")
+    parser.add_argument("--output", type=Path, default=config.DB_DIR / "refactor_smoke.db")
+    parser.add_argument("--chroma-dir", type=Path, default=config.DB_DIR / "refactor_smoke_chroma")
+    parser.add_argument("--collection-name", default=config.CHROMA_COLLECTION)
     args = parser.parse_args()
 
     if args.input.resolve() == args.output.resolve():
@@ -65,6 +67,7 @@ def main() -> int:
     repository = LocalHybridRetriever(
         args.output,
         chroma_dir=args.chroma_dir,
+        collection_name=args.collection_name,
         embedding_function=ClovaEmbeddings(),
     )
     repository.write_rows_with_embeddings(rows)

@@ -29,13 +29,18 @@ manifest의 문서 범위는 Stage2 SQLite index에 포함된 문서와 일치�
 
 ```text
 CORPUS_DIR=/app/data/corpus
-STAGE2_BACKEND=sqlite
+STAGE2_MODE=local
 STAGE2_INDEX_PATH=/app/data/index/refactor_smoke.db
 STAGE2_CHROMA_PATH=/app/data/index/refactor_smoke_chroma
+STAGE2_CHROMA_COLLECTION=stage2_chunks
 CLOVA_LLM_ENABLED=true
 CLOVA_API_KEY=<secret>
 CLOVA_API_HOST=clovastudio.stream.ntruss.com
 ```
+
+컨테이너 RDB·Chroma 서버로 올릴 때는 `STAGE2_MODE=container`, `STAGE2_RDB_URL`,
+`STAGE2_CHROMA_HOST`(`STAGE2_CHROMA_PORT`)를 설정한다. 경로는 모두 `config.py`가 관리하며
+상대값은 프로젝트 루트 기준으로 해석된다.
 
 Secret은 `.env`, 로그, Git, README, 응답에 기록하지 않는다.
 

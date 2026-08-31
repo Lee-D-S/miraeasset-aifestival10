@@ -5,8 +5,13 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import sys
 import unicodedata
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import config
 
 
 def normalize(value: object) -> str:
@@ -16,7 +21,7 @@ def normalize(value: object) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--corpus", type=Path, required=True)
-    parser.add_argument("--selection", type=Path, default=Path("data/local_smoke/selected_documents.json"))
+    parser.add_argument("--selection", type=Path, default=config.DB_DIR / "selected_documents.json")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 

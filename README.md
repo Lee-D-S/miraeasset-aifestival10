@@ -6,10 +6,11 @@ AI Festival 2026 공시 질의 응답 Agent 실행 엔진.
 
 ```text
 app.py                  # FastAPI 진입점
+config.py               # 프로젝트 루트 기준 경로·Stage2 모드 단일 설정 지점
 integration/            # LangGraph 조립, Supervisor, API adapter
 shared_state.py         # 공용 AgentState와 Stage write contract
 stage1/                 # 질의 정규화·Intent·manifest filter
-stage2/                 # fixture(CLOVA API)/local(SQL+VectorDB) hybrid retrieval·embedding·rerank
+stage2/                 # fixture / local / container hybrid retrieval·embedding·rerank
 stage3/                 # Fact·event·계산·답변 초안
 stage4/                 # 수치·출처·의미 검증
 legacy/                 # 과거 구현과 fixture 보관
@@ -42,39 +43,41 @@ python -m pip install -r requirements-dev.txt
 uvicorn app:app --reload
 ```
 
-기본 factory는 `integration/composition.py`에서 Stage1~Stage4를 조립한다. Stage2는
-`STAGE2_BACKEND=fixture`와 `STAGE2_BACKEND=sqlite` 두 백엔드를 지원한다.
-fixture 기본값은 `legacy/test_data/disclosure_clova_local.json`이며,
-`STAGE2_FIXTURE_PATH`로 바꿀 수 있다. `sqlite`는 SQLAlchemy 기반 metadata
-filter와 Chroma vector search를 사용하며 `STAGE2_INDEX_PATH`와
-`STAGE2_CHROMA_PATH`로 경로를 바꿀 수 있다. `STAGE2_RDB_URL`을 지정하면
-PostgreSQL을, `STAGE2_CHROMA_HOST`를 지정하면 Chroma server를 사용한다.
-두 경로 모두 환경변수가 빈 문자열이면 안전한 기본 경로를 사용한다.
-Stage1 corpus 자동 탐색이 실패하는 실행 환경에서는 `CORPUS_DIR`에
-`universe.csv`와 `manifest.jsonl`이 있는 corpus 디렉터리를 명시해야 한다.
+기본 factory는 `integration/composition.py`에서 Stage1~Stage4를 조립한다. 경로와 backend
+선택은 모두 프로젝트 루트의 **`config.py`** 한 곳에서 관리한다. 환경변수의 상대경로는
+실행 CWD가 아니라 프로젝트 루트를 기준으로 해석된다.
+
+Stage2는 `STAGE2_MODE`로 세 모드 중 하나를 연다(기본값 `fixture`). 구
+`STAGE2_BACKEND=fixture|sqlite`도 계속 인식된다(`sqlite`는 DSN·host 설정 여부에 따라
+`local` 또는 `container`로 매핑).
 
 - `fixture` (기본값, 테스트용): "DB"가 CLOVA API로 사전 계산한 임베딩 JSON 파일이다
   (`legacy/test_data/disclosure_clova_local.json`, `STAGE2_FIXTURE_PATH`로 변경 가능). 쿼리는
   같은 CLOVA 임베딩 엔드포인트로 실시간 계산한다. 로컬 SQL·VectorDB가 전혀 필요 없다.
-- `sqlite`: 로컬 SQLite(`STAGE2_INDEX_PATH`)로 `manifest_filter`를 SQL `WHERE`절로 필터링하고,
-  로컬 Chroma(`STAGE2_CHROMA_PATH`)로 임베딩·유사도·정렬을 위임한다(`LocalHybridRetriever`).
-  두 경로 모두 환경변수가 빈 문자열이면 안전한 기본 경로(`data/local_smoke/`)를 쓴다.
+- `local`: 로컬 SQLite(`STAGE2_INDEX_PATH`)로 `manifest_filter`를 SQL `WHERE`절로 필터링하고,
+  로컬 Chroma persist 디렉터리(`STAGE2_CHROMA_PATH`)로 임베딩·유사도·정렬을 위임한다
+  (`LocalHybridRetriever`). 두 경로 모두 비우면 `config.py`의 기본값(`data/local_smoke/`)을 쓴다.
+- `container`: Dockerized Postgres(`STAGE2_RDB_URL`)와 Chroma 서버
+  (`STAGE2_CHROMA_HOST`/`STAGE2_CHROMA_PORT`)를 사용한다. 두 값 모두 필수이며, 없으면
+  기동 전에 명확한 오류로 실패한다. `LocalHybridRetriever`의 SQL·벡터 검색 코드는
+  `local`과 동일하고 연결만 바뀐다(`stage2/backends.py`).
 
-`LocalHybridRetriever`는 SQL과 벡터 저장소를 각각 주입받을 수 있어(`engine=`/`vectorstore=`),
-`STAGE2_RDB_URL`(Dockerized Postgres DSN)과 `STAGE2_CHROMA_HOST`/`STAGE2_CHROMA_PORT`(Chroma
-서버)를 설정하면 코드 변경 없이 컨테이너 기반 RDB·VectorDB로 바꿀 수 있다 — 지금은 둘 다
-비워두면 로컬 파일을 그대로 쓴다.
+`local`·`container`는 `STAGE2_CHROMA_COLLECTION`(기본 `stage2_chunks`)으로 하나의 벡터
+컬렉션을 가리킨다. 인덱스를 만든 시점의 컬렉션 이름과 서빙 시점 값이 반드시 일치해야 한다.
+
+Stage1 corpus 자동 탐색이 실패하는 실행 환경에서는 `CORPUS_DIR`에 `universe.csv`와
+`manifest.jsonl`이 있는 corpus 디렉터리를 명시한다(상대경로는 루트 기준).
 
 `CLOVA_API_KEY` 또는 `CLOVASTUDIO_API_KEY`가 없으면 query embedding은 `embedding_unavailable`로 처리된다. 의미 검증 provider가 없으면 최종 답변을 성공으로 가장하지 않는다.
 
-실제 SQLite smoke index를 사용하려면 먼저 `scripts/build_local_sqlite.py`로 SQLite+Chroma
+실제 `local` smoke index를 사용하려면 먼저 `scripts/build_local_sqlite.py`로 SQLite+Chroma
 인덱스를 만든 뒤 다음처럼 설정한다. (Chroma가 문서 임베딩을 자체 계산하므로 CLOVA 임베딩
 provider가 필요하다.)
 
 ```powershell
-$env:STAGE2_BACKEND = "sqlite"
-$env:STAGE2_INDEX_PATH = "data/local_smoke/smoke.db"
-$env:STAGE2_CHROMA_PATH = "data/local_smoke/smoke_chroma"
+$env:STAGE2_MODE = "local"
+$env:STAGE2_INDEX_PATH = "data/local_smoke/smoke.db"      # 비우면 config.py 기본값
+$env:STAGE2_CHROMA_PATH = "data/local_smoke/smoke_chroma" # 비우면 config.py 기본값
 $env:CLOVA_LLM_ENABLED = "true"  # 답변 생성·semantic validation을 CLOVA로 활성화
 uvicorn app:app --reload
 ```

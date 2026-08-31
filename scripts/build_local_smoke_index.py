@@ -10,6 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import config
 from stage2.embedding import ClovaQueryEmbedding
 from stage2.json_fixture import EmbeddingUnavailable
 from stage2.ingestion import build_chunk_rows
@@ -18,8 +19,8 @@ from stage2.ingestion import build_chunk_rows
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source-root", required=True, help="Competition data root containing data/3.공시")
-    parser.add_argument("--selection", default="data/local_smoke/selected_documents.json")
-    parser.add_argument("--output", default="data/local_smoke/embedded_chunks.json")
+    parser.add_argument("--selection", type=Path, default=config.DB_DIR / "selected_documents.json")
+    parser.add_argument("--output", type=Path, default=config.DB_DIR / "embedded_chunks.json")
     parser.add_argument("--max-chunks-per-document", type=int, default=10)
     parser.add_argument("--request-delay", type=float, default=1.0)
     parser.add_argument("--max-retries", type=int, default=4)

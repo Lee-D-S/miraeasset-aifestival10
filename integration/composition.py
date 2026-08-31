@@ -5,15 +5,12 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-try:
-    from dotenv import load_dotenv
-except ImportError:  # pragma: no cover - optional in minimal environments
-    load_dotenv = None
-
+import config
 from integration.graph import StageNodes
 from integration.clova import ClovaChatClient
 from integration.readiness import (
     raise_if_invalid,
+    validate_container_settings,
     validate_corpus_directory,
     validate_environment,
     validate_fixture,
@@ -36,61 +33,77 @@ from stage4 import build_stage4_node
 from stage3.agents.answer import AnswerWriter
 
 
-def build_pipeline() -> StagePipeline:
-    """Compose the executable pipeline from environment-selected adapters."""
-    if load_dotenv is not None:
-        load_dotenv()
-    configured_corpus = os.getenv("CORPUS_DIR", "").strip()
-    if configured_corpus:
-        raise_if_invalid(validate_corpus_directory(Path(configured_corpus)))
-    stage1 = build_stage1_node()
-    live_llm = os.getenv("CLOVA_LLM_ENABLED", "false").strip().lower() == "true"
-    answer_client = ClovaChatClient() if live_llm else None
-    backend = os.getenv("STAGE2_BACKEND", "fixture").strip().lower()
-    raise_if_invalid(validate_environment(backend))
-    if backend == "fixture":
-        # Test/offline backend: the "database" is a JSON file of
-        # CLOVA-precomputed document embeddings; queries are embedded live
-        # against the same CLOVA embedding endpoint (stage2/embedding.py).
-        # No SQL RDB or vector DB service required.
-        default_fixture = Path(__file__).resolve().parents[1] / "legacy" / "test_data" / "disclosure_clova_local.json"
-        fixture = Path(os.getenv("STAGE2_FIXTURE_PATH", "").strip() or str(default_fixture))
-        retriever = JsonFixtureRetriever.from_path(fixture, query_embedder=ClovaQueryEmbedding())
+def _build_retriever(settings: config.Stage2Settings, *, corpus: Path | None):
+    """Open the Stage2 retriever for the configured mode.
+
+    Every path and connection string comes from :mod:`config`; nothing here
+    recomputes a project-relative path or reads the environment directly.
+    """
+
+    if settings.mode == "fixture":
+        # "Naver API" test DB: a JSON file of CLOVA-precomputed document
+        # embeddings; queries are embedded live against the same CLOVA
+        # endpoint. No SQL RDB or vector DB service required.
+        retriever = JsonFixtureRetriever.from_path(
+            settings.fixture_path, query_embedder=ClovaQueryEmbedding()
+        )
         raise_if_invalid(validate_fixture(retriever))
-    elif backend == "sqlite":
-        # Local-first by default: a SQLite file for filtering + a Chroma
-        # persist directory for vector search. Setting STAGE2_RDB_URL and/or
-        # STAGE2_CHROMA_HOST swaps in a Dockerized Postgres RDB and/or a
-        # Chroma server instead -- LocalHybridRetriever's SQL/vector-search
-        # code does not change either way (see stage2/backends.py).
-        rdb_url = os.getenv("STAGE2_RDB_URL", "").strip()
-        if rdb_url:
-            engine, sqlite_path = postgres_engine(rdb_url), None
-        else:
-            default_index = Path(__file__).resolve().parents[1] / "data" / "local_smoke" / "smoke.db"
-            engine, sqlite_path = None, Path(os.getenv("STAGE2_INDEX_PATH", "").strip() or str(default_index))
-            raise_if_invalid(validate_sqlite_path(sqlite_path))
+        return retriever
 
-        chroma_host = os.getenv("STAGE2_CHROMA_HOST", "").strip()
-        if chroma_host:
-            chroma_port = int(os.getenv("STAGE2_CHROMA_PORT", "8000"))
-            vectorstore, chroma_dir = chroma_server(chroma_host, chroma_port, embedding_function=ClovaEmbeddings()), None
-        else:
-            default_chroma = Path(__file__).resolve().parents[1] / "data" / "local_smoke" / "smoke_chroma"
-            vectorstore, chroma_dir = None, Path(os.getenv("STAGE2_CHROMA_PATH", "").strip() or str(default_chroma))
-
+    if settings.mode == "local":
+        # Local hybrid store: a SQLite file for metadata filtering + a local
+        # Chroma persist directory for vector search.
+        raise_if_invalid(validate_sqlite_path(settings.sqlite_path))
         retriever = LocalHybridRetriever(
-            sqlite_path,
-            chroma_dir=chroma_dir,
-            engine=engine,
-            vectorstore=vectorstore,
+            settings.sqlite_path,
+            chroma_dir=settings.chroma_path,
+            collection_name=settings.chroma_collection,
             embedding_function=ClovaEmbeddings(),
         )
-        raise_if_invalid(retriever.readiness_issues())
-        if configured_corpus:
-            raise_if_invalid(retriever.manifest_consistency_issues(Path(configured_corpus) / "manifest.jsonl"))
+    elif settings.mode == "container":
+        # Dockerized Postgres RDB + Chroma server. LocalHybridRetriever's
+        # SQL/vector-search code is identical to local mode; only the
+        # connections differ (see stage2/backends.py).
+        raise_if_invalid(validate_container_settings(settings))
+        retriever = LocalHybridRetriever(
+            engine=postgres_engine(settings.rdb_url),
+            vectorstore=chroma_server(
+                settings.chroma_host,
+                settings.chroma_port,
+                embedding_function=ClovaEmbeddings(),
+                collection_name=settings.chroma_collection,
+            ),
+        )
     else:
-        raise RuntimeError(f"unsupported Stage2 backend: {backend}; choose fixture or sqlite")
+        raise RuntimeError(
+            f"unsupported Stage2 mode: {settings.mode}; "
+            f"choose one of {', '.join(config.VALID_STAGE2_MODES)}"
+        )
+
+    raise_if_invalid(retriever.readiness_issues())
+    if corpus is not None:
+        raise_if_invalid(
+            retriever.manifest_consistency_issues(corpus / "manifest.jsonl")
+        )
+    return retriever
+
+
+def build_pipeline() -> StagePipeline:
+    """Compose the executable pipeline from environment-selected adapters."""
+
+    settings = config.Stage2Settings.from_env()
+    raise_if_invalid(validate_environment(settings.mode))
+
+    corpus = config.corpus_dir()
+    if corpus is not None:
+        raise_if_invalid(validate_corpus_directory(corpus))
+
+    stage1 = build_stage1_node(corpus_dir=corpus)
+    live_llm = os.getenv("CLOVA_LLM_ENABLED", "false").strip().lower() == "true"
+    answer_client = ClovaChatClient() if live_llm else None
+
+    retriever = _build_retriever(settings, corpus=corpus)
+
     return StagePipeline(StageNodes(
         stage1=stage1,
         # Keep all metadata-filtered chunks in the small smoke corpus so

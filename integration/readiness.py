@@ -6,21 +6,36 @@ import os
 from pathlib import Path
 from typing import Any
 
+import config
+
 
 def _api_key() -> str:
     return os.getenv("CLOVA_API_KEY", "").strip() or os.getenv("CLOVASTUDIO_API_KEY", "").strip()
 
 
-def validate_environment(backend: str) -> list[str]:
+def validate_environment(mode: str) -> list[str]:
     """Return configuration problems without making a network request."""
 
     issues: list[str] = []
-    if backend not in {"fixture", "sqlite"}:
-        issues.append("STAGE2_BACKEND must be fixture or sqlite")
+    if mode not in config.VALID_STAGE2_MODES:
+        issues.append(
+            "STAGE2_MODE must be one of " + ", ".join(config.VALID_STAGE2_MODES)
+        )
     if not _api_key():
         issues.append("CLOVA_API_KEY is not configured")
     if not os.getenv("CLOVA_API_HOST", "clovastudio.stream.ntruss.com").strip():
         issues.append("CLOVA_API_HOST is empty")
+    return issues
+
+
+def validate_container_settings(settings: "config.Stage2Settings") -> list[str]:
+    """Container mode needs both a Postgres DSN and a Chroma server host."""
+
+    issues: list[str] = []
+    if not settings.rdb_url:
+        issues.append("STAGE2_RDB_URL is required for STAGE2_MODE=container")
+    if not settings.chroma_host:
+        issues.append("STAGE2_CHROMA_HOST is required for STAGE2_MODE=container")
     return issues
 
 
