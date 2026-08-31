@@ -42,6 +42,25 @@ def validate_fixture(retriever: Any) -> list[str]:
     return issues
 
 
+def validate_embedding_dimension(vectorstore: Any, expected: int = 1024) -> list[str]:
+    """Validate one persisted vector without making a provider request."""
+
+    try:
+        collection = getattr(vectorstore, "_collection", None)
+        if collection is None:
+            return ["Chroma collection is not available"]
+        payload = collection.get(include=["embeddings"], limit=1)
+        embeddings = payload.get("embeddings")
+        if embeddings is None or len(embeddings) == 0:
+            return ["Chroma collection is empty"]
+        dimension = len(embeddings[0])
+        return [] if dimension == expected else [
+            f"Chroma embedding dimension is {dimension}; expected {expected}"
+        ]
+    except Exception as error:  # noqa: BLE001 - readiness boundary
+        return [f"Chroma embedding dimension is unreadable: {type(error).__name__}"]
+
+
 def validate_sqlite_path(path: Path) -> list[str]:
     if not path.is_file():
         return ["STAGE2_INDEX_PATH does not point to an existing SQLite file"]

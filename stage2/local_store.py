@@ -21,6 +21,7 @@ from sqlalchemy import Engine, inspect, text
 
 from stage2.backends import local_chroma, local_sqlite_engine
 from stage2.embedding import ClovaEmbeddings
+from integration.readiness import validate_embedding_dimension
 from stage2.retrieval import _tokens
 
 _CHUNKS_TABLE_DDL = """CREATE TABLE IF NOT EXISTS chunks (
@@ -240,6 +241,10 @@ class LocalHybridRetriever:
             missing_in_chroma = sql_ids - chroma_ids
             if missing_in_chroma:
                 issues.append("Chroma is missing SQLite chunk IDs")
+            extra_in_chroma = chroma_ids - sql_ids
+            if extra_in_chroma:
+                issues.append("Chroma contains chunk IDs absent from SQLite")
+            issues.extend(validate_embedding_dimension(self.vectorstore))
         except Exception as error:  # noqa: BLE001 - readiness boundary
             issues.append(f"Chroma index is not readable: {type(error).__name__}")
         return issues
@@ -267,7 +272,13 @@ class LocalHybridRetriever:
                 for row in connection.execute(text("SELECT DISTINCT doc_id FROM chunks")).fetchall()
             }
         missing = manifest_ids - indexed_ids
-        return ["manifest contains documents absent from Stage2 index"] if missing else []
+        extra = indexed_ids - manifest_ids
+        issues = []
+        if missing:
+            issues.append("manifest contains documents absent from Stage2 index")
+        if extra:
+            issues.append("Stage2 index contains documents absent from manifest")
+        return issues
 
     def initialize(self) -> None:
         if self._initialized:
@@ -277,11 +288,24 @@ class LocalHybridRetriever:
         self._initialized = True
 
     def write_rows(self, rows: Sequence[Mapping[str, Any]]) -> None:
+        self._write_rows(rows, use_existing_embeddings=False)
+
+    def write_rows_with_embeddings(self, rows: Sequence[Mapping[str, Any]]) -> None:
+        """Write rows while reusing already-computed embedding vectors.
+
+        This is intended for offline index migration. Normal ingestion should
+        continue to use :meth:`write_rows`, which delegates document embedding
+        to the configured provider.
+        """
+        self._write_rows(rows, use_existing_embeddings=True)
+
+    def _write_rows(self, rows: Sequence[Mapping[str, Any]], *, use_existing_embeddings: bool) -> None:
         self.initialize()
         sql_payload = []
         texts: list[str] = []
         metadatas: list[dict[str, Any]] = []
         ids: list[str] = []
+        embeddings: list[list[float]] = []
         for row in rows:
             metadata = dict(row.get("metadata") or {})
             doc_id = str(row.get("doc_id", row["id"]))
@@ -309,16 +333,37 @@ class LocalHybridRetriever:
             texts.append(text_value)
             metadatas.append({**metadata, "chunk_id": chunk_id, "doc_id": doc_id, "source_path": source_path})
             ids.append(chunk_id)
+            if use_existing_embeddings:
+                raw_embedding = row.get("embedding")
+                if not isinstance(raw_embedding, list) or not raw_embedding:
+                    raise ValueError(f"row {row.get('id', '')} has no embedding")
+                try:
+                    embedding = [float(value) for value in raw_embedding]
+                except (TypeError, ValueError) as error:
+                    raise ValueError(f"row {row.get('id', '')} has an invalid embedding") from error
+                if len(embedding) != 1024:
+                    raise ValueError(f"row {row.get('id', '')} embedding dimension must be 1024")
+                embeddings.append(embedding)
 
         with self.engine.begin() as connection:
             for payload in sql_payload:
                 connection.execute(text(_DELETE_SQL), {"id": payload["id"]})
                 connection.execute(text(_INSERT_SQL), payload)
         if texts:
-            # Chroma computes and stores the embeddings itself via
-            # embedding_function; Stage2 no longer precomputes or validates
-            # vector dimensions.
-            self.vectorstore.add_texts(texts=texts, metadatas=metadatas, ids=ids)
+            if use_existing_embeddings:
+                collection = getattr(self.vectorstore, "_collection", None)
+                if collection is None:
+                    raise RuntimeError("vectorstore does not expose a Chroma collection")
+                collection.upsert(
+                    ids=ids,
+                    embeddings=embeddings,
+                    metadatas=metadatas,
+                    documents=texts,
+                )
+            else:
+                # Chroma computes and stores the embeddings itself via the
+                # configured embedding function.
+                self.vectorstore.add_texts(texts=texts, metadatas=metadatas, ids=ids)
 
     def filter_candidates(self, manifest_filter: Mapping[str, Any], limit: int) -> list[dict[str, Any]]:
         self.initialize()

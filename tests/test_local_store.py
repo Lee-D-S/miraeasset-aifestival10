@@ -45,6 +45,11 @@ class _VocabEmbeddings(Embeddings):
         return [self._vector(text) for text in texts]
 
 
+class _WideVocabEmbeddings(_VocabEmbeddings):
+    def _vector(self, text: str) -> list[float]:
+        return super()._vector(text) + [0.0] * (1024 - len(_VOCAB))
+
+
 def _repository(tmp_path) -> LocalHybridRetriever:
     repository = LocalHybridRetriever(
         tmp_path / "smoke.db",
@@ -118,3 +123,34 @@ def test_requires_sqlite_path_or_engine(tmp_path):
         assert "engine" in str(error)
     else:
         raise AssertionError("expected a ValueError when neither sqlite_path nor engine is given")
+
+
+def test_write_rows_with_embeddings_reuses_vectors_without_embedding_provider(tmp_path):
+    repository = LocalHybridRetriever(
+        tmp_path / "smoke.db",
+        chroma_dir=tmp_path / "smoke_chroma",
+        embedding_function=_WideVocabEmbeddings(),
+    )
+    vector = [0.0] * 1024
+    vector[0] = 1.0
+    row = {**_ROWS[0], "embedding": vector}
+
+    repository.write_rows_with_embeddings([row])
+
+    assert repository.readiness_issues() == []
+    result = repository.vector_search("아무 단어", [row], limit=1)
+    assert result[0]["id"] == "chunk-a"
+
+
+def test_write_rows_with_embeddings_rejects_wrong_dimension(tmp_path):
+    repository = LocalHybridRetriever(
+        tmp_path / "smoke.db",
+        chroma_dir=tmp_path / "smoke_chroma",
+        embedding_function=_VocabEmbeddings(),
+    )
+    try:
+        repository.write_rows_with_embeddings([{**_ROWS[0], "embedding": [1.0]}])
+    except ValueError as error:
+        assert "1024" in str(error)
+    else:
+        raise AssertionError("expected embedding dimension validation failure")
