@@ -151,6 +151,26 @@
     }
   ],
 
+  "_derived_note": "'부채비율'처럼 한 단어가 분자·분모·연산을 함께 뜻하는 지표. metrics의 라벨 매칭보다 우선한다. lookup_only=true면 3단계가 문서에 기재된 값을 fact로 직접 뽑으므로 계산을 지시하지 않는다.",
+  "derived_metrics": [
+    {
+      "labels": ["부채비율"],
+      "metric": "total_assets",
+      "lookup_only": true
+    },
+    {
+      "labels": ["자기자본비율"],
+      "metric": "total_assets",
+      "lookup_only": true
+    },
+    {
+      "labels": ["순이익률", "당기순이익률"],
+      "metric": "net_income",
+      "operation": "ratio_percent",
+      "denominator_metric": "revenue"
+    }
+  ],
+
   "doc_keywords": [
     { "labels": ["사업보고서"], "doc_group": "periodic", "doc_subtype": "annual" },
     { "labels": ["반기보고서"], "doc_group": "periodic", "doc_subtype": "half" },

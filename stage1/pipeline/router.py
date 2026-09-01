@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from ..index.corpus_index import CorpusIndex, squash
+from .calculation import TWO_OPERAND_OPERATIONS, TWO_PERIOD_OPERATIONS
 from .entity_linker import EntityResult
 from .filter_builder import BuildResult
 from .slot_extractor import SlotResult
@@ -129,9 +130,20 @@ def _missing_slots(entities: EntityResult, slots: SlotResult, build: BuildResult
     missing: list[str] = []
     target_count = len(entities.corps) + (len(entities.sector_members) if entities.sector else 0)
 
-    if slots.intent == "compare" and target_count < 2:
+    if slots.intent == "compare" and slots.compare_axis != "period" and target_count < 2:
         missing.append("two_targets")
-    if slots.intent in ("calc", "change") and len(slots.years) < 2 and not slots.prefer_latest:
+    operation = str(slots.calculation.get("operation") or "")
+    if operation in TWO_PERIOD_OPERATIONS:
+        needs_two_periods = True
+    elif operation in TWO_OPERAND_OPERATIONS:
+        # 대상이 2곳이면 값 2개가 채워지므로 기간은 하나로 충분하다.
+        needs_two_periods = target_count < 2
+    elif operation:
+        needs_two_periods = False
+    else:
+        # 연산을 못 뽑은 calc·change 질의는 기존 기준을 유지한다.
+        needs_two_periods = slots.intent in ("calc", "change")
+    if needs_two_periods and len(slots.years) < 2 and not slots.prefer_latest:
         missing.append("two_periods")
     if not slots.metric:
         missing.append("metric")

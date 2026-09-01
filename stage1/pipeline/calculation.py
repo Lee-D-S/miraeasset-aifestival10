@@ -12,6 +12,17 @@ SUPPORTED_OPERATIONS = frozenset({
     "ratio_percent", "margin", "sum", "average", "min", "max", "rank",
 })
 
+# 3단계 metric_registry에서 numeric_labels를 가진 재무 지표. 이 지표들만 추이를
+# 수치로 계산할 수 있다. rnd·dividend·employees는 3단계가 서술 구간으로만 다룬다.
+NUMERIC_METRICS = frozenset({
+    "revenue", "operating_profit", "net_income", "total_assets", "capex",
+})
+
+# 서로 다른 두 시점의 값이 있어야 성립하는 연산.
+TWO_PERIOD_OPERATIONS = frozenset({"percentage_change", "cagr"})
+# 값 2개가 필요하지만 두 시점이든 두 대상이든 무관한 연산.
+TWO_OPERAND_OPERATIONS = frozenset({"add", "subtract", "multiply", "divide"})
+
 QUESTION_TYPES = {
     "lookup": "lookup",
     "calc": "calculation",
@@ -23,20 +34,40 @@ QUESTION_TYPES = {
 }
 
 
-def canonical_question_type(intent: str) -> str:
-    return QUESTION_TYPES.get(intent, "text")
+def canonical_question_type(
+    intent: str,
+    *,
+    compare_axis: str = "",
+    operation: str | None = None,
+    metric: str | None = None,
+) -> str:
+    # 같은 대상의 기간 비교는 순위 매기기가 아니라 증감 계산이다.
+    if intent == "compare" and compare_axis == "period":
+        return "calculation"
+    # 수치 지표의 추이는 공시 이벤트 연결이 아니라 증감 계산으로 답해야 한다.
+    if intent == "change" and metric in NUMERIC_METRICS:
+        return "calculation"
+    question_type = QUESTION_TYPES.get(intent, "text")
+    # 연산이 정해졌는데 조회로 표시하면 3단계가 계산 에이전트를 붙이지 않는다.
+    if operation and question_type in ("lookup", "text"):
+        return "calculation"
+    return question_type
 
 
 def _has(text: str, *cues: str) -> bool:
     return any(squash(cue) in text for cue in cues)
 
 
-def operation_for(question: str, *, intent: str, metric: str | None) -> str | None:
+def operation_for(
+    question: str, *, intent: str, metric: str | None, compare_axis: str = ""
+) -> str | None:
     """Map explicit Korean calculation cues to Stage3's whitelist."""
 
     text = squash(question)
     if intent == "compare":
-        return "rank"
+        return "percentage_change" if compare_axis == "period" else "rank"
+    if intent == "change" and metric in NUMERIC_METRICS:
+        return "cagr" if _has(text, "연평균") else "percentage_change"
     if intent != "calc":
         if metric == "operating_profit" and _has(text, "영업이익률", "마진"):
             return "margin"
@@ -96,8 +127,13 @@ def build_calculation(
     *,
     denominator_metric: str | None = None,
     metric_matches: list[str] | None = None,
+    compare_axis: str = "",
+    operation_override: str | None = None,
 ) -> dict[str, Any]:
-    operation = operation_for(question, intent=intent, metric=metric)
+    # 파생 지표 사전이 지정한 연산은 질의문 단서보다 우선한다.
+    operation = operation_override or operation_for(
+        question, intent=intent, metric=metric, compare_axis=compare_axis
+    )
     if operation is None:
         return {}
     if denominator_metric is None:
@@ -113,7 +149,10 @@ def build_calculation(
 
 
 __all__ = [
+    "NUMERIC_METRICS",
     "SUPPORTED_OPERATIONS",
+    "TWO_OPERAND_OPERATIONS",
+    "TWO_PERIOD_OPERATIONS",
     "build_calculation",
     "canonical_question_type",
     "infer_denominator_metric",
