@@ -209,6 +209,15 @@ class AnswerWriter:
             sections.append(f"결론\n{top['company']}이(가) 가장 큽니다.\n\n비교 결과\n{ranking}")
         elif calculations and calculations[0].get("status") == "ok":
             calculation = calculations[0]
+            series = calculation.get("series", [])
+            if isinstance(series, list) and len(series) > 2:
+                trend_lines = "\n".join(
+                    f"- {item.get('period', '')}: {item.get('value', '')}{item.get('unit', '')}"
+                    for item in series
+                    if isinstance(item, dict)
+                )
+                if trend_lines:
+                    sections.append(f"\ucd94\uc774\n{trend_lines}")
             sections.append(f"결론\n{calculation['result']}{calculation.get('unit', '')}\n\n계산식\n{calculation.get('formula', '')}")
         else:
             facts_to_render = facts[:8]

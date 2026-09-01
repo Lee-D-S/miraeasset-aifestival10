@@ -88,6 +88,96 @@ class Stage3NodeTests(unittest.TestCase):
         self.assertEqual(result["status"], "success")
         self.assertEqual(result["calculations"][0]["result"], 20.0)
 
+    def test_derived_ratio_lookup_counts_as_success(self):
+        state = _state()
+        question = "\uc0bc\uc131\uc804\uc790\uc758 2025\ub144 \ubd80\ucc44\ube44\uc728\uc740?"
+        state["question"] = question
+        state["intent"]["raw_question"] = question
+        state["intent"]["normalized_question"] = question
+        state["intent"]["metric"] = "total_assets"
+        state["stage2_result"]["documents"] = [{
+            "id": "ratio-doc",
+            "source": "ratio.xml",
+            "text": "\uc0bc\uc131\uc804\uc790 2025\ub144 \uc5f0\uacb0 \ubd80\ucc44\ube44\uc728 100%",
+            "metadata": {
+                "corp_name": "\uc0bc\uc131\uc804\uc790",
+                "report_period": "2025-12",
+                "basis": "\uc5f0\uacb0",
+            },
+        }]
+
+        update = build_stage3_node()(state)
+
+        result = update["stage3_result"]
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["facts"][0]["metric"], "ratio")
+        self.assertIn("100", update["answer"])
+
+    def test_derived_equity_ratio_lookup_counts_as_success(self):
+        state = _state()
+        question = "\ud604\ub300\ucc28\uc758 2025\ub144 \uc790\uae30\uc790\ubcf8\ube44\uc728\uc740?"
+        state["question"] = question
+        state["intent"]["raw_question"] = question
+        state["intent"]["normalized_question"] = question
+        state["intent"]["metric"] = "total_assets"
+        state["stage2_result"]["documents"] = [{
+            "id": "equity-ratio-doc",
+            "source": "equity-ratio.xml",
+            "text": "\ud604\ub300\ucc28 2025\ub144 \uc5f0\uacb0 \uc790\uae30\uc790\ubcf8\ube44\uc728 40%",
+            "metadata": {
+                "corp_name": "\ud604\ub300\uc790\ub3d9\ucc28",
+                "report_period": "2025-12",
+                "basis": "\uc5f0\uacb0",
+            },
+        }]
+
+        result = build_stage3_node()(state)["stage3_result"]
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["facts"][0]["metric"], "ratio")
+
+    def test_multi_period_trend_uses_first_and_last_period_and_keeps_series(self):
+        state = _state(
+            question_type="calculation",
+            calculation={"operation": "percentage_change", "metric": "revenue"},
+        )
+        question = "\uc0bc\uc131\uc804\uc790\uc758 \ucd5c\uadfc 3\ub144 \ub9e4\ucd9c\uc561 \ucd94\uc774"
+        state["question"] = question
+        state["intent"]["raw_question"] = question
+        state["intent"]["normalized_question"] = question
+        state["intent"]["time"] = {"years": [2023, 2024, 2025], "base_months": [12]}
+        state["stage2_result"]["documents"] = [
+            {
+                "id": "revenue-2023",
+                "source": "2023.xml",
+                "text": "2023\ub144 \uc5f0\uacb0 \ub9e4\ucd9c\uc561 100\uc5b5\uc6d0",
+                "metadata": {"corp_name": "\uc0bc\uc131\uc804\uc790", "report_period": "2023-12", "basis": "\uc5f0\uacb0"},
+            },
+            {
+                "id": "revenue-2024",
+                "source": "2024.xml",
+                "text": "2024\ub144 \uc5f0\uacb0 \ub9e4\ucd9c\uc561 120\uc5b5\uc6d0",
+                "metadata": {"corp_name": "\uc0bc\uc131\uc804\uc790", "report_period": "2024-12", "basis": "\uc5f0\uacb0"},
+            },
+            {
+                "id": "revenue-2025",
+                "source": "2025.xml",
+                "text": "2025\ub144 \uc5f0\uacb0 \ub9e4\ucd9c\uc561 150\uc5b5\uc6d0",
+                "metadata": {"corp_name": "\uc0bc\uc131\uc804\uc790", "report_period": "2025-12", "basis": "\uc5f0\uacb0"},
+            },
+        ]
+
+        result = build_stage3_node()(state)["stage3_result"]
+        calculation = result["calculations"][0]
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(calculation["result"], 50.0)
+        self.assertEqual(calculation["evidence_ids"], ["revenue-2023", "revenue-2024", "revenue-2025"])
+        self.assertEqual(
+            [item["period"] for item in calculation["series"]],
+            ["2023-12", "2024-12", "2025-12"],
+        )
+
     def test_missing_operation_is_not_inferred_from_question_text(self):
         state = _state(question_type="calculation", calculation={})
         state["question"] = "2024년에서 2025년 매출 증가율은?"

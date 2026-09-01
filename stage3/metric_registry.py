@@ -13,7 +13,7 @@ METRIC_SPECS: dict[str, dict[str, Any]] = {
     "revenue": {"numeric_labels": ("매출액", "매출")},
     "operating_profit": {"numeric_labels": ("영업이익", "영업손익")},
     "net_income": {"numeric_labels": ("당기순이익", "순이익")},
-    "total_assets": {"numeric_labels": ("자산총계", "총자산", "부채총계", "총부채", "자본총계", "총자본", "부채비율")},
+    "total_assets": {"numeric_labels": ("자산총계", "총자산", "부채총계", "총부채", "자본총계", "총자본", "부채비율", "자기자본비율")},
     "capex": {"numeric_labels": ("설비투자", "시설투자", "신규시설투자")},
     "supply_contract": {
         "numeric_labels": ("계약금액", "계약금액(원)", "최근 매출액", "최근매출액", "매출액 대비", "매출액대비"),
@@ -104,6 +104,7 @@ FACT_METRIC_BY_LABEL = {
     "자본총계": "equity",
     "총자본": "equity",
     "부채비율": "ratio",
+    "자기자본비율": "ratio",
 }
 
 

@@ -149,10 +149,9 @@ def _series_facts(selected: list[Stage3Fact], intent: Stage3Intent, periods: lis
 def _period_pair(selected: list[Stage3Fact], intent: Stage3Intent) -> tuple[Stage3Fact, Stage3Fact] | None:
     periods = _requested_periods(intent)
     if len(periods) >= 2:
-        series = _series_facts(selected, intent, periods)
-        chosen = [_pick_best(fact for fact in series if _matches_period(fact, period)) for period in periods[:2]]
-        if all(chosen):
-            return chosen[0], chosen[1]  # type: ignore[return-value]
+        chosen = _requested_period_series(selected, intent, periods)
+        if len(chosen) >= 2:
+            return chosen[0], chosen[-1]
         return None
     series = _series_facts(selected, intent, [])
     unique: dict[str, Stage3Fact] = {}
@@ -160,6 +159,21 @@ def _period_pair(selected: list[Stage3Fact], intent: Stage3Intent) -> tuple[Stag
         unique[str(fact.period)] = _pick_best([unique[str(fact.period)], fact]) if str(fact.period) in unique else fact
     values = sorted(unique.values(), key=lambda fact: str(fact.period))
     return (values[-2], values[-1]) if len(values) >= 2 else None
+
+
+def _requested_period_series(
+    selected: list[Stage3Fact], intent: Stage3Intent, periods: list[str]
+) -> list[Stage3Fact]:
+    """Return one best fact for every explicitly requested period."""
+
+    series = _series_facts(selected, intent, periods)
+    chosen: list[Stage3Fact] = []
+    for period in periods:
+        fact = _pick_best(fact for fact in series if _matches_period(fact, period))
+        if fact is None:
+            return []
+        chosen.append(fact)
+    return chosen
 
 
 def _compare_values(facts: list[Stage3Fact], intent: Stage3Intent, operation: str) -> dict[str, Any]:
@@ -248,6 +262,12 @@ def calculate_facts(facts: Iterable[Stage3Fact], intent: Stage3Intent, *, operat
     if operation in {"compare", "rank"}:
         return _compare_values(selected, intent, operation)
     if operation in {"percentage_change", "cagr"}:
+        periods = _requested_periods(intent)
+        requested_series = (
+            _requested_period_series(selected, intent, periods)
+            if len(periods) >= 2
+            else []
+        )
         pair = _period_pair(selected, intent)
         if pair is None:
             return _error(operation, "insufficient_evidence", "계산에 필요한 요청 기간의 수치가 없습니다.")
@@ -261,9 +281,12 @@ def calculate_facts(facts: Iterable[Stage3Fact], intent: Stage3Intent, *, operat
                 "invalid_period": "계산 입력값의 기준 기간을 확인할 수 없습니다.",
             }
             return _error(operation, alignment_error, messages.get(alignment_error, "계산 입력값의 정합성이 맞지 않습니다."))
-        periods = _requested_periods(intent)
         if operation == "cagr":
-            years = [int(period[:4]) for period in periods[:2] if period[:4].isdigit()]
+            years = [
+                int(period[:4])
+                for period in (periods[0], periods[-1])
+                if period[:4].isdigit()
+            ] if len(periods) >= 2 else []
             years_elapsed = abs(years[1] - years[0]) if len(years) == 2 else None
             if not years_elapsed:
                 return _error(operation, "invalid_period", "CAGR 기간을 확인할 수 없습니다.")
@@ -272,7 +295,21 @@ def calculate_facts(facts: Iterable[Stage3Fact], intent: Stage3Intent, *, operat
         else:
             result = execute_operation(operation, [float(old.normalized_value), float(new.normalized_value)])
             formula = "(new-old)/abs(old)*100"
-        return _calculation_result(operation, [old, new], result, formula, "%")
+        calculation = _calculation_result(operation, [old, new], result, formula, "%")
+        if len(requested_series) > 2:
+            calculation["series"] = [
+                {
+                    "period": fact.period,
+                    "value": fact.normalized_value,
+                    "unit": fact.unit,
+                    "document_id": fact.document_id,
+                }
+                for fact in requested_series
+            ]
+            calculation["evidence_ids"] = list(
+                dict.fromkeys(fact.document_id for fact in requested_series)
+            )
+        return calculation
     if operation in {"ratio_percent", "margin"}:
         numerator_metric = "operating_profit" if operation == "margin" else (intent.metric or "")
         denominator_metric = str(intent.calculation.get("denominator_metric") or "revenue")

@@ -23,6 +23,7 @@ from stage3.validation import validate_stage3_result
 
 _EVENT_QUESTION_TYPES = frozenset({"event", "exists", "event_link", "change", "contract", "correction"})
 _EVENT_METRICS = frozenset({"supply_contract", "contract_termination"})
+_FINANCIAL_POSITION_FACT_METRICS = frozenset({"assets", "liabilities", "equity", "ratio"})
 
 
 def _question_type(intent: Stage3Intent) -> str:
@@ -127,10 +128,20 @@ def _successful_analysis(
     if question_type in {"lookup", "text", "exists", "event"} and facts:
         requested = str(getattr(intent, "metric", "") or "").strip().lower()
         if requested and not any(
-            requested in f.metric.lower() or requested in f.label.lower() for f in facts
+            _fact_matches_requested_metric(f, requested) for f in facts
         ) and not events:
             return False
     return True
+
+
+def _fact_matches_requested_metric(fact: Stage3Fact, requested: str) -> bool:
+    """Match Stage1 retrieval metrics to their Stage3 fact subtypes."""
+
+    if requested == "total_assets":
+        # Stage1 uses one retrieval key for the financial-position section;
+        # Stage3 splits its labels into assets/liabilities/equity/ratio facts.
+        return fact.metric in _FINANCIAL_POSITION_FACT_METRICS
+    return requested in fact.metric.lower() or requested in fact.label.lower()
 
 
 def _execute_stage3(*, question: str, intent: Stage3Intent, stage2_result: Any, writer: AnswerWriter) -> Stage3Result:

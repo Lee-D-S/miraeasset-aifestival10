@@ -181,3 +181,11 @@ python -m compileall -q stage3
 통합 graph에서는 Stage3 canonical validation 결과와 `facts` mirror가 공용
 `AgentState`에 전달된다. `correction_mode=include_chain`이면 질문 유형과
 관계없이 event linker가 실행된다.
+
+## Multi-period trend calculations
+
+When Stage1 requests more than two periods for `percentage_change` or `cagr`,
+Stage3 uses the first and last requested periods for the headline result. The
+selected fact for every requested period is also preserved in
+`calculations[0].series`, so a deterministic fallback can show the full
+period-by-period trend and its citations remain available.
