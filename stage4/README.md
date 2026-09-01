@@ -25,6 +25,11 @@ semantic provider가 판단을 유보하더라도 Stage4는 numeric·citation �
 명시적 근거 답변만 제한적으로 보완 통과시킨다. numeric Fact가 있는데 답변에 숫자가
 없으면 실패시켜 일반적인 안내문을 성공 답변으로 허용하지 않는다.
 
+다중 `query_plan` 결과는 subquery별로 Fact gate를 적용한다. 일부 subquery가
+`insufficient_evidence`여도 다른 subquery의 명시적 Fact·citation이 답변을
+지지하면 `partial_success` 답변을 검증할 수 있으며, 누락된 subquery ID는
+numeric check 오류에 기록한다. 모든 subquery에 근거가 없으면 fail-closed한다.
+
 Stage4는 provider의 generic한 불확실성만 있고 unsupported claim·missing aspect가 없을
 때에 한해, 결정론적 numeric·citation 검증 결과를 최종 grounding 근거로 사용한다.
 

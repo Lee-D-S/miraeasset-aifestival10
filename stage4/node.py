@@ -50,6 +50,50 @@ def _allow_grounded_semantic_uncertainty(
     return True
 
 
+def _exact_multi_query_facts(
+    *,
+    stage3_result: Mapping[str, Any],
+    raw_intent: Mapping[str, Any],
+    question: str,
+) -> tuple[list[Stage3Fact], list[str]]:
+    """Apply the Fact gate per subquery while allowing explicit partial results."""
+
+    top_facts = [
+        Stage3Fact.from_dict(fact)
+        for fact in stage3_result.get("facts", [])
+        if isinstance(fact, Mapping)
+    ]
+    subresults = stage3_result.get("subresults", [])
+    by_id = {
+        str(item.get("subquery_id")): item
+        for item in subresults
+        if isinstance(item, Mapping) and item.get("subquery_id")
+    }
+    matched: list[Stage3Fact] = []
+    missing: list[str] = []
+    for item in raw_intent.get("query_plan", []):
+        if not isinstance(item, Mapping):
+            continue
+        subquery_id = str(item.get("subquery_id") or "subquery")
+        source = dict(raw_intent)
+        source["query_plan"] = []
+        for key in ("metric", "question_type", "calculation", "basis", "time", "manifest_filter"):
+            if key in item:
+                source[key] = item[key]
+        sub_intent = adapt_stage1_intent(source, question=question)
+        subresult = by_id.get(subquery_id, {})
+        candidates = [
+            Stage3Fact.from_dict(fact)
+            for fact in subresult.get("facts", top_facts)
+            if isinstance(fact, Mapping)
+        ]
+        exact = matching_facts(candidates or top_facts, sub_intent)
+        matched.extend(exact)
+        if str(subresult.get("status", "")) != "success":
+            missing.append(subquery_id)
+    return matched, missing
+
+
 def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any | None = None) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
     """Build the final validation node for the shared four-stage graph."""
 
@@ -90,8 +134,20 @@ def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any
                 if isinstance(fact, Mapping)
             ]
             stage3_intent = adapt_stage1_intent(intent, question=question)
+            missing_subqueries: list[str] = []
             if strict_grounding_enabled() and stage3_intent.metric:
-                exact_facts = matching_facts(grounded_facts, stage3_intent)
+                if len(stage3_intent.query_plan) > 1:
+                    exact_facts, missing_subqueries = _exact_multi_query_facts(
+                        stage3_result=stage3_result,
+                        raw_intent=intent if isinstance(intent, Mapping) else {},
+                        question=question,
+                    )
+                    if missing_subqueries:
+                        numeric.setdefault("errors", []).append(
+                            "missing subquery evidence: " + ", ".join(missing_subqueries)
+                        )
+                else:
+                    exact_facts = matching_facts(grounded_facts, stage3_intent)
                 if not exact_facts and not stage3_result.get("linked_events"):
                     numeric["pass"] = False
                     numeric.setdefault("errors", []).append("requested Fact gate failed")
@@ -109,6 +165,10 @@ def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any
                 numeric["pass"] = True
                 numeric["errors"] = []
                 numeric["matched_count"] = max(int(numeric.get("matched_count", 0) or 0), 1)
+                if missing_subqueries:
+                    numeric["errors"] = [
+                        "missing subquery evidence: " + ", ".join(missing_subqueries)
+                    ]
             if (
                 not numeric.get("numbers")
                 and re.search(r"\d", answer)

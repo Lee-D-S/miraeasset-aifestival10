@@ -185,6 +185,35 @@ def test_stage4_keeps_grounded_answer_when_semantic_provider_is_rate_limited():
     assert "provider_rate_limited_deterministic_grounding" in update["stage4_result"]["trace"]
 
 
+def test_stage4_checks_multi_query_fact_gate_per_subquery_and_allows_partial_success():
+    client = SemanticClient()
+    stage3_result = _stage3("매출은 1.2억원입니다. [source:doc-1]")
+    stage3_result["facts"][0]["aggregation_scope"] = "total"
+    stage3_result["subresults"] = [
+        {"subquery_id": "subquery-1", "status": "success", "facts": stage3_result["facts"]},
+        {"subquery_id": "subquery-2", "status": "insufficient_evidence", "facts": []},
+    ]
+    intent = {
+        "question_type": "multi_query",
+        "metric": "revenue",
+        "query_plan": [
+            {"subquery_id": "subquery-1", "metric": "revenue", "question_type": "lookup", "manifest_filter": {}},
+            {"subquery_id": "subquery-2", "metric": "operating_profit", "question_type": "lookup", "manifest_filter": {}},
+        ],
+    }
+
+    update = build_stage4_node(validator_client=client)({
+        "route": "ok",
+        "question": "매출액과 영업이익은?",
+        "intent": intent,
+        "answer": stage3_result["answer"],
+        "stage3_result": stage3_result,
+    })
+
+    assert update["stage4_result"]["status"] == "success"
+    assert any("subquery-2" in error for error in update["stage4_result"]["numeric_check"]["errors"])
+
+
 def test_stage4_runs_in_shared_langgraph_and_preserves_api_contract():
     client = SemanticClient()
     nodes = StageNodes(

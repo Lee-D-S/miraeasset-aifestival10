@@ -72,6 +72,12 @@ update = stage3_node(state)
 질문 문구를 분석해 연산을 추측하지 않고 `missing_calculation_plan`을 반환한다.
 `question_type=compare`는 Stage1의 비교 판단에 따라 `rank`를 수행한다.
 
+`query_plan`에 독립 subquery가 있으면 각 subquery를 같은 Fact gate와 계산
+규칙으로 순차 처리한 뒤, Stage3가 한 번만 최종 답변을 작성한다. 결과의
+`subresults`에는 subquery별 상태·facts·계산·citations가 보존된다. 일부
+subquery만 근거를 확보한 경우 상태는 `partial_success`이며, 답변에는 확보된
+항목과 확인되지 않은 항목을 함께 남긴다.
+
 ### 출력 state
 
 process 가능한 요청은 다음 값을 partial update한다.
@@ -89,6 +95,7 @@ process 가능한 요청은 다음 값을 partial update한다.
         "calculations": [...],
         "comparison_results": [...],
         "linked_events": [...],
+        "subresults": [...],
         "citations": [...],
         "warnings": [...],
         "trace": [...]

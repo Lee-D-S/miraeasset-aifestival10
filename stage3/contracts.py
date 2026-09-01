@@ -216,6 +216,7 @@ class Stage3Result:
     agent_results: list[dict[str, Any]] = field(default_factory=list)
     handoffs: list[dict[str, Any]] = field(default_factory=list)
     provider_status: dict[str, Any] = field(default_factory=dict)
+    subresults: list[dict[str, Any]] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "Stage3Result":
@@ -235,6 +236,7 @@ class Stage3Result:
             agent_results=[dict(item) for item in value.get("agent_results", []) if isinstance(item, Mapping)],
             handoffs=[dict(item) for item in value.get("handoffs", []) if isinstance(item, Mapping)],
             provider_status=dict(value.get("provider_status", {})),
+            subresults=[dict(item) for item in value.get("subresults", []) if isinstance(item, Mapping)],
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -252,6 +254,7 @@ class Stage3Result:
             "agent_results": list(self.agent_results),
             "handoffs": list(self.handoffs),
             "provider_status": dict(self.provider_status),
+            "subresults": list(self.subresults),
         }
 
 
@@ -270,12 +273,14 @@ class Stage3Intent:
     time: dict[str, Any] = field(default_factory=dict)
     correction_mode: str | None = None
     manifest_filter: dict[str, Any] = field(default_factory=dict)
+    query_plan: list[dict[str, Any]] = field(default_factory=list)
     companies: list[str] = field(default_factory=list)
     excluded_corps: list[dict[str, Any]] = field(default_factory=list)
     sector: str | None = None
     sector_members: list[str] = field(default_factory=list)
     ambiguous_mentions: list[Any] = field(default_factory=list)
     unknown_entities: list[Any] = field(default_factory=list)
+    related_entities: list[Any] = field(default_factory=list)
     # Stage1 currently emits labels such as "high"/"low"; keep the value
     # unchanged so a future numeric confidence does not change the boundary.
     metric_confidence: Any = None
@@ -308,12 +313,14 @@ class Stage3Intent:
             "time": dict(self.time),
             "correction_mode": self.correction_mode,
             "manifest_filter": dict(self.manifest_filter),
+            "query_plan": [dict(item) for item in self.query_plan],
             "companies": list(self.companies),
             "excluded_corps": [dict(item) for item in self.excluded_corps],
             "sector": self.sector,
             "sector_members": list(self.sector_members),
             "ambiguous_mentions": list(self.ambiguous_mentions),
             "unknown_entities": list(self.unknown_entities),
+            "related_entities": list(self.related_entities),
             "metric_confidence": self.metric_confidence,
             "allow_pdf_html": self.allow_pdf_html,
             "doc_count": self.doc_count,
@@ -406,12 +413,14 @@ def adapt_stage1_intent(intent: Mapping[str, Any], *, question: str | None = Non
         time=_mapping(source.get("time")),
         correction_mode=str(source["correction_mode"]) if source.get("correction_mode") is not None else None,
         manifest_filter=_mapping(source.get("manifest_filter")),
+        query_plan=[dict(item) for item in source.get("query_plan", []) if isinstance(item, Mapping)],
         companies=companies,
         excluded_corps=[dict(item) for item in source.get("excluded_corps", []) if isinstance(item, Mapping)],
         sector=str(source["sector"]) if source.get("sector") is not None else None,
         sector_members=_list_of_strings(source.get("sector_members")),
         ambiguous_mentions=_list_preserving_items(source.get("ambiguous_mentions")),
         unknown_entities=_list_preserving_items(source.get("unknown_entities")),
+        related_entities=_list_preserving_items(source.get("related_entities")),
         metric_confidence=source.get("metric_confidence"),
         allow_pdf_html=_optional_bool(source.get("allow_pdf_html")),
         doc_count=_optional_int(source.get("doc_count")),

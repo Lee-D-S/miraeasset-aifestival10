@@ -111,7 +111,7 @@ class DeterministicSupervisor:
             result = result if isinstance(result, Mapping) else {}
             if _calculation_plan_missing(state) and int(state.get("planner_retry_num", 0) or 0) < self.max_planner_retries:
                 return SupervisorDecision("run_calculation_planner", "Stage3에 계산 계획이 필요합니다.")
-            if result.get("status") == "success":
+            if result.get("status") in {"success", "partial_success"}:
                 return SupervisorDecision("run_stage4", "분석 결과가 생성되었습니다.")
             return SupervisorDecision("fail_closed", "분석 결과를 근거로 검증할 수 없습니다.")
 

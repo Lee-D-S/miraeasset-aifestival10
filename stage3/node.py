@@ -132,6 +132,8 @@ def _successful_analysis(
         requested = str(getattr(intent, "metric", "") or "").strip().lower()
         if requested and not any(_fact_matches_requested_metric(f, requested) for f in facts) and not events:
             return False
+    if question_type in {"event", "exists"} and events:
+        return any(event.get("status") in {None, "linked", "ok"} for event in events)
     return True
 
 
@@ -145,12 +147,27 @@ def _fact_matches_requested_metric(fact: Stage3Fact, requested: str) -> bool:
     return requested in fact.metric.lower() or requested in fact.label.lower()
 
 
-def _execute_stage3(*, question: str, intent: Stage3Intent, stage2_result: Any, writer: AnswerWriter) -> Stage3Result:
+def _execute_stage3(
+    *,
+    question: str,
+    intent: Stage3Intent,
+    stage2_result: Any,
+    writer: AnswerWriter,
+    write_answer: bool = True,
+) -> Stage3Result:
     if not intent.is_processable:
         return Stage3Result(
             status=intent.route,
             warnings=list(intent.warnings),
             trace=[f"route={intent.route}", "stage3_skipped"],
+        )
+
+    if len(intent.query_plan) > 1:
+        return _execute_multi_query_stage3(
+            question=question,
+            intent=intent,
+            stage2_result=stage2_result,
+            writer=writer,
         )
 
     bundle = adapt_stage2_bundle(stage2_result)
@@ -232,6 +249,9 @@ def _execute_stage3(*, question: str, intent: Stage3Intent, stage2_result: Any, 
         )
         analysis_success = False
 
+    if not write_answer:
+        return result
+
     if analysis_success:
         try:
             answer, answer_mode = writer.write(
@@ -281,6 +301,135 @@ def _execute_stage3(*, question: str, intent: Stage3Intent, stage2_result: Any, 
         )
         answer_mode = "deterministic_fallback"
 
+    return replace(result, answer=str(answer), trace=[*result.trace, f"answer_mode={answer_mode}"])
+
+
+def _subquery_intent(intent: Stage3Intent, item: Mapping[str, Any]) -> Stage3Intent:
+    source = intent.to_dict()
+    source["query_plan"] = []
+    source["route"] = "ok"
+    for key in ("metric", "question_type", "calculation", "basis", "time", "manifest_filter"):
+        if key in item:
+            source[key] = item[key]
+    return adapt_stage1_intent(source, question=intent.question)
+
+
+def _execute_multi_query_stage3(
+    *,
+    question: str,
+    intent: Stage3Intent,
+    stage2_result: Any,
+    writer: AnswerWriter,
+) -> Stage3Result:
+    raw_subresults = stage2_result.get("subresults", []) if isinstance(stage2_result, Mapping) else []
+    by_id = {
+        str(item.get("subquery_id")): item
+        for item in raw_subresults
+        if isinstance(item, Mapping) and item.get("subquery_id")
+    }
+    subresults: list[dict[str, Any]] = []
+    facts: list[Stage3Fact] = []
+    calculations: list[dict[str, Any]] = []
+    comparisons: list[dict[str, Any]] = []
+    events: list[dict[str, Any]] = []
+    warnings = list(intent.warnings)
+    for item in intent.query_plan:
+        subquery_id = str(item.get("subquery_id") or f"subquery-{len(subresults) + 1}")
+        sub_intent = _subquery_intent(intent, item)
+        subresult = _execute_stage3(
+            question=question,
+            intent=sub_intent,
+            stage2_result=by_id.get(subquery_id, {}),
+            writer=writer,
+            write_answer=False,
+        )
+        sub_dict = subresult.to_dict()
+        sub_dict["subquery_id"] = subquery_id
+        subresults.append(sub_dict)
+        facts.extend(Stage3Fact.from_dict(value) for value in subresult.facts)
+        calculations.extend({**value, "subquery_id": subquery_id} for value in subresult.calculations)
+        comparisons.extend({**value, "subquery_id": subquery_id} for value in subresult.comparison_results)
+        events.extend({**value, "subquery_id": subquery_id} for value in subresult.linked_events)
+        warnings.extend(f"{subquery_id}: {value}" for value in subresult.warnings)
+
+    bundle = adapt_stage2_bundle(stage2_result)
+    citations = _build_citations(bundle.effective_documents(), facts, calculations, comparisons, events)
+    success_count = sum(item.get("status") == "success" for item in subresults)
+    result_status = (
+        "success"
+        if success_count == len(subresults) and subresults
+        else "partial_success"
+        if success_count
+        else "insufficient_evidence"
+    )
+    result = Stage3Result(
+        status=result_status,
+        facts=[fact.to_dict() for fact in facts],
+        calculations=calculations,
+        comparison_results=comparisons,
+        linked_events=events,
+        citations=citations,
+        warnings=warnings,
+        subresults=subresults,
+        trace=[
+            "stage3_start",
+            "question_type=multi_query",
+            f"subqueries={len(subresults)}",
+            f"successful_subqueries={success_count}",
+            f"facts={len(facts)}",
+        ],
+    )
+    valid, validation_warnings = validate_stage3_result(result, intent)
+    if not valid:
+        result = replace(
+            result,
+            status="insufficient_evidence",
+            warnings=[*result.warnings, *validation_warnings],
+            trace=[*result.trace, "stage3_validation_failed"],
+        )
+        result_status = "insufficient_evidence"
+
+    analysis_success = result_status in {"success", "partial_success"}
+    if analysis_success:
+        try:
+            answer, answer_mode = writer.write(
+                question=question,
+                intent=intent,
+                facts=facts,
+                calculations=calculations,
+                comparisons=comparisons,
+                events=events,
+                citations=citations,
+                warnings=warnings,
+            )
+        except Exception as error:  # noqa: BLE001 - injected provider boundary
+            answer = writer.deterministic(
+                intent=intent,
+                facts=facts,
+                calculations=calculations,
+                comparisons=comparisons,
+                events=events,
+                citations=citations,
+                warnings=[*warnings, f"answer_provider_error: {type(error).__name__}"],
+            )
+            answer_mode = "deterministic_fallback"
+            if is_rate_limit_error(error):
+                result = replace(
+                    result,
+                    warnings=[*result.warnings, "provider_rate_limited: answer_generation"],
+                    provider_status=rate_limit_event(error, operation="answer_generation", client=writer.client),
+                )
+    else:
+        answer = writer.deterministic(
+            intent=intent,
+            facts=facts,
+            calculations=calculations,
+            comparisons=comparisons,
+            events=events,
+            citations=citations,
+            warnings=warnings,
+        )
+        answer_mode = "deterministic_fallback"
     return replace(result, answer=str(answer), trace=[*result.trace, f"answer_mode={answer_mode}"])
 
 

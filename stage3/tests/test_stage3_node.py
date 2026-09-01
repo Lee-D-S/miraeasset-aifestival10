@@ -203,6 +203,34 @@ class Stage3NodeTests(unittest.TestCase):
         self.assertEqual(result["status"], "insufficient_evidence")
         self.assertEqual(result["calculations"][0]["status"], "missing_calculation_plan")
 
+    def test_multi_query_writes_one_answer_and_preserves_subquery_results(self):
+        client = CountingAnswerClient()
+        state = _state()
+        state["intent"]["query_plan"] = [
+            {"subquery_id": "subquery-1", "metric": "revenue", "question_type": "lookup", "calculation": {}, "time": {"years": [2025]}, "manifest_filter": {}},
+            {"subquery_id": "subquery-2", "metric": "operating_profit", "question_type": "lookup", "calculation": {}, "time": {"years": [2025]}, "manifest_filter": {}},
+        ]
+        state["stage2_result"] = {
+            "cited_documents": [
+                {"id": "revenue-doc", "source": "revenue.xml", "text": "2025년 연결 매출액 100억원", "metadata": {"corp_name": "기업A", "report_period": "2025-12", "basis": "연결"}},
+                {"id": "profit-doc", "source": "profit.xml", "text": "2025년 연결 영업이익 20억원", "metadata": {"corp_name": "기업A", "report_period": "2025-12", "basis": "연결"}},
+            ],
+            "subresults": [
+                {"subquery_id": "subquery-1", "cited_documents": [{"id": "revenue-doc", "source": "revenue.xml", "text": "2025년 연결 매출액 100억원", "metadata": {"corp_name": "기업A", "report_period": "2025-12", "basis": "연결"}}]},
+                {"subquery_id": "subquery-2", "cited_documents": [{"id": "profit-doc", "source": "profit.xml", "text": "2025년 연결 영업이익 20억원", "metadata": {"corp_name": "기업A", "report_period": "2025-12", "basis": "연결"}}]},
+            ],
+        }
+
+        result = build_stage3_node(answer_client=client)(state)["stage3_result"]
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(client.calls, 1)
+        self.assertEqual([item["subquery_id"] for item in result["subresults"]], ["subquery-1", "subquery-2"])
+        self.assertEqual(
+            {item["metric"] for item in result["facts"] if item["kind"] == "numeric"},
+            {"revenue", "operating_profit"},
+        )
+
     def test_non_ok_route_only_updates_stage3_result(self):
         state = _state()
         state["route"] = "unsafe"

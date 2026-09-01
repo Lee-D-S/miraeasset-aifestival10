@@ -26,6 +26,10 @@ def _env_int(name: str, default: int) -> int:
 
 def _relevant_facts(intent: Stage3Intent, facts: list[Stage3Fact], limit: int | None = None) -> list[Stage3Fact]:
     """Prioritize facts matching the requested metric, period, and company."""
+    requested_metrics = {str(intent.metric or "").strip().lower()} if intent.metric else set()
+    for item in intent.query_plan:
+        if isinstance(item, dict) and item.get("metric"):
+            requested_metrics.add(str(item["metric"]).strip().lower())
     requested_metric = str(intent.metric or "").strip().lower()
     years = {str(year) for year in intent.time.get("years", [])} if isinstance(intent.time, dict) else set()
     companies = {str(company).strip().lower() for company in intent.companies if str(company).strip()}
@@ -44,9 +48,9 @@ def _relevant_facts(intent: Stage3Intent, facts: list[Stage3Fact], limit: int | 
         points = 0
         if excluded_terms and any(term in fact_context for term in excluded_terms):
             points -= 1_000
-        if requested_metric and fact.metric.lower() == requested_metric:
+        if requested_metrics and fact.metric.lower() in requested_metrics:
             points += 100
-        if requested_metric and requested_metric in fact.label.lower():
+        if requested_metrics and any(metric in fact.label.lower() for metric in requested_metrics):
             points += 30
         if years and any(year in fact_period for year in years):
             points += 20
@@ -227,9 +231,11 @@ class AnswerWriter:
             sections.append(f"결론\n{calculation['result']}{calculation.get('unit', '')}\n\n계산식\n{calculation.get('formula', '')}")
         else:
             facts_to_render = facts[:8]
-            if str(intent.question_type or intent.intent).lower() in {"lookup", "text", "exists"}:
+            if intent.query_plan:
+                facts_to_render = facts[:8]
+            elif str(intent.question_type or intent.intent).lower() in {"lookup", "text", "exists"}:
                 facts_to_render = facts[:1]
-            if facts_to_render and str(intent.question_type or intent.intent).lower() in {"lookup", "text", "exists"}:
+            if facts_to_render and not intent.query_plan and str(intent.question_type or intent.intent).lower() in {"lookup", "text", "exists"}:
                 sections.append(_lookup_claim(facts_to_render[0], intent, citations))
             else:
                 lines = [f"- {fact.label}: {fact.value} {fact.unit} ({fact.period or '기간 미상'}, {fact.basis or '기준 미상'})" for fact in facts_to_render]
