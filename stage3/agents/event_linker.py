@@ -145,6 +145,20 @@ def _correction_details(document: Stage3Document) -> tuple[list[str], str | None
     return changed_fields, reason
 
 
+def _required_fields(intent: Stage3Intent) -> list[str]:
+    """Infer only fields explicitly requested by the event question."""
+
+    text = f"{intent.question} {intent.normalized_question}"
+    required: list[str] = []
+    if any(cue in text for cue in ("계약금액", "금액", "얼마")):
+        required.append("amount")
+    if any(cue in text for cue in ("계약상대방", "상대방", "발주처", "인수인", "누구")):
+        required.append("counterparty")
+    if any(cue in text for cue in ("계약일", "계약일자", "기간", "언제", "시작", "종료")):
+        required.append("date")
+    return required
+
+
 def _link(origin: Stage3Document, followup: Stage3Document, relation: str, *, intent: Stage3Intent, confidence: float) -> dict[str, Any]:
     event: dict[str, Any] = {
         "relation": relation,
@@ -160,11 +174,30 @@ def _link(origin: Stage3Document, followup: Stage3Document, relation: str, *, in
         event["correction_mode"] = intent.correction_mode or "latest_only"
         event["changed_fields"] = changed_fields
         event["correction_reason"] = reason
-        if not changed_fields or not reason:
-            event["status"] = "insufficient_evidence"
-            event["warning"] = "정정 사유와 변경 필드를 확인할 수 없습니다."
+    required = _required_fields(intent)
+    origin_identity = _contract_identity(origin)
+    followup_identity = _contract_identity(followup)
+    matched_fields: list[str] = []
+    missing_fields: list[str] = []
+    for field in required:
+        if origin_identity.get(field) and followup_identity.get(field):
+            matched_fields.append(field)
         else:
-            event["status"] = "linked"
+            if not origin_identity.get(field):
+                missing_fields.append(f"origin.{field}")
+            if not followup_identity.get(field):
+                missing_fields.append(f"followup.{field}")
+    event["required_fields"] = required
+    event["matched_fields"] = matched_fields
+    if relation == "correction" and (not changed_fields or not reason):
+        if not changed_fields:
+            missing_fields.append("changed_fields")
+        if not reason:
+            missing_fields.append("correction_reason")
+    if missing_fields:
+        event["status"] = "insufficient_evidence"
+        event["missing_fields"] = list(dict.fromkeys(missing_fields))
+        event["warning"] = "질문에 요구된 이벤트 필드 또는 연결 근거가 부족합니다."
     else:
         event["status"] = "linked"
     return event

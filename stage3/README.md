@@ -211,3 +211,9 @@ Stage3 uses the first and last requested periods for the headline result. The
 selected fact for every requested period is also preserved in
 `calculations[0].series`, so a deterministic fallback can show the full
 period-by-period trend and its citations remain available.
+
+Event linking requires the origin/follow-up relationship first. After that,
+only fields named by the question—such as amount, counterparty, or date—are
+required in both documents. Missing requested fields produce an explicit
+`insufficient_evidence` event instead of silently treating a linked pair as a
+complete answer.

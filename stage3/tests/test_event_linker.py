@@ -45,6 +45,25 @@ class EventLinkerTests(unittest.TestCase):
         chain = adapt_stage1_intent({"route": "ok", "intent": "change", "correction_mode": "include_chain"})
         self.assertEqual({item["followup_document_id"] for item in link_events(bundle.documents, chain)}, {"corr-old", "corr-new"})
 
+    def test_requested_event_field_must_exist_in_origin_and_followup(self):
+        intent = adapt_stage1_intent({
+            "question": "계약 해지 금액은 얼마인가?",
+            "route": "ok",
+            "intent": "exists",
+            "question_type": "event",
+        })
+        bundle = adapt_stage2_bundle([
+            {"id": "origin", "text": "계약명 A 계약상대방 기업X 계약금액(원) 100", "metadata": {"corp_name": "기업A", "rcept_no": "origin-rcept", "report_nm": "계약체결"}},
+            {"id": "termination", "text": "계약명 A 해지", "original_rcept_no": "origin-rcept", "metadata": {"corp_name": "기업A", "report_nm": "계약해지"}},
+        ])
+
+        links = link_events(bundle.documents, intent)
+
+        self.assertEqual(len(links), 1)
+        self.assertEqual(links[0]["status"], "insufficient_evidence")
+        self.assertEqual(links[0]["required_fields"], ["amount"])
+        self.assertIn("followup.amount", links[0]["missing_fields"])
+
 
 if __name__ == "__main__":
     unittest.main()
