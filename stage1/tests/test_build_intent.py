@@ -125,3 +125,9 @@ def test_multi_report_query_splits_periodic_filters(index: CorpusIndex) -> None:
         "annual",
         "quarter",
     ]
+
+
+def test_multi_query_flag_can_roll_back_to_single_query_path(index: CorpusIndex, monkeypatch) -> None:
+    monkeypatch.setenv("DIS164_QUERY_PLAN_V1", "false")
+    intent = build_intent("삼성전자의 2025년 매출액과 영업이익을 알려줘", index, use_llm=False)
+    assert intent.query_plan == []

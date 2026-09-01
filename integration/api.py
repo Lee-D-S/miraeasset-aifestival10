@@ -15,6 +15,26 @@ from integration.service import StagePipeline
 
 logger = logging.getLogger(__name__)
 
+_TRACE_SENSITIVE_KEYS = frozenset({"api_key", "authorization", "prompt", "messages", "content", "question"})
+
+
+def _redact_trace(value: Any, *, depth: int = 0) -> Any:
+    """Keep think_trace JSON-like and bounded without echoing secrets/prompts."""
+
+    if depth > 4:
+        return "[truncated]"
+    if isinstance(value, dict):
+        return {
+            str(key): _redact_trace(item, depth=depth + 1)
+            for key, item in value.items()
+            if str(key).lower() not in _TRACE_SENSITIVE_KEYS
+        }
+    if isinstance(value, (list, tuple)):
+        return [_redact_trace(item, depth=depth + 1) for item in list(value)[:32]]
+    if isinstance(value, str):
+        return value[:500]
+    return value
+
 
 def _retrieved_context(state: dict[str, Any]) -> str:
     result = state.get("stage3_result") or {}
@@ -39,6 +59,16 @@ def _think_trace(state: dict[str, Any]) -> str:
                 for field in ("status", "warnings", "trace", "provider_status")
                 if field in value
             }
+            subresults = value.get("subresults")
+            if isinstance(subresults, list):
+                trace[key]["subqueries"] = [
+                    {
+                        "subquery_id": item.get("subquery_id"),
+                        "status": item.get("status"),
+                    }
+                    for item in subresults
+                    if isinstance(item, dict)
+                ]
     intent = state.get("intent")
     if isinstance(intent, dict) and intent.get("think_trace"):
         trace["stage1_think_trace"] = str(intent["think_trace"])
@@ -52,7 +82,7 @@ def _think_trace(state: dict[str, Any]) -> str:
         "validation_attempts": state.get("validation_attempts", 0),
         "termination_reason": state.get("termination_reason"),
     }
-    return json.dumps(trace, ensure_ascii=False)
+    return json.dumps(_redact_trace(trace), ensure_ascii=False)
 
 
 def to_submission_response(state: dict[str, Any]) -> dict[str, str]:

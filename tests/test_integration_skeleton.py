@@ -79,6 +79,23 @@ class IntegrationSkeletonTests(unittest.TestCase):
         )
         self.assertIn("stage1_think_trace", response["think_trace"])
 
+    def test_submission_trace_is_redacted_and_lists_subquery_statuses(self) -> None:
+        response = to_submission_response({
+            "question_id": "Q-TRACE-2",
+            "question": "비공개 질문",
+            "intent": {"think_trace": "intent=lookup"},
+            "stage3_result": {
+                "status": "partial_success",
+                "subresults": [
+                    {"subquery_id": "subquery-1", "status": "success"},
+                    {"subquery_id": "subquery-2", "status": "insufficient_evidence"},
+                ],
+                "provider_status": {"api_key": "should-not-appear", "status": "rate_limited"},
+            },
+        })
+        assert "subquery-1" in response["think_trace"]
+        assert "should-not-appear" not in response["think_trace"]
+
     def test_processable_route_runs_all_four_nodes(self) -> None:
         pipeline = StagePipeline(StageNodes(_stage1, _stage2, _stage3, _stage4))
         state = pipeline.invoke(question_id="Q-001", question="질문")

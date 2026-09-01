@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import os
 from typing import Any
 
 from ..index.corpus_index import CorpusIndex, squash
@@ -79,6 +80,9 @@ def build_query_plan(
     two metrics in one calculation and is therefore not split here.
     """
 
+    if not query_plan_enabled():
+        return []
+
     metrics = list(dict.fromkeys(slots.metric_matches))
     operation = str(slots.calculation.get("operation") or "")
     split_metrics = len(metrics) > 1 and operation not in {"ratio_percent", "margin"}
@@ -134,4 +138,9 @@ def build_query_plan(
     return plan
 
 
-__all__ = ["build_query_plan"]
+def query_plan_enabled() -> bool:
+    value = os.getenv("DIS164_QUERY_PLAN_V1", "true").strip().lower()
+    return value not in {"0", "false", "no", "off"}
+
+
+__all__ = ["build_query_plan", "query_plan_enabled"]

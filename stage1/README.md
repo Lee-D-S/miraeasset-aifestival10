@@ -42,6 +42,8 @@ Guard는 공백·구두점을 무조건 이어 붙여 검색하지 않는다. �
 subquery를 생성한다. 기존 `metric`·`manifest_filter`는 호환성을 위해
 유지하며, 각 subquery는 자체 지표·계산계획·기간·manifest 필터를 가진다.
 비중·마진처럼 두 지표가 하나의 산식에 필요한 경우에는 분리하지 않는다.
+`DIS164_QUERY_PLAN_V1`은 기본 활성화이며, 문제 발생 시 `false`로 내려
+기존 단일 질의 경로로 rollback할 수 있다.
 
 ## 코퍼스 경로
 

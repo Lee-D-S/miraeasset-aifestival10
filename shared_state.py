@@ -50,6 +50,7 @@ class Stage1Intent(TypedDict, total=False):
     sector_members: list[str]
     ambiguous_mentions: list[str]
     unknown_entities: list[str]
+    related_entities: list[str]
     metric: str
     metric_confidence: str
     basis: str
@@ -67,6 +68,7 @@ class Stage1Intent(TypedDict, total=False):
     clarify_message: str | None
     llm_used: bool
     think_trace: str
+    query_plan: list[dict[str, Any]]
 
 
 class Stage2Document(TypedDict, total=False):
@@ -90,6 +92,7 @@ class Stage2Result(TypedDict, total=False):
     cited_documents: list[Stage2Document]
     retrieval_trace: list[Any]
     status: str
+    subresults: list[dict[str, Any]]
     warnings: list[str]
 
 
