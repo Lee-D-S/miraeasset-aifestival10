@@ -6,10 +6,11 @@ AI Festival 2026 공시 질의 응답 Agent 실행 엔진.
 
 ```text
 app.py                  # FastAPI 진입점
+config.py               # 프로젝트 루트 기준 경로·Stage2 모드 단일 설정 지점
 integration/            # LangGraph 조립, Supervisor, API adapter
 shared_state.py         # 공용 AgentState와 Stage write contract
 stage1/                 # 질의 정규화·Intent·manifest filter
-stage2/                 # fixture/hybrid retrieval·embedding·rerank
+stage2/                 # fixture / local / container hybrid retrieval·embedding·rerank
 stage3/                 # Fact·event·계산·답변 초안
 stage4/                 # 수치·출처·의미 검증
 legacy/                 # 과거 구현과 fixture 보관
@@ -17,6 +18,21 @@ tests/                  # 현재 통합 계약 테스트
 ```
 
 실행 흐름은 `Stage1 → Supervisor → Stage2 → Supervisor → Stage3 → Supervisor → Stage4 → Supervisor`다. Supervisor는 허용된 action만 선택하고, 실제 Stage 작업과 반복 제한은 코드가 담당한다.
+
+## 그래프 구조
+
+`integration/graph.py`가 조립하는 실제 LangGraph 상태머신이다. Stage별 phase 갱신과 소유권 검증은
+각 Stage 노드를 감싸는 훅으로 처리되어 별도 노드로 나타나지 않고, 4단계 Supervisor는 하나의
+`supervisor` 노드로 합쳐져 있다.
+
+![integration/graph.py의 LangGraph 상태머신](integration/graph.png)
+
+그래프 구조(노드·엣지)가 바뀌면 다음 명령으로 다시 뽑는다. 저장된 이미지가 실제 코드와 항상
+일치하도록, 손으로 그리지 않고 이 스크립트로만 갱신한다.
+
+```powershell
+python scripts/render_graph.py --png integration/graph.png
+```
 
 ## 설치 및 실행
 
@@ -27,36 +43,56 @@ python -m pip install -r requirements-dev.txt
 uvicorn app:app --reload
 ```
 
-기본 factory는 `integration/composition.py`에서 Stage1~Stage4를 조립한다. Stage2는
-`STAGE2_BACKEND=fixture`와 `STAGE2_BACKEND=sqlite`를 지원한다. fixture 기본값은
-`legacy/test_data/disclosure_clova_local.json`이며, `STAGE2_FIXTURE_PATH`로 바꿀 수 있다.
-SQLite를 선택하면 `STAGE2_INDEX_PATH`의 chunk·metadata·embedding index를 사용한다.
-두 경로 모두 환경변수가 빈 문자열이면 안전한 기본 경로를 사용한다.
+기본 factory는 `integration/composition.py`에서 Stage1~Stage4를 조립한다. 경로와 backend
+선택은 모두 프로젝트 루트의 **`config.py`** 한 곳에서 관리한다. 환경변수의 상대경로는
+실행 CWD가 아니라 프로젝트 루트를 기준으로 해석된다.
+
+Stage2는 `STAGE2_MODE`로 세 모드 중 하나를 연다(기본값 `fixture`). 구
+`STAGE2_BACKEND=fixture|sqlite`도 계속 인식된다(`sqlite`는 DSN·host 설정 여부에 따라
+`local` 또는 `container`로 매핑).
+
+- `fixture` (기본값, 테스트용): "DB"가 CLOVA API로 사전 계산한 임베딩 JSON 파일이다
+  (`legacy/test_data/disclosure_clova_local.json`, `STAGE2_FIXTURE_PATH`로 변경 가능). 쿼리는
+  같은 CLOVA 임베딩 엔드포인트로 실시간 계산한다. 로컬 SQL·VectorDB가 전혀 필요 없다.
+- `local`: 로컬 SQLite(`STAGE2_INDEX_PATH`)로 `manifest_filter`를 SQL `WHERE`절로 필터링하고,
+  로컬 Chroma persist 디렉터리(`STAGE2_CHROMA_PATH`)로 임베딩·유사도·정렬을 위임한다
+  (`LocalHybridRetriever`). 두 경로 모두 비우면 `config.py`의 기본값(`data/local_smoke/`)을 쓴다.
+- `container`: Dockerized Postgres(`STAGE2_RDB_URL`)와 Chroma 서버
+  (`STAGE2_CHROMA_HOST`/`STAGE2_CHROMA_PORT`)를 사용한다. 두 값 모두 필수이며, 없으면
+  기동 전에 명확한 오류로 실패한다. `LocalHybridRetriever`의 SQL·벡터 검색 코드는
+  `local`과 동일하고 연결만 바뀐다(`stage2/backends.py`).
+
+`local`·`container`는 `STAGE2_CHROMA_COLLECTION`(기본 `stage2_chunks`)으로 하나의 벡터
+컬렉션을 가리킨다. 인덱스를 만든 시점의 컬렉션 이름과 서빙 시점 값이 반드시 일치해야 한다.
+
 Stage1 corpus 자동 탐색이 실패하는 실행 환경에서는 `CORPUS_DIR`에 `universe.csv`와
-`manifest.jsonl`이 있는 corpus 디렉터리를 명시해야 한다.
+`manifest.jsonl`이 있는 corpus 디렉터리를 명시한다(상대경로는 루트 기준).
 
-`CLOVA_API_KEY` 또는 `CLOVASTUDIO_API_KEY`가 없으면 query embedding은 `embedding_unavailable`로 처리된다. 의미 검증 provider가 없으면 최종 답변을 성공으로 가장하지 않는다. Chroma·PostgreSQL 운영 backend는 후속 작업이다.
+`CLOVA_API_KEY` 또는 `CLOVASTUDIO_API_KEY`가 없으면 query embedding은 `embedding_unavailable`로 처리된다. 의미 검증 provider가 없으면 최종 답변을 성공으로 가장하지 않는다.
 
-실제 SQLite smoke index를 사용하려면 다음처럼 설정한다.
+실제 `local` smoke index를 사용하려면 먼저 `scripts/build_local_sqlite.py`로 SQLite+Chroma
+인덱스를 만든 뒤 다음처럼 설정한다. (Chroma가 문서 임베딩을 자체 계산하므로 CLOVA 임베딩
+provider가 필요하다.)
 
 ```powershell
-$env:STAGE2_BACKEND = "sqlite"
-$env:STAGE2_INDEX_PATH = "data/local_smoke/smoke.db"
+$env:STAGE2_MODE = "local"
+$env:STAGE2_INDEX_PATH = "data/local_smoke/smoke.db"      # 비우면 config.py 기본값
+$env:STAGE2_CHROMA_PATH = "data/local_smoke/smoke_chroma" # 비우면 config.py 기본값
 $env:CLOVA_LLM_ENABLED = "true"  # 답변 생성·semantic validation을 CLOVA로 활성화
 uvicorn app:app --reload
 ```
-
-SQLite adapter는 연결되어 있지만, Chroma·PostgreSQL 운영 adapter는 아직 canonical
-factory에 연결하지 않았다.
 
 ## API
 
 ```text
 GET /health
+GET /ready
 GET /answer?question_id=Q-001&question=질문내용
 ```
 
 응답은 `question_id`, `question`, `retrieved_context`, `think_trace`, `answer`의 다섯 문자열 필드를 유지한다. `think_trace`에는 Supervisor action과 주요 시도 횟수가 포함된다. Stage1이 생성한 `intent.think_trace`도 `stage1_think_trace`로 함께 기록된다.
+
+`/health`는 FastAPI 프로세스의 liveness만 확인하므로 corpus나 DB가 아직 마운트되지 않아도 응답한다. `/ready`는 pipeline을 지연 초기화하여 Stage1 corpus, Stage2 저장소, provider 설정을 포함한 실행 준비 상태를 확인한다. `/answer`도 pipeline이 준비되지 않은 경우 안전하게 503을 반환한다.
 
 ## 검색과 안전 제어
 
@@ -98,16 +134,23 @@ pytest tests/test_local_e2e.py
 ```
 
 실제 CLOVA 호출은 provider 환경변수가 설정된 별도 smoke test에서만 수행한다.
+배포 전 오프라인 구성 검사는 `python scripts/check_deployment.py`로 실행한다. 이 검사는 CLOVA endpoint를 호출하지 않고 corpus, SQLite·Chroma index의 일관성까지 검사한다.
 embedding timeout은 `CLOVA_EMBEDDING_TIMEOUT`, 답변·semantic timeout은
 `CLOVA_CHAT_TIMEOUT`, 429 재시도 대기 상한은 `CLOVA_RATE_LIMIT_MAX_WAIT`로 조정한다.
 실행 중 adapter의 `last_rate_limit`에서 API가 반환한 `x-ratelimit-*` 헤더를 확인할 수
 있으며, API key와 요청 본문은 기록하지 않는다.
-호출 전에는 process-local QPM·TPM limiter가 예상 입력·출력 토큰 예산과 provider 잔여량을
-확인해 한도 부족 요청을 차단한다.
-답변·semantic 출력 토큰 기본값은 각각 512·256이며 `CLOVA_ANSWER_MAX_TOKENS`와
-`CLOVA_SEMANTIC_MAX_TOKENS`로 조정할 수 있다.
+호출 전에는 Chat·Embedding이 공유하는 process-local QPM·TPM limiter가 예상
+입력·출력 토큰 예산과 provider 잔여량을 확인해 한도 부족 요청을 차단한다.
+`CLOVA_RATE_LIMIT_QPM`, `CLOVA_RATE_LIMIT_TPM`, `CLOVA_CHAT_MIN_INTERVAL`로
+보수적인 로컬 한도를 조정할 수 있다. provider가 보낸 rate-limit header와 로컬 차단
+상태는 Stage trace의 `provider_status`에 구조화해 남긴다.
+답변·semantic 출력 토큰 기본값은 각각 256·128이며 `CLOVA_ANSWER_MAX_TOKENS`와
+`CLOVA_SEMANTIC_MAX_TOKENS`로 조정할 수 있다. 답변 prompt는 기본적으로 Fact 8개,
+출처 4개·출처별 근거 500자까지, semantic prompt는 Fact 10개·출처 4개·출처별
+근거 500자까지 전달한다. 이 범위는 `CLOVA_PROMPT_*`와 `CLOVA_SEMANTIC_*`
+prompt 환경변수로 조정할 수 있다.
 
-기본 factory는 metadata-filtered 후보를 최대 50개까지 Stage3에 전달한다. 소규모
+기본 factory는 metadata-filtered 후보를 최대 20개까지 Stage3에 전달한다. 소규모
 smoke corpus에서 연결·부문·종속기업 chunk가 함께 검색될 때 aggregate 근거가 hybrid
 상위 순위에서 탈락하지 않도록 하기 위한 설정이며, 외부 LLM prompt는 별도로 축약된다.
 

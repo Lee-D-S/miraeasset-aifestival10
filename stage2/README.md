@@ -9,16 +9,22 @@ Stage2는 Stage1 Intent를 받아 공시 근거 문서를 검색하고 Stage3에
 주입하며 provider가 없으면 `embedding_unavailable`로 종료한다. 테스트와 계약 검증에는
 `InMemoryRetriever`와 deterministic reranker를 명시적으로 주입한다.
 
-실행 factory는 다음 backend 선택을 지원한다.
+실행 factory는 `STAGE2_MODE`로 세 모드를 연다(경로·연결 문자열은 모두 루트의 `config.py`가
+관리한다).
 
 ```text
-STAGE2_BACKEND=fixture
-STAGE2_BACKEND=sqlite
-STAGE2_INDEX_PATH=data/local_smoke/smoke.db
+STAGE2_MODE=fixture     # CLOVA 사전계산 임베딩 JSON. DB 서비스 불필요
+STAGE2_MODE=local       # 로컬 SQLite(metadata) + 로컬 Chroma persist 디렉터리(vector)
+STAGE2_MODE=container   # Dockerized Postgres + Chroma 서버. RDB_URL·CHROMA_HOST 필수
 ```
 
-`STAGE2_FIXTURE_PATH` 또는 `STAGE2_INDEX_PATH`가 빈 문자열이면 factory의 기본 경로를
-사용한다. SQLite 경로에서도 사용자 질의는 저장된 문서와 동일한 CLOVA Embedding v2
+구 `STAGE2_BACKEND=fixture|sqlite`도 계속 인식된다(`sqlite`는 `STAGE2_RDB_URL`/
+`STAGE2_CHROMA_HOST` 설정 여부에 따라 `local` 또는 `container`로 매핑). `local`·`container`는
+`STAGE2_CHROMA_COLLECTION`(기본 `stage2_chunks`)으로 같은 벡터 컬렉션을 가리킨다.
+
+`STAGE2_FIXTURE_PATH`/`STAGE2_INDEX_PATH`/`STAGE2_CHROMA_PATH`가 빈 문자열이면 `config.py`의
+기본 경로를 쓰고, 상대경로는 실행 CWD가 아니라 프로젝트 루트를 기준으로 해석된다.
+`local`·`container` 모드에서도 사용자 질의는 저장된 문서와 동일한 CLOVA Embedding v2
 차원으로 임베딩되어 hybrid 검색에 사용된다. provider가 없으면 fake embedding으로
 대체하지 않고 `embedding_unavailable`로 종료한다. canonical runtime은 Stage3가
 종속기업·사업부 행보다 연결 총계 행을 회복할 수 있도록 최종 cited 문서를 최대 20개
@@ -53,9 +59,10 @@ exceeded and `42902` indicates service overload, so callers must still retry
 with a bounded delay. See the [CLOVA usage control policy](https://guide.ncloud-docs.com/docs/clovastudio-ratelimiting).
 
 `build_local_sqlite.py` reads `data/local_smoke/embedded_chunks.json` and writes
-`data/local_smoke/smoke.db`. `SQLiteStage2Repository` stores chunk text,
-canonical metadata, and 1024-dimensional embeddings, and exposes the same
-metadata, keyword, and vector search methods as the Stage2 retriever contract.
+`data/local_smoke/smoke.db`. `LocalHybridRetriever` stores chunk metadata in SQL
+and embeddings in Chroma, and exposes the same metadata, keyword, and vector
+search methods as the Stage2 retriever contract. The SQL and Chroma stores are
+written together; the existing fixture JSON remains the offline default.
 The query embedder must be injected for vector search; the repository never
 silently substitutes a fake embedding provider.
 

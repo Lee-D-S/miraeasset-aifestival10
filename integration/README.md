@@ -4,12 +4,17 @@
 
 ## 구성
 
-- `composition.py`: 환경변수와 fixture를 이용한 실행 factory
+- `composition.py`: `config.py`가 결정한 Stage2 모드(`fixture`/`local`/`container`)로 pipeline을 조립하는 실행 factory
 - `graph.py`: StateGraph, Supervisor 분기, bounded loop
 - `supervisor.py`: action contract, deterministic policy, structured LLM adapter
 - `tools.py`: allow-listed typed tools와 native `ToolNode` 경계
 - `service.py`: `StagePipeline` invoke API와 recursion limit
-- `api.py`: `/health`, `/answer`, 제출용 5-field response adapter
+- `api.py`: `/health`·`/ready`·`/answer`, 제출용 5-field response adapter
+- `readiness.py`: `STAGE2_MODE`·container 설정·검색 인덱스의 오프라인 readiness 검사
+
+경로와 backend 선택 지점은 프로젝트 루트의 `config.py` 하나다. `composition.py`는
+`config.Stage2Settings.from_env()`가 돌려준 값만 사용하고, 직접 `os.getenv`로 경로를
+계산하지 않는다.
 
 ## 실행
 
@@ -20,7 +25,11 @@ pipeline = build_pipeline()
 state = pipeline.invoke(question_id="Q-001", question="질문")
 ```
 
-기본 factory는 Stage1, JSON fixture Stage2, Stage3, Stage4를 연결한다. Stage2는 CLOVA query embedding provider가 없으면 `embedding_unavailable`를 반환하며, 운영 DB adapter는 아직 연결하지 않는다.
+기본 factory는 Stage1, Stage2(`STAGE2_MODE` 기본 `fixture`), Stage3, Stage4를 연결한다. `app.py`는 factory를 import 시 실행하지 않고 `/ready` 또는 `/answer` 요청 시 지연 초기화한다. Stage2는 CLOVA query embedding provider가 없으면 `embedding_unavailable`를 반환한다. `container` 모드는 `STAGE2_RDB_URL`과 `STAGE2_CHROMA_HOST`가 모두 있어야 하며, 없으면 기동 전에 명확히 실패한다.
+
+`/health`는 프로세스 생존만 확인하고, `/ready`는 pipeline 생성 가능 여부를 확인한다. corpus·DB·provider가 준비되지 않은 경우 `/ready`와 `/answer`는 503을 반환하지만 앱 import와 `/health`는 실패하지 않는다.
+
+NCP 배포 전에는 `python scripts/check_deployment.py`로 네트워크 요청 없이 corpus, CLOVA 설정, SQLite schema·chunk, Chroma collection·ID, manifest와 Stage2 index 범위 일치를 확인한다.
 
 공용 State는 `shared_state.py`의 `AgentState`다. `question_id`, `question`, `original_question`은 불변이며 Stage node는 `STAGE_WRITE_FIELDS`에 정의된 partial update만 반환한다. Supervisor는 action과 reason만 결정한다.
 

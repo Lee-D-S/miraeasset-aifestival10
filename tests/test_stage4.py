@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from stage4.node import build_stage4_node
 from stage4.numeric import extract_answer_numbers, validate_numeric_answer
+from integration.rate_limit import RateLimitBlocked
 from integration import StageNodes, StagePipeline
 from integration.api import to_submission_response
 
@@ -53,6 +54,12 @@ class SemanticClient:
     def generate_text(self, _messages):
         self.text_calls += 1
         return self.regenerated
+
+
+class RateLimitedSemanticClient(SemanticClient):
+    def generate_json(self, _messages, *, schema):
+        self.json_calls += 1
+        raise RateLimitBlocked("CLOVA remaining tokens가 요청 예산보다 작아 호출을 차단했습니다.")
 
 
 def test_extracts_korean_units_and_ignores_dates_and_ranks():
@@ -161,6 +168,21 @@ def test_stage4_fails_closed_when_llm_is_unavailable():
     })
     assert update["stage4_result"]["status"] == "validation_failed"
     assert update["answer"] == "제공된 공시 근거만으로 답변을 검증할 수 없습니다."
+
+
+def test_stage4_keeps_grounded_answer_when_semantic_provider_is_rate_limited():
+    client = RateLimitedSemanticClient()
+    update = build_stage4_node(validator_client=client)({
+        "route": "ok",
+        "question": "매출은?",
+        "intent": {"question_type": "lookup"},
+        "answer": "매출은 1.2억원입니다. [source:doc-1]",
+        "stage3_result": _stage3(),
+    })
+    assert update["stage4_result"]["status"] == "success"
+    assert update["answer"] == "매출은 1.2억원입니다. [source:doc-1]"
+    assert update["stage4_result"]["provider_status"]["status"] == "rate_limited"
+    assert "provider_rate_limited_deterministic_grounding" in update["stage4_result"]["trace"]
 
 
 def test_stage4_runs_in_shared_langgraph_and_preserves_api_contract():

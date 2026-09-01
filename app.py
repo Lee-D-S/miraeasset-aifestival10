@@ -4,6 +4,6 @@ from integration.api import create_app
 from integration.composition import build_pipeline
 
 
-# Stage implementations are injected here when the team integration is ready.
-# Keeping the app importable now preserves the deployment entrypoint.
-app = create_app(build_pipeline())
+# Keep the FastAPI process importable even when deployment data is not mounted
+# yet.  Corpus/DB/provider initialization happens at /ready or /answer time.
+app = create_app(pipeline_factory=build_pipeline)

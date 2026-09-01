@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from typing import Any, Mapping
 
@@ -16,6 +17,13 @@ SEMANTIC_SCHEMA = {
         "summary": {"type": "string"},
     },
 }
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return max(int(os.getenv(name, str(default))), 1)
+    except ValueError:
+        return default
 
 
 def _numeric_tokens(answer: str) -> set[str]:
@@ -55,9 +63,12 @@ def _prioritized_facts(stage3_result: Mapping[str, Any], *, intent: Mapping[str,
 def _compact_stage3_result(stage3_result: Mapping[str, Any], *, intent: Mapping[str, Any] | None = None, answer: str = "") -> dict[str, Any]:
     """Bound the semantic request while preserving representative evidence."""
     prioritized_facts = _prioritized_facts(stage3_result, intent=intent, answer=answer)
+    fact_limit = _env_int("CLOVA_SEMANTIC_FACT_LIMIT", 10)
+    citation_limit = _env_int("CLOVA_SEMANTIC_CITATION_LIMIT", 4)
+    evidence_limit = _env_int("CLOVA_SEMANTIC_EVIDENCE_CHARS", 500)
     facts = [
         {key: fact.get(key) for key in ("metric", "label", "value", "unit", "normalized_value", "period", "basis", "company", "document_id")}
-        for fact in prioritized_facts[:20]
+        for fact in prioritized_facts[:fact_limit]
     ]
     grounding_facts = [
         {
@@ -65,7 +76,7 @@ def _compact_stage3_result(stage3_result: Mapping[str, Any], *, intent: Mapping[
             "normalized_value": fact.get("normalized_value"), "unit": fact.get("unit"),
             "period": fact.get("period"), "basis": fact.get("basis"), "company": fact.get("company"),
             "document_id": fact.get("document_id"), "source": fact.get("source"),
-            "evidence": str(fact.get("evidence", ""))[:800],
+            "evidence": str(fact.get("evidence", ""))[:evidence_limit],
         }
         for fact in prioritized_facts[:3]
     ]
@@ -73,15 +84,15 @@ def _compact_stage3_result(stage3_result: Mapping[str, Any], *, intent: Mapping[
     raw_citations = [item for item in stage3_result.get("citations", []) if isinstance(item, Mapping)]
     ordered_citations = sorted(raw_citations, key=lambda item: fact_rank.get(str(item.get("document_id", "")), len(fact_rank)))
     citations = [
-        {"document_id": citation.get("document_id"), "source": citation.get("source"), "evidence": str(citation.get("evidence", ""))[:800]}
-        for citation in ordered_citations[:8]
+        {"document_id": citation.get("document_id"), "source": citation.get("source"), "evidence": str(citation.get("evidence", ""))[:evidence_limit]}
+        for citation in ordered_citations[:citation_limit]
     ]
     return {
         "facts": facts,
         "answer_grounding_facts": grounding_facts,
-        "calculations": list(stage3_result.get("calculations", []))[:20],
-        "comparison_results": list(stage3_result.get("comparison_results", []))[:10],
-        "linked_events": list(stage3_result.get("linked_events", []))[:10],
+        "calculations": list(stage3_result.get("calculations", []))[:8],
+        "comparison_results": list(stage3_result.get("comparison_results", []))[:4],
+        "linked_events": list(stage3_result.get("linked_events", []))[:4],
         "citations": citations,
     }
 

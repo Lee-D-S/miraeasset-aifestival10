@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import json
+import logging
+from collections.abc import Callable
+from threading import Lock
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
 
 from integration.service import StagePipeline
+
+
+logger = logging.getLogger(__name__)
 
 
 def _retrieved_context(state: dict[str, Any]) -> str:
@@ -30,7 +36,7 @@ def _think_trace(state: dict[str, Any]) -> str:
         if isinstance(value, dict):
             trace[key] = {
                 field: value.get(field)
-                for field in ("status", "warnings", "trace")
+                for field in ("status", "warnings", "trace", "provider_status")
                 if field in value
             }
     intent = state.get("intent")
@@ -62,8 +68,42 @@ def to_submission_response(state: dict[str, Any]) -> dict[str, str]:
     return response
 
 
-def create_app(pipeline: StagePipeline | None = None) -> FastAPI:
-    """Create the public app; Stage implementations are injected later."""
+def create_app(
+    pipeline: StagePipeline | None = None,
+    *,
+    pipeline_factory: Callable[[], StagePipeline] | None = None,
+) -> FastAPI:
+    """Create the public app without requiring pipeline startup at import time.
+
+    ``pipeline`` keeps the direct-injection path used by tests.  Production can
+    pass ``pipeline_factory`` so corpus, database, and provider initialization
+    is delayed until readiness or the first answer request.
+    """
+
+    if pipeline is not None and pipeline_factory is not None:
+        raise ValueError("provide either pipeline or pipeline_factory, not both")
+
+    current_pipeline = pipeline
+    pipeline_error: Exception | None = None
+    pipeline_lock = Lock()
+
+    def get_pipeline() -> StagePipeline:
+        nonlocal current_pipeline, pipeline_error
+        if current_pipeline is not None:
+            return current_pipeline
+        if pipeline_factory is None:
+            raise RuntimeError("pipeline is not configured")
+        with pipeline_lock:
+            if current_pipeline is not None:
+                return current_pipeline
+            try:
+                current_pipeline = pipeline_factory()
+                pipeline_error = None
+            except Exception as error:  # noqa: BLE001 - boundary stores startup failure
+                pipeline_error = error
+                logger.exception("pipeline initialization failed")
+                raise
+        return current_pipeline
 
     app = FastAPI(title="AI Festival Four-Stage Agent", version="0.1.0")
 
@@ -71,14 +111,28 @@ def create_app(pipeline: StagePipeline | None = None) -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok", "implementation": "four-stage"}
 
+    @app.get("/ready")
+    def ready() -> dict[str, str]:
+        """Report whether the executable pipeline can accept answer requests."""
+
+        try:
+            get_pipeline()
+        except Exception as error:  # noqa: BLE001 - HTTP boundary
+            detail = "pipeline is not ready"
+            if pipeline_error is not None:
+                logger.debug("readiness failure: %s", error)
+            raise HTTPException(status_code=503, detail=detail) from error
+        return {"status": "ready", "implementation": "four-stage"}
+
     @app.get("/answer")
     def answer(question_id: str, question: str) -> dict[str, str]:
-        if pipeline is None:
-            raise HTTPException(status_code=503, detail="Stage1~Stage4 구현이 아직 연결되지 않았습니다.")
         try:
-            state = pipeline.invoke(question_id=question_id, question=question)
+            state = get_pipeline().invoke(question_id=question_id, question=question)
         except Exception as error:  # noqa: BLE001 - HTTP boundary
-            raise HTTPException(status_code=503, detail=str(error)) from error
+            if current_pipeline is None:
+                raise HTTPException(status_code=503, detail="pipeline is not ready") from error
+            logger.exception("pipeline request failed")
+            raise HTTPException(status_code=503, detail="pipeline request failed") from error
         return to_submission_response(state)
 
     return app

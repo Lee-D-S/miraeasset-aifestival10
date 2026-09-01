@@ -209,6 +209,7 @@ class Stage3Result:
     trace: list[str] = field(default_factory=list)
     agent_results: list[dict[str, Any]] = field(default_factory=list)
     handoffs: list[dict[str, Any]] = field(default_factory=list)
+    provider_status: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "Stage3Result":
@@ -227,6 +228,7 @@ class Stage3Result:
             trace=[str(item) for item in value.get("trace", [])],
             agent_results=[dict(item) for item in value.get("agent_results", []) if isinstance(item, Mapping)],
             handoffs=[dict(item) for item in value.get("handoffs", []) if isinstance(item, Mapping)],
+            provider_status=dict(value.get("provider_status", {})),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -243,6 +245,7 @@ class Stage3Result:
             "trace": list(self.trace),
             "agent_results": list(self.agent_results),
             "handoffs": list(self.handoffs),
+            "provider_status": dict(self.provider_status),
         }
 
 

@@ -14,6 +14,7 @@ class Stage4Result:
     regenerated: bool = False
     warnings: list[str] = field(default_factory=list)
     trace: list[str] = field(default_factory=list)
+    provider_status: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "Stage4Result":
@@ -26,6 +27,7 @@ class Stage4Result:
             regenerated=bool(value.get("regenerated", False)),
             warnings=[str(item) for item in value.get("warnings", [])],
             trace=[str(item) for item in value.get("trace", [])],
+            provider_status=dict(value.get("provider_status", {})),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -38,6 +40,7 @@ class Stage4Result:
             "regenerated": self.regenerated,
             "warnings": list(self.warnings),
             "trace": list(self.trace),
+            "provider_status": dict(self.provider_status),
         }
 
 

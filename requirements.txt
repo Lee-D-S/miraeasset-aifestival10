@@ -6,3 +6,5 @@ pgvector>=0.3,<1
 pypdf>=5,<7
 beautifulsoup4>=4.12,<5
 lxml>=5,<7
+sqlalchemy>=2.0,<3
+langchain-chroma>=1.0,<2

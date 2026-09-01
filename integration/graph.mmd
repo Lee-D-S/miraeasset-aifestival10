@@ -1,0 +1,43 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	stage1(stage1)
+	stage2(stage2)
+	stage3(stage3)
+	stage4(stage4)
+	calculation_planner(calculation_planner)
+	retry_search(retry_search)
+	supervisor(supervisor)
+	answer_regeneration(answer_regeneration)
+	clarify(clarify)
+	unanswerable(unanswerable)
+	fail_closed(fail_closed)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> stage1;
+	answer_regeneration --> stage4;
+	calculation_planner --> supervisor;
+	clarify --> stage4;
+	fail_closed --> stage4;
+	retry_search --> stage2;
+	stage1 --> supervisor;
+	stage2 --> supervisor;
+	stage3 --> supervisor;
+	stage4 --> supervisor;
+	supervisor -.-> __end__;
+	supervisor -.-> answer_regeneration;
+	supervisor -.-> calculation_planner;
+	supervisor -.-> clarify;
+	supervisor -.-> fail_closed;
+	supervisor -.-> retry_search;
+	supervisor -.-> stage2;
+	supervisor -.-> stage3;
+	supervisor -.-> stage4;
+	supervisor -.-> unanswerable;
+	unanswerable --> stage4;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

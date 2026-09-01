@@ -3,7 +3,9 @@ from __future__ import annotations
 import unittest
 
 from integration import StageNodes, StagePipeline
-from integration.api import to_submission_response
+from integration.api import create_app, to_submission_response
+from fastapi import HTTPException
+from fastapi.testclient import TestClient
 from stage2.retrieval import matches_manifest_filter
 
 
@@ -44,6 +46,24 @@ def _stage4(state):
 
 
 class IntegrationSkeletonTests(unittest.TestCase):
+    def test_health_does_not_initialize_pipeline(self) -> None:
+        calls = []
+
+        def factory():
+            calls.append("factory")
+            raise FileNotFoundError("missing corpus")
+
+        app = create_app(pipeline_factory=factory)
+        health = next(route.endpoint for route in app.routes if getattr(route, "path", "") == "/health")
+        ready = next(route.endpoint for route in app.routes if getattr(route, "path", "") == "/ready")
+
+        self.assertEqual(health()["status"], "ok")
+        self.assertEqual(calls, [])
+        with self.assertRaises(HTTPException) as context:
+            ready()
+        self.assertEqual(context.exception.status_code, 503)
+        self.assertEqual(calls, ["factory"])
+
     def test_stage2_honors_excluded_corp_names(self) -> None:
         document = {"metadata": {"corp_name": "삼성전자"}}
         manifest_filter = {"exclude_corp_names": ["삼성전자"]}
@@ -109,6 +129,31 @@ class IntegrationSkeletonTests(unittest.TestCase):
             {"question_id", "question", "retrieved_context", "think_trace", "answer"},
         )
         self.assertTrue(all(isinstance(value, str) for value in response.values()))
+
+    def test_http_answer_preserves_decoded_query_and_response_contract(self) -> None:
+        pipeline = StagePipeline(StageNodes(_stage1, _stage2, _stage3, _stage4))
+        client = TestClient(create_app(pipeline=pipeline))
+
+        response = client.get("/answer", params={"question_id": "Q-HTTP", "question": "삼성전자 매출액"})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["question_id"], "Q-HTTP")
+        self.assertEqual(payload["question"], "삼성전자 매출액")
+        self.assertEqual(set(payload), {"question_id", "question", "retrieved_context", "think_trace", "answer"})
+        self.assertTrue(all(isinstance(value, str) for value in payload.values()))
+
+    def test_http_pipeline_failure_does_not_expose_internal_error(self) -> None:
+        def factory():
+            raise RuntimeError("secret path and API key must stay private")
+
+        client = TestClient(create_app(pipeline_factory=factory))
+
+        response = client.get("/answer", params={"question_id": "Q-FAIL", "question": "질문"})
+
+        self.assertEqual(response.status_code, 503)
+        self.assertNotIn("secret path", response.text)
+        self.assertNotIn("API key", response.text)
 
 
 if __name__ == "__main__":
