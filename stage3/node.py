@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import replace
 from typing import Any, Callable
 
+from integration.rate_limit import is_rate_limit_error, rate_limit_event
 from stage3.adapters.stage1 import adapt_stage1_intent
 from stage3.adapters.stage2 import adapt_stage2_bundle
 from stage3.agents.answer import AnswerWriter
@@ -206,6 +207,7 @@ def _execute_stage3(*, question: str, intent: Stage3Intent, stage2_result: Any, 
             f"calculations={len(calculations)}",
             f"comparisons={len(comparisons)}",
         ],
+        provider_status={},
     )
 
     valid, validation_warnings = validate_stage3_result(result, intent)
@@ -241,7 +243,20 @@ def _execute_stage3(*, question: str, intent: Stage3Intent, stage2_result: Any, 
                 warnings=[*warnings, f"answer_provider_error: {type(error).__name__}"],
             )
             answer_mode = "deterministic_fallback"
-            result.warnings.append(f"answer_provider_error: {type(error).__name__}: {error}")
+            if is_rate_limit_error(error):
+                result = replace(
+                    result,
+                    warnings=[*result.warnings, "provider_rate_limited: answer_generation"],
+                    trace=[*result.trace, "provider_rate_limited_deterministic_fallback"],
+                    provider_status=rate_limit_event(
+                        error,
+                        operation="answer_generation",
+                        client=writer.client,
+                    ),
+                )
+                answer_mode = "deterministic_fallback_provider_rate_limited"
+            else:
+                result.warnings.append(f"answer_provider_error: {type(error).__name__}: {error}")
     else:
         answer = writer.deterministic(
             intent=intent,

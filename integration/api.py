@@ -36,7 +36,7 @@ def _think_trace(state: dict[str, Any]) -> str:
         if isinstance(value, dict):
             trace[key] = {
                 field: value.get(field)
-                for field in ("status", "warnings", "trace")
+                for field in ("status", "warnings", "trace", "provider_status")
                 if field in value
             }
     intent = state.get("intent")
