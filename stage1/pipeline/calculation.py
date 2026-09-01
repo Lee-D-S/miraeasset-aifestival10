@@ -12,6 +12,11 @@ SUPPORTED_OPERATIONS = frozenset({
     "ratio_percent", "margin", "sum", "average", "min", "max", "rank",
 })
 
+# 서로 다른 두 시점의 값이 있어야 성립하는 연산.
+TWO_PERIOD_OPERATIONS = frozenset({"percentage_change", "cagr"})
+# 값 2개가 필요하지만 두 시점이든 두 대상이든 무관한 연산.
+TWO_OPERAND_OPERATIONS = frozenset({"add", "subtract", "multiply", "divide"})
+
 QUESTION_TYPES = {
     "lookup": "lookup",
     "calc": "calculation",
@@ -120,6 +125,8 @@ def build_calculation(
 
 __all__ = [
     "SUPPORTED_OPERATIONS",
+    "TWO_OPERAND_OPERATIONS",
+    "TWO_PERIOD_OPERATIONS",
     "build_calculation",
     "canonical_question_type",
     "infer_denominator_metric",
