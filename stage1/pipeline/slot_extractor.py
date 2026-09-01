@@ -109,6 +109,7 @@ def extract(pre: PreprocessResult, entities: EntityResult, index: CorpusIndex) -
         slots.intent,
         compare_axis=slots.compare_axis,
         operation=slots.calculation.get("operation"),
+        metric=slots.metric,
     )
     _resolve_time_mode(sq, slots, cfg)
     return slots

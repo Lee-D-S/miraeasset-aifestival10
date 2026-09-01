@@ -56,6 +56,7 @@ def build_intent(
         slots.intent,
         compare_axis=slots.compare_axis,
         operation=slots.calculation.get("operation"),
+        metric=slots.metric,
     )
 
     build = filter_builder.build(entities, slots, index)

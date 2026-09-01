@@ -12,6 +12,12 @@ SUPPORTED_OPERATIONS = frozenset({
     "ratio_percent", "margin", "sum", "average", "min", "max", "rank",
 })
 
+# 3단계 metric_registry에서 numeric_labels를 가진 재무 지표. 이 지표들만 추이를
+# 수치로 계산할 수 있다. rnd·dividend·employees는 3단계가 서술 구간으로만 다룬다.
+NUMERIC_METRICS = frozenset({
+    "revenue", "operating_profit", "net_income", "total_assets", "capex",
+})
+
 # 서로 다른 두 시점의 값이 있어야 성립하는 연산.
 TWO_PERIOD_OPERATIONS = frozenset({"percentage_change", "cagr"})
 # 값 2개가 필요하지만 두 시점이든 두 대상이든 무관한 연산.
@@ -29,10 +35,17 @@ QUESTION_TYPES = {
 
 
 def canonical_question_type(
-    intent: str, *, compare_axis: str = "", operation: str | None = None
+    intent: str,
+    *,
+    compare_axis: str = "",
+    operation: str | None = None,
+    metric: str | None = None,
 ) -> str:
     # 같은 대상의 기간 비교는 순위 매기기가 아니라 증감 계산이다.
     if intent == "compare" and compare_axis == "period":
+        return "calculation"
+    # 수치 지표의 추이는 공시 이벤트 연결이 아니라 증감 계산으로 답해야 한다.
+    if intent == "change" and metric in NUMERIC_METRICS:
         return "calculation"
     question_type = QUESTION_TYPES.get(intent, "text")
     # 연산이 정해졌는데 조회로 표시하면 3단계가 계산 에이전트를 붙이지 않는다.
@@ -53,6 +66,8 @@ def operation_for(
     text = squash(question)
     if intent == "compare":
         return "percentage_change" if compare_axis == "period" else "rank"
+    if intent == "change" and metric in NUMERIC_METRICS:
+        return "cagr" if _has(text, "연평균") else "percentage_change"
     if intent != "calc":
         if metric == "operating_profit" and _has(text, "영업이익률", "마진"):
             return "margin"
@@ -134,6 +149,7 @@ def build_calculation(
 
 
 __all__ = [
+    "NUMERIC_METRICS",
     "SUPPORTED_OPERATIONS",
     "TWO_OPERAND_OPERATIONS",
     "TWO_PERIOD_OPERATIONS",
