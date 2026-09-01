@@ -163,3 +163,36 @@ def test_retry_search_changes_query_and_preserves_original_question():
     assert update["search_query"] != state["search_query"]
     assert state["original_question"] == "original question"
     assert update["search_attempts"] == 1
+
+
+def test_stage2_executes_query_plan_sequentially_and_aggregates_documents():
+    state = _state()
+    base_filter = state["intent"]["manifest_filter"]
+    state["intent"]["query_plan"] = [
+        {
+            "subquery_id": "subquery-1",
+            "metric": "revenue",
+            "question_type": "lookup",
+            "calculation": {},
+            "time": {"years": [2025]},
+            "manifest_filter": base_filter,
+        },
+        {
+            "subquery_id": "subquery-2",
+            "metric": "operating_profit",
+            "question_type": "lookup",
+            "calculation": {},
+            "time": {"years": [2025]},
+            "manifest_filter": base_filter,
+        },
+    ]
+
+    result = build_stage2_node(
+        retriever=InMemoryRetriever(DOCUMENTS, vector_scores={"samsung-2025-revenue": 1.0}),
+        config=RetrievalConfig(final_limit=2),
+    )(state)["stage2_result"]
+
+    assert result["status"] == "ok"
+    assert [item["subquery_id"] for item in result["subresults"]] == ["subquery-1", "subquery-2"]
+    assert len(result["subresults"]) == 2
+    assert result["cited_documents"]
