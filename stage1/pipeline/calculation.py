@@ -23,7 +23,10 @@ QUESTION_TYPES = {
 }
 
 
-def canonical_question_type(intent: str) -> str:
+def canonical_question_type(intent: str, *, compare_axis: str = "") -> str:
+    # 같은 대상의 기간 비교는 순위 매기기가 아니라 증감 계산이다.
+    if intent == "compare" and compare_axis == "period":
+        return "calculation"
     return QUESTION_TYPES.get(intent, "text")
 
 
@@ -31,12 +34,14 @@ def _has(text: str, *cues: str) -> bool:
     return any(squash(cue) in text for cue in cues)
 
 
-def operation_for(question: str, *, intent: str, metric: str | None) -> str | None:
+def operation_for(
+    question: str, *, intent: str, metric: str | None, compare_axis: str = ""
+) -> str | None:
     """Map explicit Korean calculation cues to Stage3's whitelist."""
 
     text = squash(question)
     if intent == "compare":
-        return "rank"
+        return "percentage_change" if compare_axis == "period" else "rank"
     if intent != "calc":
         if metric == "operating_profit" and _has(text, "영업이익률", "마진"):
             return "margin"
@@ -96,8 +101,9 @@ def build_calculation(
     *,
     denominator_metric: str | None = None,
     metric_matches: list[str] | None = None,
+    compare_axis: str = "",
 ) -> dict[str, Any]:
-    operation = operation_for(question, intent=intent, metric=metric)
+    operation = operation_for(question, intent=intent, metric=metric, compare_axis=compare_axis)
     if operation is None:
         return {}
     if denominator_metric is None:

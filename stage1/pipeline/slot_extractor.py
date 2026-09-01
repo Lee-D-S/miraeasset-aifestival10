@@ -40,6 +40,8 @@ _FUNDRAISING_INSTRUMENTS: dict[str, list[str]] = {
 @dataclass
 class SlotResult:
     intent: str = "unknown"
+    # compare 의도의 비교 축. entity=기업 간, period=같은 대상의 기간 간.
+    compare_axis: str = ""
     question_type: str = "text"
     calculation: dict[str, Any] = field(default_factory=dict)
     years: list[int] = field(default_factory=list)
@@ -79,10 +81,15 @@ def extract(pre: PreprocessResult, entities: EntityResult, index: CorpusIndex) -
     _extract_basis(sq, slots, cfg)
     _extract_correction(sq, slots, cfg)
     _extract_intent(sq, slots, entities, cfg)
+    slots.compare_axis = resolve_compare_axis(slots, entities)
     from .calculation import build_calculation, canonical_question_type
-    slots.question_type = canonical_question_type(slots.intent)
+    slots.question_type = canonical_question_type(slots.intent, compare_axis=slots.compare_axis)
     slots.calculation = build_calculation(
-        slots.intent, text, slots.metric, metric_matches=slots.metric_matches
+        slots.intent,
+        text,
+        slots.metric,
+        metric_matches=slots.metric_matches,
+        compare_axis=slots.compare_axis,
     )
     _resolve_time_mode(sq, slots, cfg)
     return slots
@@ -269,3 +276,19 @@ def _extract_intent(sq: str, slots: SlotResult, entities: EntityResult, cfg: Any
 
     if entities.corps or entities.sector:
         slots.intent = "lookup"
+
+
+def resolve_compare_axis(slots: SlotResult, entities: EntityResult) -> str:
+    """비교 대상이 기업인지 기간인지 정한다.
+
+    같은 기업의 두 시점을 비교하는 질의는 순위(rank)가 아니라 증감 계산이라,
+    3단계가 기업 비교 경로로 보내지 않도록 여기서 축을 남긴다.
+    """
+    if slots.intent != "compare":
+        return ""
+    target_count = len(entities.corps) + (len(entities.sector_members) if entities.sector else 0)
+    if target_count >= 2 or entities.sector:
+        return "entity"
+    if len(slots.years) >= 2:
+        return "period"
+    return ""

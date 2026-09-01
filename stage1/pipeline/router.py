@@ -129,7 +129,7 @@ def _missing_slots(entities: EntityResult, slots: SlotResult, build: BuildResult
     missing: list[str] = []
     target_count = len(entities.corps) + (len(entities.sector_members) if entities.sector else 0)
 
-    if slots.intent == "compare" and target_count < 2:
+    if slots.intent == "compare" and slots.compare_axis != "period" and target_count < 2:
         missing.append("two_targets")
     if slots.intent in ("calc", "change") and len(slots.years) < 2 and not slots.prefer_latest:
         missing.append("two_periods")

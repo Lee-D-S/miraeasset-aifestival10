@@ -38,13 +38,16 @@ def build_intent(
 
         llm_used = fill_slots(pre, entities, slots, index, client=llm_client)
 
-    slots.question_type = canonical_question_type(slots.intent)
+    # LLM이 기업·연도를 새로 채웠을 수 있어 비교 축을 다시 정한다.
+    slots.compare_axis = slot_extractor.resolve_compare_axis(slots, entities)
+    slots.question_type = canonical_question_type(slots.intent, compare_axis=slots.compare_axis)
     if not slots.calculation:
         slots.calculation = build_calculation(
             slots.intent,
             pre.text,
             slots.metric,
             metric_matches=slots.metric_matches,
+            compare_axis=slots.compare_axis,
         )
 
     build = filter_builder.build(entities, slots, index)
