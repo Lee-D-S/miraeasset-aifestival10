@@ -35,3 +35,5 @@
 {"id": "G35", "question": "삼성전자의 2025년 부채비율은?", "expect": {"route": "ok", "intent": "lookup", "question_type": "lookup", "metric": "total_assets", "missing_slots": [], "manifest_filter": {"corp_names": ["삼성전자"], "doc_group": "periodic", "base_years": [2025]}}}
 {"id": "G36", "question": "삼성전자의 2025년 순이익률은?", "expect": {"route": "ok", "metric": "net_income", "question_type": "calculation", "calculation": {"operation": "ratio_percent", "metric": "net_income", "denominator_metric": "revenue"}, "missing_slots": []}}
 {"id": "G37", "question": "현대차의 2025년 자기자본비율은?", "expect": {"route": "ok", "intent": "lookup", "metric": "total_assets", "missing_slots": []}}
+{"id": "G38", "question": "삼성전자의 최근 3년 매출액을 알려줘", "expect": {"route": "ok", "metric": "revenue", "manifest_filter": {"corp_names": ["삼성전자"], "doc_group": "periodic", "doc_subtype": "annual", "base_years": [2023, 2024, 2025], "base_months": [12]}}}
+{"id": "G39", "question": "현대차의 지난 분기 영업이익은?", "expect": {"route": "ok", "metric": "operating_profit", "missing_slots": [], "manifest_filter": {"corp_names": ["현대자동차"], "doc_group": "periodic", "doc_subtype": "quarter", "base_years": [2026], "base_months": [3]}}}

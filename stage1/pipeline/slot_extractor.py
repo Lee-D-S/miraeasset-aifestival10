@@ -23,6 +23,9 @@ _RANGE = re.compile(r"((?:19|20)\d{2})\s*년?\s*(?:~|부터|에서)\s*((?:19|20)
 _QUARTER = re.compile(r"(?<!\d)([1-4])\s*(?:/\s*4)?\s*분기")
 _QUARTER_Q = re.compile(r"(?<![a-z0-9])([1-4])\s*q(?![a-z])", re.IGNORECASE)
 _QUARTER_ALT = re.compile(r"(?<![a-z0-9])q\s*([1-4])(?!\d)", re.IGNORECASE)
+# squash된 질의에 쓴다. 공백이 이미 제거돼 있어 \s*가 필요 없다.
+_RECENT_N_YEARS = re.compile(r"(?:최근|지난)([1-9])개?년")
+_LAST_QUARTER = re.compile(r"(?:지난|직전|전|최근)분기")
 
 _FUNDRAISING_INSTRUMENTS: dict[str, list[str]] = {
     "유상증자": ["유상증자결정"],
@@ -80,6 +83,7 @@ def extract(pre: PreprocessResult, entities: EntityResult, index: CorpusIndex) -
 
     _extract_years(text, sq, slots, cfg)
     _extract_period(text, sq, slots, cfg)
+    _extract_relative_period(sq, slots, cfg)
     _extract_metric(sq, slots, index)
     _extract_derived_metric(sq, slots, index)
     _extract_doc_keywords(sq, slots, index)
@@ -175,6 +179,52 @@ def _extract_period(text: str, sq: str, slots: SlotResult, cfg: Any) -> None:
         slots.doc_subtype = "annual"
         slots.base_months = [12]
         slots.period_explicit = True
+
+
+def _extract_relative_period(sq: str, slots: SlotResult, cfg: Any) -> None:
+    """'최근 3년'·'지난 분기'를 코퍼스에 실제로 있는 기간으로 옮긴다.
+
+    기준점을 reference_date에서 세면 안 된다. 기준일이 2026-03-31이라 '최근 3년'이
+    2024~2026이 되는데 FY2026 사업보고서가 없어 한 해가 빈 채로 조회된다.
+    """
+    if slots.years or slots.period_explicit:
+        return
+
+    available = cfg.bounds.get("fiscal", {}).get("available_periods", {})
+
+    recent = _RECENT_N_YEARS.search(sq)
+    if recent:
+        annual_years = sorted(int(y) for y, months in available.items() if 12 in months)
+        if annual_years:
+            span = int(recent.group(1))
+            anchor = annual_years[-1]
+            slots.years = [y for y in annual_years if anchor - span < y <= anchor]
+            slots.relative_terms.append(recent.group(0))
+            slots.prefer_latest = False
+            slots.notes.append(
+                f"'{recent.group(0)}'을 코퍼스에 있는 "
+                f"FY{slots.years[0]}~FY{slots.years[-1]}로 봅니다."
+            )
+        return
+
+    if _LAST_QUARTER.search(sq):
+        quarters = [
+            (int(year), month)
+            for year, months in available.items()
+            for month in months
+            if month in (3, 9)
+        ]
+        if quarters:
+            year, month = max(quarters)
+            slots.years = [year]
+            slots.doc_subtype = "quarter"
+            slots.base_months = [month]
+            slots.period_explicit = True
+            slots.prefer_latest = False
+            slots.relative_terms.append("지난 분기")
+            slots.notes.append(
+                f"'지난 분기'를 코퍼스의 최신 분기보고서(FY{year} {month}월)로 봅니다."
+            )
 
 
 def _resolve_time_mode(sq: str, slots: SlotResult, cfg: Any) -> None:
