@@ -45,8 +45,8 @@ def test_answer_prompt_compacts_citations_without_changing_result_inputs():
     payload_text = client.message.split("자료:\n", 1)[-1]
     payload = json.loads(payload_text)
 
-    assert len(payload["citations"]) == 8
-    assert all(len(item["evidence"]) <= 800 for item in payload["citations"])
+    assert len(payload["citations"]) == 4
+    assert all(len(item["evidence"]) <= 500 for item in payload["citations"])
     assert len(citations) == 20
 
 
