@@ -146,6 +146,8 @@ class Stage3Fact:
     kind: str = "numeric"
     currency: str | None = None
     table_context: dict[str, Any] = field(default_factory=dict)
+    aggregation_scope: str = "unknown"
+    display_value: str | None = None
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "Stage3Fact":
@@ -170,6 +172,8 @@ class Stage3Fact:
             kind=str(value.get("kind", "numeric")),
             currency=str(value["currency"]) if value.get("currency") is not None else None,
             table_context=dict(value.get("table_context", {})),
+            aggregation_scope=str(value.get("aggregation_scope", "unknown")),
+            display_value=str(value["display_value"]) if value.get("display_value") is not None else None,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -192,6 +196,8 @@ class Stage3Fact:
             "kind": self.kind,
             "currency": self.currency,
             "table_context": dict(self.table_context),
+            "aggregation_scope": self.aggregation_scope,
+            "display_value": self.display_value,
         }
 
 

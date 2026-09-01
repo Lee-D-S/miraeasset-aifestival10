@@ -39,6 +39,38 @@ class FactExtractionTests(unittest.TestCase):
         self.assertIn("매출액", numeric.evidence)
         self.assertEqual(date.value, "2025년 3월 2일")
 
+    def test_normalizes_compound_korean_amount_and_preserves_display(self):
+        bundle = adapt_stage2_bundle([{
+            "id": "compound",
+            "source": "report.xml",
+            "text": "2024년 연결 매출액은 300조 8,709억원이다.",
+            "metadata": {"corp_name": "기업A", "report_period": "2024-12"},
+        }])
+
+        fact = next(item for item in extract_facts(bundle.documents, self.intent) if item.metric == "revenue")
+
+        self.assertEqual(fact.value, 300_870_900_000_000.0)
+        self.assertEqual(fact.normalized_value, 300_870_900_000_000.0)
+        self.assertEqual(fact.raw_value, "300조 8,709억원")
+        self.assertEqual(fact.display_value, "300조 8,709억원")
+        self.assertEqual(fact.unit, "원")
+        self.assertEqual(fact.currency, "KRW")
+
+    def test_classifies_total_and_segment_scopes_from_evidence(self):
+        bundle = adapt_stage2_bundle([{
+            "id": "scoped",
+            "source": "report.xml",
+            "text": (
+                "2025년 연결 매출액 300조원. "
+                "부문별 매출현황 자동차 매출액 200조원."
+            ),
+            "metadata": {"corp_name": "기업A", "report_period": "2025-12", "basis": "연결"},
+        }])
+
+        facts = [item for item in extract_facts(bundle.documents, self.intent) if item.metric == "revenue"]
+
+        self.assertEqual({item.aggregation_scope for item in facts}, {"total", "segment"})
+
     def test_normalization_applies_stage1_period_and_basis(self):
         bundle = adapt_stage2_bundle([{"id": "d1", "text": "매출액 100억원", "metadata": {"corp_name": "기업A"}}])
         facts, warnings = normalize_facts(extract_facts(bundle.documents, self.intent), self.intent)

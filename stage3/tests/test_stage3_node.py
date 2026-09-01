@@ -136,6 +136,19 @@ class Stage3NodeTests(unittest.TestCase):
         self.assertEqual(result["status"], "success")
         self.assertEqual(result["facts"][0]["metric"], "ratio")
 
+    def test_lookup_rejects_unrequested_segment_fact_when_total_is_requested(self):
+        state = _state()
+        state["stage2_result"]["documents"] = [{
+            "id": "segment-only",
+            "source": "segment.xml",
+            "text": "2025년 연결 사업부문별 매출액 자동차 100억원",
+            "metadata": {"corp_name": "기업A", "report_period": "2025-12", "basis": "연결"},
+        }]
+
+        result = build_stage3_node()(state)["stage3_result"]
+
+        self.assertEqual(result["status"], "insufficient_evidence")
+
     def test_multi_period_trend_uses_first_and_last_period_and_keeps_series(self):
         state = _state(
             question_type="calculation",

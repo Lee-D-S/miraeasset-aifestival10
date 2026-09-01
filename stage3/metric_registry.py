@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 METRIC_SPECS: dict[str, dict[str, Any]] = {
     "revenue": {"numeric_labels": ("매출액", "매출")},
     "operating_profit": {"numeric_labels": ("영업이익", "영업손익")},

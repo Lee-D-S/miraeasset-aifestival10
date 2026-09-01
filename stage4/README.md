@@ -2,6 +2,11 @@
 
 Stage4는 Stage3 답변의 수치·계산식·출처·citation·의미를 검증한다. 새로운 문서를 검색하거나 Fact를 다시 생성하지 않는다.
 
+Stage4는 `DIS164_STRICT_GROUNDING_V2`가 활성화된 경우 Stage3 Intent의
+기업·기간·metric·연결/별도 기준·집계 수준과 일치하는 Fact만 numeric
+grounding 대상으로 사용한다. 같은 문서에 있는 다른 부문·다른 기간의
+숫자만 답변에 포함되어 있으면 검증을 통과시키지 않는다.
+
 ```text
 Stage3 result + answer
 → numeric validation

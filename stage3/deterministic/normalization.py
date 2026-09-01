@@ -8,6 +8,7 @@ from stage3.contracts import Stage3Fact, Stage3Intent
 
 UNIT_MULTIPLIERS: dict[str, float] = {
     "조원": 1_000_000_000_000,
+    "조": 1_000_000_000_000,
     "십억원": 1_000_000_000,
     "억원": 100_000_000,
     "백만원": 1_000_000,

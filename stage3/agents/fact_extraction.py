@@ -12,6 +12,7 @@ from stage3.metric_registry import (
     numeric_labels_for,
     section_labels_for,
 )
+from stage3.grounding import aggregation_scope_for_context
 from stage3.parsing.structured import parse_structured_evidence
 from stage3.state import Stage3GraphState
 
@@ -23,7 +24,7 @@ METRIC_LABELS: dict[str, tuple[str, ...]] = {
 }
 
 ALL_LABELS = tuple(dict.fromkeys(label for labels in METRIC_LABELS.values() for label in labels))
-UNIT_PATTERN = r"조원|십억원|억원|백만원|천만원|만원|천원|원|%"
+UNIT_PATTERN = r"조원|조|십억원|억원|백만원|천만원|만원|천원|원|%"
 NUMBER_PATTERN = r"(?:△|▲|-)?\s*\d[\d,]*(?:\.\d+)?"
 DATE_PATTERN = re.compile(r"(?:20\d{2}년\s*\d{1,2}월\s*\d{1,2}일?|20\d{2}[-./]\s*\d{1,2}[-./]\s*\d{1,2}|20\d{2}년\s*(?:[1-4]분기|상반기|하반기|연간)|20\d{2}년(?!\s*\d{1,2}월))")
 
@@ -73,6 +74,28 @@ def _parse_numeric(value: str) -> float:
     cleaned = cleaned.lstrip("△▲-")
     number = float(cleaned)
     return -number if negative else number
+
+
+_COMPOUND_TAIL = re.compile(rf"\s*(?P<minor>{NUMBER_PATTERN})\s*억\s*(?:원)?")
+
+
+def _compound_amount(
+    source_text: str,
+    match: re.Match[str],
+) -> tuple[float, str, int] | None:
+    """Parse a major 조 amount followed by a minor 억 amount."""
+
+    if match.group("unit") not in {"조", "조원"}:
+        return None
+    tail = _COMPOUND_TAIL.match(source_text, match.end())
+    if tail is None:
+        return None
+    major = _parse_numeric(match.group("value"))
+    minor = _parse_numeric(tail.group("minor"))
+    sign = -1.0 if major < 0 or minor < 0 else 1.0
+    canonical = sign * (abs(major) * 1_000_000_000_000 + abs(minor) * 100_000_000)
+    display = source_text[match.start("value") : tail.end()].strip()
+    return canonical, display, tail.end()
 
 
 def _fact_currency(unit: str, context: dict, metadata: dict) -> str | None:
@@ -179,6 +202,12 @@ def extract_facts(documents: Iterable[Stage3Document], intent: Stage3Intent) -> 
                 raw_literal = match.group("value").strip()
                 raw_value = _parse_numeric(raw_literal)
                 unit = match.group("unit") or str(context.get("unit") or "")
+                compound = _compound_amount(source_text, match)
+                display_value = None
+                if compound is not None:
+                    raw_value, display_value, compound_end = compound
+                    unit = "원"
+                fact_raw_value = display_value or raw_literal
                 if not unit and "원" in match.group("label"):
                     unit = "원"
                 if not unit and ("%" in match.group("label") or "비율" in match.group("label") or "율" in match.group("label")):
@@ -191,7 +220,7 @@ def extract_facts(documents: Iterable[Stage3Document], intent: Stage3Intent) -> 
                     metric=metric,
                     label=match.group("label"),
                     value=raw_value,
-                    raw_value=raw_literal,
+                    raw_value=fact_raw_value,
                     unit=unit,
                     normalized_value=normalize_number(raw_value, unit),
                     period=period,
@@ -201,10 +230,16 @@ def extract_facts(documents: Iterable[Stage3Document], intent: Stage3Intent) -> 
                     source=document.source,
                     evidence=evidence,
                     span_start=None if context else match.start(),
-                    span_end=None if context else match.end(),
+                    span_end=None if context else (compound_end if compound is not None else match.end()),
                     confidence=0.95 if context else (0.9 if unit else 0.7),
                     currency=_fact_currency(unit, context, metadata),
                     table_context=dict(context),
+                    aggregation_scope=aggregation_scope_for_context(
+                        label=match.group("label"),
+                        evidence=evidence,
+                        table_context=context,
+                    ),
+                    display_value=display_value,
                 )
                 key = (document.id, metric, match.group("label"), period, raw_literal)
                 existing_index = numeric_index.get(key)

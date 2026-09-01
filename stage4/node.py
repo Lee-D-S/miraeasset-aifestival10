@@ -9,6 +9,9 @@ from stage4.citation import validate_citations
 from stage4.contracts import Stage4Result
 from stage4.numeric import validate_numeric_answer
 from stage4.semantic import validate_semantics
+from stage3.adapters.stage1 import adapt_stage1_intent
+from stage3.contracts import Stage3Fact
+from stage3.grounding import matching_facts, strict_grounding_enabled
 
 
 _SAFE_ANSWERS = {
@@ -81,12 +84,23 @@ def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any
             # Do not let the deterministic local fallback be rejected because
             # the legacy number parser ignores Korean unit-formatted numbers.
             answer_digits = re.sub(r"\D", "", answer)
+            grounded_facts = [
+                Stage3Fact.from_dict(fact)
+                for fact in stage3_result.get("facts", [])
+                if isinstance(fact, Mapping)
+            ]
+            stage3_intent = adapt_stage1_intent(intent, question=question)
+            if strict_grounding_enabled() and stage3_intent.metric:
+                exact_facts = matching_facts(grounded_facts, stage3_intent)
+                if not exact_facts and not stage3_result.get("linked_events"):
+                    numeric["pass"] = False
+                    numeric.setdefault("errors", []).append("requested Fact gate failed")
+                grounded_facts = exact_facts
             grounded_fact = next(
                 (
-                    fact for fact in stage3_result.get("facts", [])
-                    if isinstance(fact, Mapping)
-                    and str(fact.get("kind", "numeric")).lower() not in {"date", "text", "field"}
-                    and (fact_digits := re.sub(r"\D", "", str(fact.get("value", ""))))
+                    fact for fact in grounded_facts
+                    if fact.kind not in {"date", "text", "field"}
+                    and (fact_digits := re.sub(r"\D", "", str(fact.value)))
                     and fact_digits in answer_digits
                 ),
                 None,

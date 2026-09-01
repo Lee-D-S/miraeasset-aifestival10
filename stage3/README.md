@@ -7,6 +7,21 @@ LangGraph 노드다.
 Stage3는 검색, 임베딩, rerank, 최종 답변 검증, API JSON 생성을 담당하지 않는다.
 이 기능들은 각각 Stage2와 Stage4 또는 외부 통합 그래프의 책임이다.
 
+## Deterministic grounding gate
+
+Numeric Facts retain an `aggregation_scope` of `total`, `segment`, `product`,
+`region`, or `unknown`. Stage3 selects only the scope requested by the
+question; a total-revenue lookup cannot be satisfied by a business-segment
+revenue row. The requested company, period, metric, basis, and scope must all
+be explicitly present in the Fact or its document metadata. If any required
+condition is missing, Stage3 returns `insufficient_evidence` rather than
+using an unrelated number.
+
+Korean compound amounts such as `300조 8,709억원` are normalized
+deterministically to canonical KRW while retaining the original display text
+for grounded answers. `DIS164_STRICT_GROUNDING_V2` controls the gate and is
+enabled by default; setting it to `false` is a temporary rollback switch.
+
 외부 4-stage 그래프의 전체 실행 State는 `C:/projects/dis-164/shared_state.py`의
 `AgentState`를 사용한다. 이 문서의 `Stage3NodeState`/`Stage3NodeOutput`은 그
 전체 State 중 Stage3가 읽고 쓰는 부분 계약이며, Stage3 노드는 전체 State를

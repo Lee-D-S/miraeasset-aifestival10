@@ -7,6 +7,7 @@ from typing import Any
 
 from stage3.contracts import AgentResult, Stage3Fact, Stage3Intent
 from stage3.state import Stage3GraphState
+from stage3.grounding import requested_aggregation_scope
 
 
 def _citation_lines(citations: list[dict[str, Any]]) -> list[str]:
@@ -30,6 +31,7 @@ def _relevant_facts(intent: Stage3Intent, facts: list[Stage3Fact], limit: int | 
     companies = {str(company).strip().lower() for company in intent.companies if str(company).strip()}
     companies.update(str(company).strip().lower() for company in intent.manifest_filter.get("corp_names", []) if str(company).strip())
     basis = str(intent.basis or "").strip().lower()
+    requested_scope = requested_aggregation_scope(intent)
     excluded_terms = {
         "revenue": ("매출채권", "매출원가", "매출총이익", "매출채권회전율"),
     }.get(requested_metric, ())
@@ -52,6 +54,10 @@ def _relevant_facts(intent: Stage3Intent, facts: list[Stage3Fact], limit: int | 
             points += 20
         if basis and str(fact.basis or "").strip().lower() == basis:
             points += 10
+        if fact.kind != "numeric" or fact.aggregation_scope == requested_scope:
+            points += 25
+        elif requested_scope != "unknown":
+            points -= 1_000
         if fact.kind != "date":
             points += 5
         if re.search(r"\d", value):
@@ -118,7 +124,7 @@ def _lookup_claim(fact: Stage3Fact, intent: Stage3Intent, citations: list[dict[s
     ) or "요청 기간"
     basis = fact.basis or intent.basis or "공시 기준"
     metric = fact.label or fact.metric or intent.metric or "요청 지표"
-    value = f"{fact.value}{fact.unit}".strip()
+    value = fact.display_value or f"{fact.value}{fact.unit}"
     citation = _citation_for_fact(fact, citations)
     source_line = ""
     if citation:

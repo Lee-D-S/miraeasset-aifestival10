@@ -17,6 +17,7 @@ from stage3.contracts import Stage3Fact, Stage3Intent, Stage3Result
 from stage3.deterministic.calculation_planner import SUPPORTED_OPERATIONS, build_calculation_plan
 from stage3.deterministic.calculations import calculate_facts
 from stage3.deterministic.normalization import normalize_facts
+from stage3.grounding import matching_facts, strict_grounding_enabled
 from stage3.state import Stage3NodeOutput
 from stage3.validation import validate_stage3_result
 
@@ -126,10 +127,10 @@ def _successful_analysis(
     if not (facts or events):
         return False
     if question_type in {"lookup", "text", "exists", "event"} and facts:
+        if strict_grounding_enabled() and intent.metric and not matching_facts(facts, intent) and not events:
+            return False
         requested = str(getattr(intent, "metric", "") or "").strip().lower()
-        if requested and not any(
-            _fact_matches_requested_metric(f, requested) for f in facts
-        ) and not events:
+        if requested and not any(_fact_matches_requested_metric(f, requested) for f in facts) and not events:
             return False
     return True
 
