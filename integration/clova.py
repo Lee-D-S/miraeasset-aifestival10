@@ -11,7 +11,12 @@ from typing import Any
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from integration.rate_limit import ClovaRateLimiter, RateLimitBlocked, estimate_tokens
+from integration.rate_limit import (
+    ClovaRateLimiter,
+    RateLimitBlocked,
+    estimate_tokens,
+    remaining_question_seconds,
+)
 
 
 def _env_float(name: str, default: float) -> float:
@@ -49,7 +54,7 @@ class ClovaChatClient:
         self.model = model or os.getenv("CLOVA_CHAT_MODEL", "HCX-DASH-002")
         self.timeout = timeout if timeout is not None else _env_float("CLOVA_CHAT_TIMEOUT", 60.0)
         self.max_retries = max_retries if max_retries is not None else _env_int("CLOVA_CHAT_MAX_RETRIES", 1)
-        self.rate_limit_max_wait = _env_float("CLOVA_RATE_LIMIT_MAX_WAIT", 15.0)
+        self.rate_limit_max_wait = _env_float("CLOVA_RATE_LIMIT_MAX_WAIT", 60.0)
         self.last_rate_limit: dict[str, str] = {}
         self.last_provider_status: dict[str, Any] = {}
         self.rate_limiter = rate_limiter or ClovaRateLimiter(default_qpm=90, default_tpm=80000, min_interval=_env_float("CLOVA_CHAT_MIN_INTERVAL", 0.2))
@@ -99,6 +104,9 @@ class ClovaChatClient:
                     "limiter": self.rate_limiter.snapshot(),
                 }
                 if error.retry_after and error.retry_after <= self.rate_limit_max_wait and attempt < self.max_retries:
+                    remaining = remaining_question_seconds()
+                    if remaining is not None and error.retry_after > remaining:
+                        raise RateLimitBlocked("질의 전체 rate-limit 대기 한도를 초과했습니다.", error.retry_after) from error
                     time.sleep(error.retry_after)
                     continue
                 raise
@@ -132,7 +140,11 @@ class ClovaChatClient:
                 reset = error.headers.get("x-ratelimit-reset-requests") or error.headers.get("Retry-After")
                 match = re.search(r"\d+(?:\.\d+)?", str(reset or ""))
                 requested_wait = float(match.group(0)) if match else 2.0 ** attempt
-                time.sleep(min(max(requested_wait, 1.0), self.rate_limit_max_wait))
+                wait = min(max(requested_wait, 1.0), self.rate_limit_max_wait)
+                remaining = remaining_question_seconds()
+                if remaining is not None and wait > remaining:
+                    raise RateLimitBlocked("질의 전체 rate-limit 대기 한도를 초과했습니다.", wait) from error
+                time.sleep(wait)
         if payload.get("status", {}).get("code") not in (None, "20000"):
             raise RuntimeError(f"CLOVA {operation} request failed: {payload.get('status')}")
         answer = _content(payload.get("result", payload))

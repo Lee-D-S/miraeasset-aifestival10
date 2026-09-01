@@ -1,3 +1,6 @@
+from io import BytesIO
+from urllib.error import HTTPError
+
 from integration.rate_limit import ClovaRateLimiter, RateLimitBlocked, parse_reset_seconds
 from stage2.embedding import ClovaEmbeddings, ClovaQueryEmbedding
 from stage2.json_fixture import JsonFixtureRetriever
@@ -76,3 +79,38 @@ def test_embedding_rate_limit_is_separate_from_db_not_found_in_stage2_trace(monk
     assert result["status"] == "rate_limited"
     assert result["provider_status"]["status"] == "rate_limited"
     assert result["provider_status"]["operation"] == "embedding"
+
+
+def test_embedding_retries_provider_429_with_retry_after(monkeypatch):
+    monkeypatch.setenv("CLOVA_API_KEY", "test-key")
+    limiter = ClovaRateLimiter(default_qpm=60, default_tpm=40000)
+    embedder = ClovaQueryEmbedding(rate_limiter=limiter)
+    waits = []
+    calls = {"count": 0}
+
+    class Response:
+        headers = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return ('{"status":{"code":"20000"},"result":{"embedding":[' + ','.join(['0.1'] * 1024) + ']}}').encode()
+
+    def fake_urlopen(*_args, **_kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise HTTPError("https://example.test", 429, "rate limit", {"Retry-After": "3"}, BytesIO(b"{}"))
+        return Response()
+
+    monkeypatch.setattr("stage2.embedding.urlopen", fake_urlopen)
+    monkeypatch.setattr("stage2.embedding.time.sleep", waits.append)
+
+    vector = embedder("매출액")
+
+    assert len(vector) == 1024
+    assert calls["count"] == 2
+    assert waits == [3.0]

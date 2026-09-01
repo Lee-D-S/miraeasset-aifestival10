@@ -101,7 +101,11 @@ Stage1 `query_plan`에 독립 subquery가 있으면 노드는 이를 순서대�
 실제 CLOVA query embedding timeout은 `CLOVA_EMBEDDING_TIMEOUT`(기본 30초)으로
 설정한다. 답변 생성·semantic validation은 `CLOVA_CHAT_TIMEOUT`(기본 60초), 429
 재시도 횟수는 `CLOVA_CHAT_MAX_RETRIES`(기본 1회), 재시도 대기 상한은
-`CLOVA_RATE_LIMIT_MAX_WAIT`(기본 15초)로 제한한다.
+`CLOVA_RATE_LIMIT_MAX_WAIT`(기본 60초)로 제한한다. 한 번의
+`StagePipeline.invoke()` 전체 rate-limit 대기는 300초 deadline을 공유하며,
+초과하면 `rate_limited`로 종료한다. Embedding도 동일한 reset/Retry-After
+기반 내부 재시도를 사용하고 `CLOVA_EMBEDDING_MAX_RETRIES`(기본 1회)로
+제한한다.
 각 adapter는 마지막 응답의 `x-ratelimit-*` 헤더를 `last_rate_limit`에 보존한다.
 호출 전 process-local limiter가 embedding은 60 QPM/40,000 TPM, chat은 90 QPM/80,000
 TPM의 기본 예산을 기준으로 부족한 요청을 차단한다. 실제 provider header를 관찰하면

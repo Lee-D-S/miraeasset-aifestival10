@@ -8,6 +8,7 @@ from typing import Any
 from langchain_core.messages import AnyMessage
 
 from integration.graph import StageNodes, build_graph
+from integration.rate_limit import question_rate_limit_budget
 from shared_state import AgentState, make_initial_agent_state
 
 
@@ -30,7 +31,8 @@ class StagePipeline:
             question=question,
             messages=messages,
         )
-        return self.graph.invoke(initial_state, config={"recursion_limit": self.recursion_limit})
+        with question_rate_limit_budget():
+            return self.graph.invoke(initial_state, config={"recursion_limit": self.recursion_limit})
 
 
 __all__ = ["StagePipeline"]

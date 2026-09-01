@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections import deque
+from contextlib import contextmanager
+from contextvars import ContextVar
 import re
 import threading
 import time
@@ -13,6 +15,7 @@ _PROVIDER_RATE_LIMIT_RE = re.compile(
     r"RateLimitBlocked|rate[_ -]?limit|remaining[_ ]tokens|(?:HTTP|status)[ _-]*429",
     re.IGNORECASE,
 )
+_QUESTION_DEADLINE: ContextVar[float | None] = ContextVar("dis164_question_deadline", default=None)
 
 
 def estimate_tokens(value: object) -> int:
@@ -33,6 +36,20 @@ class RateLimitBlocked(RuntimeError):
     def __init__(self, reason: str, retry_after: float = 0.0):
         super().__init__(reason)
         self.retry_after = retry_after
+
+
+@contextmanager
+def question_rate_limit_budget(seconds: float = 300.0):
+    token = _QUESTION_DEADLINE.set(time.monotonic() + max(float(seconds), 0.1))
+    try:
+        yield
+    finally:
+        _QUESTION_DEADLINE.reset(token)
+
+
+def remaining_question_seconds() -> float | None:
+    deadline = _QUESTION_DEADLINE.get()
+    return None if deadline is None else max(deadline - time.monotonic(), 0.0)
 
 
 def is_rate_limit_error(error: BaseException) -> bool:
@@ -110,10 +127,12 @@ class ClovaRateLimiter:
             if self._remaining_tokens is not None and self._remaining_tokens < estimated_tokens:
                 raise RateLimitBlocked("CLOVA remaining tokens가 요청 예산보다 작아 호출을 차단했습니다.")
             if len(self._calls) >= self.default_qpm:
-                raise RateLimitBlocked("로컬 QPM 예산을 초과해 CLOVA 호출을 차단했습니다.")
+                retry_after = max(60.0 - (now - self._calls[0][0]), 0.0) if self._calls else 60.0
+                raise RateLimitBlocked("로컬 QPM 예산을 초과해 CLOVA 호출을 차단했습니다.", retry_after)
             used_tokens = sum(tokens for _, tokens in self._calls)
             if used_tokens + estimated_tokens > self.default_tpm:
-                raise RateLimitBlocked("로컬 TPM 예산을 초과해 CLOVA 호출을 차단했습니다.")
+                retry_after = max(60.0 - (now - self._calls[0][0]), 0.0) if self._calls else 60.0
+                raise RateLimitBlocked("로컬 TPM 예산을 초과해 CLOVA 호출을 차단했습니다.", retry_after)
             if self.min_interval and now - self._last_call < self.min_interval:
                 raise RateLimitBlocked("CLOVA 호출 간 최소 간격 전이라 호출을 차단했습니다.", self.min_interval - (now - self._last_call))
             self._calls.append((now, estimated_tokens))
@@ -150,5 +169,7 @@ __all__ = [
     "estimate_tokens",
     "is_rate_limit_error",
     "parse_reset_seconds",
+    "question_rate_limit_budget",
     "rate_limit_event",
+    "remaining_question_seconds",
 ]

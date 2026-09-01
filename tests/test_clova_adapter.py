@@ -16,6 +16,7 @@ def test_clova_chat_adapter_parses_text_and_json_without_network(monkeypatch):
 
 
 def test_clova_chat_adapter_bounds_rate_limit_wait_and_labels_operation(monkeypatch):
+    monkeypatch.setenv("CLOVA_RATE_LIMIT_MAX_WAIT", "60")
     client = ClovaChatClient(api_key="test", max_retries=1, timeout=1)
     client.rate_limiter.min_interval = 0
     waits = []
@@ -34,7 +35,7 @@ def test_clova_chat_adapter_bounds_rate_limit_wait_and_labels_operation(monkeypa
     else:  # pragma: no cover - the adapter must fail after the bounded retry
         raise AssertionError("expected a bounded retry failure")
 
-    assert waits == [15.0]
+    assert waits == [60.0]
 
 
 def test_clova_chat_adapter_captures_rate_limit_headers(monkeypatch):
