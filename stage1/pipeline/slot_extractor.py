@@ -61,6 +61,10 @@ class SlotResult:
     metric: Optional[str] = None
     metric_confidence: Optional[str] = None
     metric_matches: list[str] = field(default_factory=list)
+    # 파생 비율 지표(부채비율 등)가 지정한 연산·분모.
+    derived_operation: Optional[str] = None
+    derived_denominator: Optional[str] = None
+    derived_lookup_only: bool = False
 
     basis: Optional[str] = None
     basis_explicit: bool = False
@@ -77,19 +81,30 @@ def extract(pre: PreprocessResult, entities: EntityResult, index: CorpusIndex) -
     _extract_years(text, sq, slots, cfg)
     _extract_period(text, sq, slots, cfg)
     _extract_metric(sq, slots, index)
+    _extract_derived_metric(sq, slots, index)
     _extract_doc_keywords(sq, slots, index)
     _extract_basis(sq, slots, cfg)
     _extract_correction(sq, slots, cfg)
     _extract_intent(sq, slots, entities, cfg)
+    if slots.derived_lookup_only:
+        # 문서에 값이 그대로 적히는 지표는 계산이 아니라 조회다. '비율'이라는 말만
+        # 보고 calc로 판정하면 3단계가 분자·분모를 찾다가 실패한다.
+        slots.intent = "lookup"
     slots.compare_axis = resolve_compare_axis(slots, entities)
     from .calculation import build_calculation, canonical_question_type
-    slots.question_type = canonical_question_type(slots.intent, compare_axis=slots.compare_axis)
     slots.calculation = build_calculation(
         slots.intent,
         text,
         slots.metric,
+        denominator_metric=slots.derived_denominator,
         metric_matches=slots.metric_matches,
         compare_axis=slots.compare_axis,
+        operation_override=slots.derived_operation,
+    )
+    slots.question_type = canonical_question_type(
+        slots.intent,
+        compare_axis=slots.compare_axis,
+        operation=slots.calculation.get("operation"),
     )
     _resolve_time_mode(sq, slots, cfg)
     return slots
@@ -220,6 +235,40 @@ def _extract_metric(sq: str, slots: SlotResult, index: CorpusIndex) -> None:
         slots.report_nm_contains = list(metric.get("report_nm_contains", []))
 
     slots.metric_matches = sorted(dict.fromkeys(slots.metric_matches))
+
+
+def _extract_derived_metric(sq: str, slots: SlotResult, index: CorpusIndex) -> None:
+    """'부채비율'처럼 한 단어가 분자·분모·연산을 함께 뜻하는 지표를 우선 적용한다.
+
+    검색용 metric은 3단계 레지스트리(STAGE1_METRICS)에 있는 키만 쓴다. 재무상태표
+    항목은 total_assets 하나로 검색하고, 3단계가 근거의 라벨을 보고 자산/부채/자본을
+    나눈다는 합의가 있어서 여기서 새 키를 만들지 않는다.
+    """
+    best: Optional[tuple[int, dict[str, Any]]] = None
+    for entry in index.config.metrics.get("derived_metrics", []):
+        for label in entry.get("labels", []):
+            key = squash(label)
+            if key and key in sq and (best is None or len(key) > best[0]):
+                best = (len(key), entry)
+
+    if best is None:
+        return
+
+    entry = best[1]
+    slots.metric = entry["metric"]
+    slots.derived_operation = entry.get("operation")
+    slots.derived_denominator = entry.get("denominator_metric")
+    slots.derived_lookup_only = bool(entry.get("lookup_only"))
+
+    base = next(
+        (m for m in index.config.metrics.get("metrics", []) if m["key"] == entry["metric"]),
+        None,
+    )
+    if base:
+        slots.metric_confidence = base.get("confidence")
+        slots.doc_group = base.get("doc_group")
+        slots.doc_group_candidates = list(base.get("doc_group_candidates", []))
+        slots.report_nm_contains = list(base.get("report_nm_contains", []))
 
 
 def _extract_doc_keywords(sq: str, slots: SlotResult, index: CorpusIndex) -> None:

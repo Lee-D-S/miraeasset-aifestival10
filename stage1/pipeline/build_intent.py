@@ -38,17 +38,25 @@ def build_intent(
 
         llm_used = fill_slots(pre, entities, slots, index, client=llm_client)
 
+    if slots.derived_lookup_only:
+        slots.intent = "lookup"
     # LLM이 기업·연도를 새로 채웠을 수 있어 비교 축을 다시 정한다.
     slots.compare_axis = slot_extractor.resolve_compare_axis(slots, entities)
-    slots.question_type = canonical_question_type(slots.intent, compare_axis=slots.compare_axis)
     if not slots.calculation:
         slots.calculation = build_calculation(
             slots.intent,
             pre.text,
             slots.metric,
+            denominator_metric=slots.derived_denominator,
             metric_matches=slots.metric_matches,
             compare_axis=slots.compare_axis,
+            operation_override=slots.derived_operation,
         )
+    slots.question_type = canonical_question_type(
+        slots.intent,
+        compare_axis=slots.compare_axis,
+        operation=slots.calculation.get("operation"),
+    )
 
     build = filter_builder.build(entities, slots, index)
     decision = router.decide(pre.squashed, entities, slots, build, index)
