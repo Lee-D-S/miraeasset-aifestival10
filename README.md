@@ -139,10 +139,16 @@ embedding timeout은 `CLOVA_EMBEDDING_TIMEOUT`, 답변·semantic timeout은
 `CLOVA_CHAT_TIMEOUT`, 429 재시도 대기 상한은 `CLOVA_RATE_LIMIT_MAX_WAIT`로 조정한다.
 실행 중 adapter의 `last_rate_limit`에서 API가 반환한 `x-ratelimit-*` 헤더를 확인할 수
 있으며, API key와 요청 본문은 기록하지 않는다.
-호출 전에는 process-local QPM·TPM limiter가 예상 입력·출력 토큰 예산과 provider 잔여량을
-확인해 한도 부족 요청을 차단한다.
-답변·semantic 출력 토큰 기본값은 각각 512·256이며 `CLOVA_ANSWER_MAX_TOKENS`와
-`CLOVA_SEMANTIC_MAX_TOKENS`로 조정할 수 있다.
+호출 전에는 Chat·Embedding이 공유하는 process-local QPM·TPM limiter가 예상
+입력·출력 토큰 예산과 provider 잔여량을 확인해 한도 부족 요청을 차단한다.
+`CLOVA_RATE_LIMIT_QPM`, `CLOVA_RATE_LIMIT_TPM`, `CLOVA_CHAT_MIN_INTERVAL`로
+보수적인 로컬 한도를 조정할 수 있다. provider가 보낸 rate-limit header와 로컬 차단
+상태는 Stage trace의 `provider_status`에 구조화해 남긴다.
+답변·semantic 출력 토큰 기본값은 각각 256·128이며 `CLOVA_ANSWER_MAX_TOKENS`와
+`CLOVA_SEMANTIC_MAX_TOKENS`로 조정할 수 있다. 답변 prompt는 기본적으로 Fact 8개,
+출처 4개·출처별 근거 500자까지, semantic prompt는 Fact 10개·출처 4개·출처별
+근거 500자까지 전달한다. 이 범위는 `CLOVA_PROMPT_*`와 `CLOVA_SEMANTIC_*`
+prompt 환경변수로 조정할 수 있다.
 
 기본 factory는 metadata-filtered 후보를 최대 20개까지 Stage3에 전달한다. 소규모
 smoke corpus에서 연결·부문·종속기업 chunk가 함께 검색될 때 aggregate 근거가 hybrid

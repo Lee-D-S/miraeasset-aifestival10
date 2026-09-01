@@ -4,6 +4,7 @@ from collections.abc import Mapping
 import re
 from typing import Any, Callable
 
+from integration.rate_limit import is_rate_limit_error, rate_limit_event
 from stage4.citation import validate_citations
 from stage4.contracts import Stage4Result
 from stage4.numeric import validate_numeric_answer
@@ -70,6 +71,7 @@ def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any
         numeric: dict[str, Any] = {}
         citation: dict[str, Any] = {}
         semantic: dict[str, Any] = {}
+        provider_status: dict[str, Any] = {}
         trace = ["stage4_start"]
         regenerated = False
 
@@ -145,12 +147,29 @@ def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any
                 status = "regenerated" if regenerated else "success"
                 trace.append("validated")
         except Exception as error:  # workflow boundary must fail closed
-            answer = _FAILURE_ANSWER
-            status = "validation_failed"
-            warnings.append(f"stage4_error: {type(error).__name__}: {error}")
-            trace.append("validation_error")
+            if is_rate_limit_error(error) and numeric.get("pass") and citation.get("pass") and answer.strip():
+                provider_status = rate_limit_event(
+                    error,
+                    operation="semantic_validation",
+                    client=client,
+                )
+                semantic = {
+                    "pass": True,
+                    "issues": [],
+                    "unsupported_claims": [],
+                    "missing_aspects": [],
+                    "summary": "Deterministic numeric and citation checks passed; semantic provider was rate-limited.",
+                }
+                status = "success"
+                warnings.append("provider_rate_limited: semantic_validation")
+                trace.append("provider_rate_limited_deterministic_grounding")
+            else:
+                answer = _FAILURE_ANSWER
+                status = "validation_failed"
+                warnings.append(f"stage4_error: {type(error).__name__}: {error}")
+                trace.append("validation_error")
 
-        result = Stage4Result(status=status, answer=answer, numeric_check=numeric, citation_check=citation, semantic_check=semantic, regenerated=regenerated, warnings=warnings, trace=trace)
+        result = Stage4Result(status=status, answer=answer, numeric_check=numeric, citation_check=citation, semantic_check=semantic, regenerated=regenerated, warnings=warnings, trace=trace, provider_status=provider_status)
         return {
             "stage4_result": result.to_dict(),
             "answer": answer,

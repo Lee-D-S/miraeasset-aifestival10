@@ -13,6 +13,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from integration.rate_limit import is_rate_limit_error, rate_limit_event
+
 
 _TOKEN_RE = re.compile(r"[\w가-힣]+", re.UNICODE)
 
@@ -244,7 +246,14 @@ def retrieve(
 ) -> dict[str, Any]:
     """Run Stage2 and return the canonical shared-state envelope."""
 
-    empty = {"query_id": _text(question_id), "documents": [], "cited_documents": [], "retrieval_trace": [], "warnings": []}
+    empty = {
+        "query_id": _text(question_id),
+        "documents": [],
+        "cited_documents": [],
+        "retrieval_trace": [],
+        "warnings": [],
+        "provider_status": {},
+    }
     if route != "ok":
         return {**empty, "status": "skipped", "retrieval_trace": [f"route={route}"]}
 
@@ -258,12 +267,22 @@ def retrieve(
     try:
         vector_results = retriever.vector_search(query, candidates, config.branch_limit)
     except Exception as error:  # provider/backend boundary; never fake semantic success
-        classification = getattr(error, "classification", "embedding_unavailable")
+        provider_status = {}
+        if is_rate_limit_error(error):
+            provider_status = rate_limit_event(
+                error,
+                operation="embedding",
+                client=getattr(retriever, "query_embedder", None),
+            )
+            classification = "rate_limited"
+        else:
+            classification = getattr(error, "classification", "embedding_unavailable")
         return {
             **empty,
             "status": str(classification),
             "retrieval_trace": [f"query={query}", f"candidate_count={len(candidates)}"],
             "warnings": [str(error)],
+            "provider_status": provider_status,
         }
 
     merged: dict[str, dict[str, Any]] = {}

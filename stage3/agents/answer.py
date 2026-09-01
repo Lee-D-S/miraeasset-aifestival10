@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from typing import Any
 
@@ -15,7 +16,14 @@ def _citation_lines(citations: list[dict[str, Any]]) -> list[str]:
     ]
 
 
-def _relevant_facts(intent: Stage3Intent, facts: list[Stage3Fact], limit: int = 12) -> list[Stage3Fact]:
+def _env_int(name: str, default: int) -> int:
+    try:
+        return max(int(os.getenv(name, str(default))), 1)
+    except ValueError:
+        return default
+
+
+def _relevant_facts(intent: Stage3Intent, facts: list[Stage3Fact], limit: int | None = None) -> list[Stage3Fact]:
     """Prioritize facts matching the requested metric, period, and company."""
     requested_metric = str(intent.metric or "").strip().lower()
     years = {str(year) for year in intent.time.get("years", [])} if isinstance(intent.time, dict) else set()
@@ -54,7 +62,8 @@ def _relevant_facts(intent: Stage3Intent, facts: list[Stage3Fact], limit: int = 
             magnitude = 0.0
         return (-points, -magnitude, fact.document_id)
 
-    return sorted(facts, key=score)[:limit]
+    fact_limit = limit if limit is not None else _env_int("CLOVA_PROMPT_FACT_LIMIT", 8)
+    return sorted(facts, key=score)[:fact_limit]
 
 
 def _has_required_claim(answer: str, facts: list[Stage3Fact], citations: list[dict[str, Any]]) -> bool:
@@ -82,13 +91,15 @@ def _compact_prompt_citations(citations: list[dict[str, Any]], facts: list[Stage
     fact_ids = {fact.document_id for fact in facts if fact.document_id}
     selected = [item for item in citations if str(item.get("document_id", "")) in fact_ids]
     selected += [item for item in citations if item not in selected]
+    citation_limit = _env_int("CLOVA_PROMPT_CITATION_LIMIT", 4)
+    evidence_limit = _env_int("CLOVA_PROMPT_EVIDENCE_CHARS", 500)
     return [
         {
             "document_id": item.get("document_id"),
             "source": item.get("source"),
-            "evidence": str(item.get("evidence", ""))[:800],
+            "evidence": str(item.get("evidence", ""))[:evidence_limit],
         }
-        for item in selected[:8]
+        for item in selected[:citation_limit]
     ]
 
 

@@ -36,6 +36,10 @@ STAGE2_CHROMA_COLLECTION=stage2_chunks
 CLOVA_LLM_ENABLED=true
 CLOVA_API_KEY=<secret>
 CLOVA_API_HOST=clovastudio.stream.ntruss.com
+# 선택: Chat·Embedding 공유 admission budget
+CLOVA_RATE_LIMIT_QPM=60
+CLOVA_RATE_LIMIT_TPM=40000
+CLOVA_CHAT_MIN_INTERVAL=0.2
 ```
 
 컨테이너 RDB·Chroma 서버로 올릴 때는 `STAGE2_MODE=container`, `STAGE2_RDB_URL`,
@@ -53,3 +57,5 @@ uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1
 
 외부에서 순서대로 `/health`, `/ready`, `/answer`를 호출한다. `/answer`는
 `question_id`, `question`, `retrieved_context`, `think_trace`, `answer`를 모두 문자열로 반환해야 한다.
+provider rate-limit header와 로컬 admission 차단 상태는 응답의 `think_trace`에
+`provider_status`로 구조화되어 기록된다. API key와 요청 본문은 응답이나 로그에 기록하지 않는다.

@@ -51,6 +51,7 @@ class ClovaChatClient:
         self.max_retries = max_retries if max_retries is not None else _env_int("CLOVA_CHAT_MAX_RETRIES", 1)
         self.rate_limit_max_wait = _env_float("CLOVA_RATE_LIMIT_MAX_WAIT", 15.0)
         self.last_rate_limit: dict[str, str] = {}
+        self.last_provider_status: dict[str, Any] = {}
         self.rate_limiter = rate_limiter or ClovaRateLimiter(default_qpm=90, default_tpm=80000, min_interval=_env_float("CLOVA_CHAT_MIN_INTERVAL", 0.2))
 
     def _capture_rate_limit(self, headers: Any) -> None:
@@ -60,6 +61,11 @@ class ClovaChatClient:
             if str(key).lower().startswith("x-ratelimit-")
         }
         self.rate_limiter.observe(self.last_rate_limit)
+        self.last_provider_status = {
+            "status": "observed",
+            "rate_limit_headers": dict(self.last_rate_limit),
+            "limiter": self.rate_limiter.snapshot(),
+        }
 
     def _request(self, messages: list[dict[str, Any]], *, max_tokens: int = 1024, operation: str = "chat") -> str:
         if not self.api_key:
@@ -76,8 +82,26 @@ class ClovaChatClient:
             headers={"Content-Type": "application/json; charset=utf-8", "Authorization": f"Bearer {self.api_key}"},
             method="POST",
         )
+        estimated_tokens = estimate_tokens(json.dumps(messages, ensure_ascii=False)) + max_tokens
         for attempt in range(self.max_retries + 1):
-            self.rate_limiter.before_call(estimate_tokens(json.dumps(messages, ensure_ascii=False)) + max_tokens)
+            try:
+                self.rate_limiter.before_call(estimated_tokens)
+            except RateLimitBlocked as error:
+                self.last_provider_status = {
+                    "status": "rate_limited",
+                    "source": "local_admission",
+                    "operation": operation,
+                    "error_type": type(error).__name__,
+                    "message": str(error),
+                    "retry_after_seconds": round(error.retry_after, 3),
+                    "estimated_tokens": estimated_tokens,
+                    "rate_limit_headers": dict(self.last_rate_limit),
+                    "limiter": self.rate_limiter.snapshot(),
+                }
+                if error.retry_after and error.retry_after <= self.rate_limit_max_wait and attempt < self.max_retries:
+                    time.sleep(error.retry_after)
+                    continue
+                raise
             try:
                 with urlopen(request, timeout=self.timeout) as response:
                     self._capture_rate_limit(response.headers)
@@ -94,6 +118,16 @@ class ClovaChatClient:
                         pass
                     suffix = f" ({detail})" if detail else ""
                     rate_suffix = f" [rate_limit={self.last_rate_limit}]" if self.last_rate_limit else ""
+                    self.last_provider_status = {
+                        "status": "rate_limited" if error.code == 429 else "provider_error",
+                        "source": "provider_http",
+                        "operation": operation,
+                        "error_type": type(error).__name__,
+                        "status_code": error.code,
+                        "message": str(error),
+                        "rate_limit_headers": dict(self.last_rate_limit),
+                        "limiter": self.rate_limiter.snapshot(),
+                    }
                     raise RuntimeError(f"CLOVA {operation} HTTP {error.code}{suffix}{rate_suffix}") from error
                 reset = error.headers.get("x-ratelimit-reset-requests") or error.headers.get("Retry-After")
                 match = re.search(r"\d+(?:\.\d+)?", str(reset or ""))
@@ -109,7 +143,7 @@ class ClovaChatClient:
     def generate_text(self, messages: list[dict[str, Any]], **_: Any) -> str:
         return self._request(
             messages,
-            max_tokens=_env_int("CLOVA_ANSWER_MAX_TOKENS", 512),
+            max_tokens=_env_int("CLOVA_ANSWER_MAX_TOKENS", 256),
             operation="answer_generation",
         )
 
@@ -123,7 +157,7 @@ class ClovaChatClient:
             "",
             self._request(
                 prompt,
-                max_tokens=_env_int("CLOVA_SEMANTIC_MAX_TOKENS", 256),
+                max_tokens=_env_int("CLOVA_SEMANTIC_MAX_TOKENS", 128),
                 operation="semantic_validation",
             ),
             flags=re.IGNORECASE | re.DOTALL,

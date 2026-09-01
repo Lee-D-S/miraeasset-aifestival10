@@ -38,6 +38,7 @@ class ClovaQueryEmbedding:
             for key, value in headers.items()
             if str(key).lower().startswith("x-ratelimit-")
         }
+        self.rate_limiter.observe(self.last_rate_limit)
 
     def __call__(self, text: str) -> list[float]:
         api_key = os.getenv("CLOVA_API_KEY", "").strip() or os.getenv("CLOVASTUDIO_API_KEY", "").strip()
@@ -84,8 +85,8 @@ class ClovaEmbeddings(Embeddings):
     hand. Wraps the same CLOVA HTTP call as :class:`ClovaQueryEmbedding`.
     """
 
-    def __init__(self, *, timeout: float = 30.0):
-        self._embed_one = ClovaQueryEmbedding(timeout=timeout)
+    def __init__(self, *, timeout: float = 30.0, rate_limiter: ClovaRateLimiter | None = None):
+        self._embed_one = ClovaQueryEmbedding(timeout=timeout, rate_limiter=rate_limiter)
 
     def embed_query(self, text: str) -> list[float]:
         return list(self._embed_one(text))
