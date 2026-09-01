@@ -9,10 +9,11 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from ..index.corpus_index import CorpusIndex, squash
+from ..index.corpus_index import CorpusIndex, squash, squash_with_map
 from .calculation import TWO_OPERAND_OPERATIONS, TWO_PERIOD_OPERATIONS
 from .entity_linker import EntityResult
 from .filter_builder import BuildResult
@@ -28,18 +29,60 @@ class RouteDecision:
     warnings: list[str] = field(default_factory=list)
 
 
-def scan_guards(squashed: str, index: CorpusIndex) -> Optional[RouteDecision]:
+def _guard_pattern_matches(
+    text: str,
+    pattern: str,
+    *,
+    allow_cross_token: bool = False,
+) -> bool:
+    """Match a guard without joining separate Korean tokens.
+
+    The old implementation searched only the fully squashed question.  That
+    made ``기사`` match the boundary between ``분기`` and ``사업``.  Direct
+    matches still support patterns containing spaces; the squashed fallback
+    is accepted only when the matched source characters were contiguous.
+    """
+
+    if pattern and pattern in text:
+        return True
+
+    if allow_cross_token:
+        flexible = re.compile(r"\s*".join(re.escape(char) for char in pattern if not char.isspace()))
+        if flexible.search(text):
+            return True
+
+    normalized = squash(pattern)
+    if not normalized:
+        return False
+    squashed, positions = squash_with_map(text)
+    start = squashed.find(normalized)
+    while start >= 0:
+        end = start + len(normalized)
+        if all(
+            positions[index + 1] == positions[index] + 1
+            for index in range(start, end - 1)
+        ):
+            return True
+        start = squashed.find(normalized, start + 1)
+    return False
+
+
+def scan_guards(text: str, index: CorpusIndex) -> Optional[RouteDecision]:
     """LLM 호출 전에 먼저 걸러야 하는 질의."""
     guards = index.config.guards
 
     for category, patterns in guards.get("unsafe", {}).items():
         for pattern in patterns:
-            if squash(pattern) in squashed:
+            if _guard_pattern_matches(text, pattern, allow_cross_token=True):
                 return RouteDecision(route="unsafe", reject_reason=f"unsafe:{category}")
 
     for category, patterns in guards.get("out_of_scope_topic", {}).items():
         for pattern in patterns:
-            if squash(pattern) in squashed:
+            if _guard_pattern_matches(
+                text,
+                pattern,
+                allow_cross_token=category != "external_source",
+            ):
                 return RouteDecision(
                     route="unanswerable", reject_reason=f"out_of_scope:{category}"
                 )
@@ -47,20 +90,20 @@ def scan_guards(squashed: str, index: CorpusIndex) -> Optional[RouteDecision]:
 
 
 def decide(
-    pre_squashed: str,
+    pre_text: str,
     entities: EntityResult,
     slots: SlotResult,
     build: BuildResult,
     index: CorpusIndex,
 ) -> RouteDecision:
-    guarded = scan_guards(pre_squashed, index)
+    guarded = scan_guards(pre_text, index)
     if guarded is not None:
         return guarded
 
     decision = RouteDecision()
     policy = index.config.defaults.get("clarify_policy", {})
 
-    if not pre_squashed:
+    if not pre_text:
         decision.route = "need_clarify"
         decision.clarify_message = "질의가 비어 있습니다. 기업명과 확인하려는 항목을 알려주세요."
         return decision

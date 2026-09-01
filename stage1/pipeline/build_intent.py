@@ -25,7 +25,7 @@ def build_intent(
 ) -> Intent:
     pre = preprocess(question)
 
-    guarded = router.scan_guards(pre.squashed, index)
+    guarded = router.scan_guards(pre.text, index)
     if guarded is not None:
         return _guard_only_intent(pre, guarded, index)
 
@@ -60,7 +60,7 @@ def build_intent(
     )
 
     build = filter_builder.build(entities, slots, index)
-    decision = router.decide(pre.squashed, entities, slots, build, index)
+    decision = router.decide(pre.text, entities, slots, build, index)
     return validator.finalize(pre, entities, slots, build, decision, index, llm_used=llm_used)
 
 

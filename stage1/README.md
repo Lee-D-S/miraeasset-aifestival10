@@ -27,6 +27,13 @@ stage1_node = build_stage1_node(
 Stage3 whitelist에 포함된 `calculation.operation`과 `metric`을 기록한다. 비중·마진
 질의는 `metric_matches`에서 분모를 추론해 `calculation.denominator_metric`에 넣는다.
 
+Guard는 공백·구두점을 무조건 이어 붙여 검색하지 않는다. 원문에서 직접
+일치하거나 패턴 내부의 공백만 허용하며, `3분기 사업부문별`의 토큰 경계를
+넘어 `기사`가 되는 식의 오탐을 차단한다. 코퍼스 외 기업명도 기본적으로
+질의 대상을 의미하지만, `계약상대방`·`발주처`·`인수인`처럼 명시적인 관계
+역할 뒤에 온 경우에는 `related_entities`로 기록하고 대상 기업으로
+차단하지 않는다.
+
 **제외 조건:** "A를 제외한 <섹터>" 질의는 `exclude_corp_names` / `excluded_corps`로
 기록하고, 섹터는 멤버 목록으로 펼쳐 `manifest_filter.corp_names`에 반영한다.
 `think_trace`에는 `trace_summary()` 결과가 직렬화되어 state로 넘어간다.

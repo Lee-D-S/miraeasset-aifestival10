@@ -105,6 +105,7 @@ class Intent:
     sector_members: list[str] = field(default_factory=list)
     ambiguous_mentions: list[dict[str, Any]] = field(default_factory=list)
     unknown_entities: list[str] = field(default_factory=list)
+    related_entities: list[str] = field(default_factory=list)
 
     metric: Optional[str] = None
     metric_confidence: Optional[str] = None

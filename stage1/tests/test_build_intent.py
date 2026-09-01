@@ -96,3 +96,15 @@ def test_sector_query_does_not_invent_corps(index: CorpusIndex) -> None:
     assert intent.manifest_filter.corp_names == []
     assert intent.manifest_filter.sector == "2차전지"
     assert len(intent.sector_members) == 3
+
+
+def test_guard_does_not_cross_a_token_boundary(index: CorpusIndex) -> None:
+    intent = build_intent("삼성전자의 2025년 3분기 사업부문별 매출액은?", index, use_llm=False)
+    assert intent.route == "ok"
+
+
+def test_external_company_in_explicit_counterparty_role_is_not_query_target(index: CorpusIndex) -> None:
+    intent = build_intent("삼성전자의 공급계약 계약상대방은 테슬라인가?", index, use_llm=False)
+    assert intent.route == "ok"
+    assert intent.unknown_entities == []
+    assert intent.related_entities == ["테슬라"]

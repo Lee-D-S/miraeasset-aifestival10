@@ -40,6 +40,7 @@ def finalize(
         sector_members=entities.sector_members,
         ambiguous_mentions=entities.ambiguous,
         unknown_entities=entities.unknown_entities,
+        related_entities=entities.related_entities,
         metric=slots.metric,
         metric_confidence=slots.metric_confidence,
         basis=slots.basis,

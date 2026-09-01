@@ -32,6 +32,8 @@ class EntityResult:
     ambiguous: list[dict[str, Any]] = field(default_factory=list)
     # 블로클리스트 확정 매칭. route=unanswerable 근거로 쓴다.
     unknown_entities: list[str] = field(default_factory=list)
+    # 계약상대방·발주처처럼 질의 대상이 아닌 관계값으로 식별된 외부 기업.
+    related_entities: list[str] = field(default_factory=list)
     # 접미어 휴리스틱 추정. 오탐 가능성이 있어 경고로만 쓴다.
     suspect_entities: list[str] = field(default_factory=list)
     leftover: str = ""
@@ -74,6 +76,16 @@ def _consume(text: str, spans: list[tuple[int, int]]) -> str:
         for i in range(start, min(end, len(chars))):
             chars[i] = _SPAN_SEP
     return "".join(chars)
+
+
+_RELATION_ROLE_PATTERN = re.compile(r"(?:계약상대방|계약상대|발주처|인수인)(?:인|은|는|이|가)?$")
+
+
+def _is_relationship_mention(text: str, start: int) -> bool:
+    """Return whether an external company follows an explicit role cue."""
+
+    prefix = text[max(0, start - 16) : start]
+    return bool(_RELATION_ROLE_PATTERN.search(prefix))
 
 
 def _scan_longest(text: str, keys: dict[str, str], max_len: int) -> list[tuple[int, int, str, str]]:
@@ -121,9 +133,10 @@ def link(pre: PreprocessResult, index: CorpusIndex) -> EntityResult:
 
     # 1) 코퍼스 외 기업
     block_hits = _scan_longest(text, blocklist, max((len(k) for k in blocklist), default=0))
-    for _, _, _, name in block_hits:
-        if name not in result.unknown_entities:
-            result.unknown_entities.append(name)
+    for start, _end, _key, name in block_hits:
+        target = result.related_entities if _is_relationship_mention(text, start) else result.unknown_entities
+        if name not in target:
+            target.append(name)
     text = _consume(text, [(s, e) for s, e, _, _ in block_hits])
 
     # 2) 기업 별칭 (최장일치)
