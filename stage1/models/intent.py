@@ -116,6 +116,8 @@ class Intent:
     allow_pdf_html: bool = True
 
     manifest_filter: ManifestFilter = field(default_factory=ManifestFilter)
+    # 다중 지표·다중 보고서 질의의 독립 subquery. 기존 필드는 호환성을 위해 유지한다.
+    query_plan: list[dict[str, Any]] = field(default_factory=list)
     doc_count: Optional[int] = None
     availability: str = "unknown"
 
@@ -149,6 +151,8 @@ class Intent:
             parts.append("공시후보=" + ",".join(self.manifest_filter.doc_group_candidates))
         if self.metric:
             parts.append(f"지표={self.metric}")
+        if self.query_plan:
+            parts.append(f"subquery={len(self.query_plan)}개")
         if self.basis:
             parts.append(f"기준={self.basis}")
         if self.doc_count is not None:

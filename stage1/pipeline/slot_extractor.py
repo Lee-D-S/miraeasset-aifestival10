@@ -252,11 +252,13 @@ def _resolve_time_mode(sq: str, slots: SlotResult, cfg: Any) -> None:
 
 def _extract_metric(sq: str, slots: SlotResult, index: CorpusIndex) -> None:
     best: Optional[tuple[int, dict[str, Any]]] = None
+    matched_positions: list[tuple[int, str]] = []
     for metric in index.config.metrics.get("metrics", []):
         for label in metric.get("labels", []):
             key = squash(label)
             if key and key in sq:
                 slots.metric_matches.append(metric["key"])
+                matched_positions.append((sq.find(key), metric["key"]))
                 if best is None or len(key) > best[0]:
                     best = (len(key), metric)
                 break
@@ -285,7 +287,10 @@ def _extract_metric(sq: str, slots: SlotResult, index: CorpusIndex) -> None:
     else:
         slots.report_nm_contains = list(metric.get("report_nm_contains", []))
 
-    slots.metric_matches = sorted(dict.fromkeys(slots.metric_matches))
+    slots.metric_matches = []
+    for _position, key in sorted(matched_positions, key=lambda item: item[0]):
+        if key not in slots.metric_matches:
+            slots.metric_matches.append(key)
 
 
 def _extract_derived_metric(sq: str, slots: SlotResult, index: CorpusIndex) -> None:

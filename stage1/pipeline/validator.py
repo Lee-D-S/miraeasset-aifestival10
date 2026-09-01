@@ -9,6 +9,7 @@ from ..models.intent import DOC_GROUPS, DOC_SUBTYPES, Intent, ManifestFilter, Ti
 from .entity_linker import EntityResult
 from .filter_builder import BuildResult
 from .preprocess import PreprocessResult
+from .query_plan import build_query_plan
 from .router import RouteDecision
 from .slot_extractor import SlotResult
 
@@ -65,6 +66,7 @@ def finalize(
     )
 
     if intent.route in _SEARCHABLE_ROUTES:
+        intent.query_plan = build_query_plan(pre.text, slots, flt, index)
         intent.doc_count = index.count_docs(flt)
         intent.availability = _availability(intent.doc_count, entities, flt)
         if intent.doc_count == 0:

@@ -108,3 +108,20 @@ def test_external_company_in_explicit_counterparty_role_is_not_query_target(inde
     assert intent.route == "ok"
     assert intent.unknown_entities == []
     assert intent.related_entities == ["테슬라"]
+
+
+def test_multi_metric_query_keeps_compatibility_fields_and_adds_ordered_plan(index: CorpusIndex) -> None:
+    intent = build_intent("삼성전자의 2025년 매출액과 영업이익을 알려줘", index, use_llm=False)
+    assert intent.route == "ok"
+    assert intent.metric == "operating_profit"
+    assert [item["metric"] for item in intent.query_plan] == ["revenue", "operating_profit"]
+    assert intent.query_plan[0]["manifest_filter"]["corp_names"] == ["삼성전자"]
+
+
+def test_multi_report_query_splits_periodic_filters(index: CorpusIndex) -> None:
+    intent = build_intent("삼성전자의 2025년 사업보고서와 3분기보고서 매출액은?", index, use_llm=False)
+    assert intent.route == "ok"
+    assert [item["manifest_filter"]["doc_subtype"] for item in intent.query_plan] == [
+        "annual",
+        "quarter",
+    ]

@@ -38,6 +38,11 @@ Guard는 공백·구두점을 무조건 이어 붙여 검색하지 않는다. �
 기록하고, 섹터는 멤버 목록으로 펼쳐 `manifest_filter.corp_names`에 반영한다.
 `think_trace`에는 `trace_summary()` 결과가 직렬화되어 state로 넘어간다.
 
+서로 독립적인 지표나 보고서 유형이 한 질의에 함께 등장하면 `query_plan`에
+subquery를 생성한다. 기존 `metric`·`manifest_filter`는 호환성을 위해
+유지하며, 각 subquery는 자체 지표·계산계획·기간·manifest 필터를 가진다.
+비중·마진처럼 두 지표가 하나의 산식에 필요한 경우에는 분리하지 않는다.
+
 ## 코퍼스 경로
 
 다음 우선순위로 찾는다.
