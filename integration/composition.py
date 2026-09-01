@@ -8,6 +8,7 @@ from pathlib import Path
 import config
 from integration.graph import StageNodes
 from integration.clova import ClovaChatClient
+from integration.rate_limit import ClovaRateLimiter
 from integration.readiness import (
     raise_if_invalid,
     validate_container_settings,
@@ -33,7 +34,36 @@ from stage4 import build_stage4_node
 from stage3.agents.answer import AnswerWriter
 
 
-def _build_retriever(settings: config.Stage2Settings, *, corpus: Path | None):
+def _env_int(name: str, default: int) -> int:
+    try:
+        return max(int(os.getenv(name, str(default))), 0)
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return max(float(os.getenv(name, str(default))), 0.0)
+    except ValueError:
+        return default
+
+
+def _shared_clova_rate_limiter() -> ClovaRateLimiter:
+    """Share one conservative process-local budget across all CLOVA APIs."""
+
+    return ClovaRateLimiter(
+        default_qpm=_env_int("CLOVA_RATE_LIMIT_QPM", 60),
+        default_tpm=_env_int("CLOVA_RATE_LIMIT_TPM", 40000),
+        min_interval=max(_env_float("CLOVA_CHAT_MIN_INTERVAL", 0.2), 0.2),
+    )
+
+
+def _build_retriever(
+    settings: config.Stage2Settings,
+    *,
+    corpus: Path | None,
+    rate_limiter: ClovaRateLimiter,
+):
     """Open the Stage2 retriever for the configured mode.
 
     Every path and connection string comes from :mod:`config`; nothing here
@@ -45,7 +75,8 @@ def _build_retriever(settings: config.Stage2Settings, *, corpus: Path | None):
         # embeddings; queries are embedded live against the same CLOVA
         # endpoint. No SQL RDB or vector DB service required.
         retriever = JsonFixtureRetriever.from_path(
-            settings.fixture_path, query_embedder=ClovaQueryEmbedding()
+            settings.fixture_path,
+            query_embedder=ClovaQueryEmbedding(rate_limiter=rate_limiter),
         )
         raise_if_invalid(validate_fixture(retriever))
         return retriever
@@ -58,7 +89,7 @@ def _build_retriever(settings: config.Stage2Settings, *, corpus: Path | None):
             settings.sqlite_path,
             chroma_dir=settings.chroma_path,
             collection_name=settings.chroma_collection,
-            embedding_function=ClovaEmbeddings(),
+            embedding_function=ClovaEmbeddings(rate_limiter=rate_limiter),
         )
     elif settings.mode == "container":
         # Dockerized Postgres RDB + Chroma server. LocalHybridRetriever's
@@ -70,7 +101,7 @@ def _build_retriever(settings: config.Stage2Settings, *, corpus: Path | None):
             vectorstore=chroma_server(
                 settings.chroma_host,
                 settings.chroma_port,
-                embedding_function=ClovaEmbeddings(),
+                embedding_function=ClovaEmbeddings(rate_limiter=rate_limiter),
                 collection_name=settings.chroma_collection,
             ),
         )
@@ -100,9 +131,10 @@ def build_pipeline() -> StagePipeline:
 
     stage1 = build_stage1_node(corpus_dir=corpus)
     live_llm = os.getenv("CLOVA_LLM_ENABLED", "false").strip().lower() == "true"
-    answer_client = ClovaChatClient() if live_llm else None
+    clova_rate_limiter = _shared_clova_rate_limiter()
+    answer_client = ClovaChatClient(rate_limiter=clova_rate_limiter) if live_llm else None
 
-    retriever = _build_retriever(settings, corpus=corpus)
+    retriever = _build_retriever(settings, corpus=corpus, rate_limiter=clova_rate_limiter)
 
     return StagePipeline(StageNodes(
         stage1=stage1,

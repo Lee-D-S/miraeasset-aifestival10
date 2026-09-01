@@ -9,6 +9,12 @@ import time
 from collections.abc import Mapping
 
 
+_PROVIDER_RATE_LIMIT_RE = re.compile(
+    r"RateLimitBlocked|rate[_ -]?limit|remaining[_ ]tokens|(?:HTTP|status)[ _-]*429",
+    re.IGNORECASE,
+)
+
+
 def estimate_tokens(value: object) -> int:
     """Conservative token estimate used only for local admission control."""
     return max(1, (len(str(value)) + 3) // 4)
@@ -27,6 +33,44 @@ class RateLimitBlocked(RuntimeError):
     def __init__(self, reason: str, retry_after: float = 0.0):
         super().__init__(reason)
         self.retry_after = retry_after
+
+
+def is_rate_limit_error(error: BaseException) -> bool:
+    """Return whether an error represents local or provider capacity limits."""
+
+    return isinstance(error, RateLimitBlocked) or bool(_PROVIDER_RATE_LIMIT_RE.search(str(error)))
+
+
+def rate_limit_event(error: BaseException, *, operation: str, client: object | None = None) -> dict[str, object]:
+    """Build a non-secret provider-capacity event for the public trace."""
+
+    event: dict[str, object] = {
+        "status": "rate_limited",
+        "operation": operation,
+        "error_type": type(error).__name__,
+        "message": str(error),
+    }
+    retry_after = getattr(error, "retry_after", None)
+    if retry_after is not None:
+        event["retry_after_seconds"] = round(float(retry_after), 3)
+    for key in ("status_code", "retryable"):
+        value = getattr(error, key, None)
+        if value is not None:
+            event[key] = value
+    if client is not None:
+        headers = getattr(client, "last_rate_limit", {})
+        if isinstance(headers, Mapping):
+            event["rate_limit_headers"] = {str(key): str(value) for key, value in headers.items()}
+        provider_status = getattr(client, "last_provider_status", {})
+        if isinstance(provider_status, Mapping):
+            for key in ("source", "status_code", "estimated_tokens"):
+                if key in provider_status:
+                    event[key] = provider_status[key]
+        limiter = getattr(client, "rate_limiter", None)
+        snapshot = getattr(limiter, "snapshot", None)
+        if callable(snapshot):
+            event["limiter"] = snapshot()
+    return event
 
 
 class ClovaRateLimiter:
@@ -75,6 +119,23 @@ class ClovaRateLimiter:
             self._calls.append((now, estimated_tokens))
             self._last_call = now
 
+    def snapshot(self) -> dict[str, object]:
+        """Return safe, non-secret limiter state for audit traces."""
+
+        now = time.monotonic()
+        with self._lock:
+            window_tokens = sum(tokens for _, tokens in self._calls)
+            reset_in = max(self._blocked_until - now, 0.0)
+            return {
+                "default_qpm": self.default_qpm,
+                "default_tpm": self.default_tpm,
+                "window_calls": len(self._calls),
+                "window_tokens": window_tokens,
+                "remaining_requests": self._remaining_requests,
+                "remaining_tokens": self._remaining_tokens,
+                "reset_in_seconds": round(reset_in, 3),
+            }
+
     @staticmethod
     def _int_or_none(value: object) -> int | None:
         try:
@@ -83,4 +144,11 @@ class ClovaRateLimiter:
             return None
 
 
-__all__ = ["ClovaRateLimiter", "RateLimitBlocked", "estimate_tokens", "parse_reset_seconds"]
+__all__ = [
+    "ClovaRateLimiter",
+    "RateLimitBlocked",
+    "estimate_tokens",
+    "is_rate_limit_error",
+    "parse_reset_seconds",
+    "rate_limit_event",
+]
