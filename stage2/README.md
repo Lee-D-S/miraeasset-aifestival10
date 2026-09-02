@@ -36,8 +36,18 @@ STAGE2_EMBEDDING=e5-instruct
 STAGE2_ALLOW_PARTIAL_INDEX=true
 ```
 
-`e5-instruct`는 `intfloat/multilingual-e5-large-instruct` 하나만 허용한다. 문서 벡터와
-질의 벡터 모두 raw text와 정규화 설정을 사용하며, `sentence-transformers`가 필요하다.
+`e5-instruct`는 `intfloat/multilingual-e5-large-instruct` 하나만 허용한다. 저장 인덱스와
+동일한 문서 raw text와 정규화 설정을 유지한다. A/B candidate 질의에는 다음 instruction을
+`embed_query()`에서만 적용한다.
+
+```text
+Instruct: Retrieve relevant passages from Korean corporate disclosure filings that directly answer the financial question.
+Query: {question}
+```
+
+`sentence-transformers`가 필요하다. A/B candidate는 instruction 질의를 사용하고 raw
+baseline은 `query_instruction=None`으로 명시한다. 실제 A/B 결과에서 검색 성능은 개선됐지만
+정보 한계 안전성 gate가 실패했으므로 현재 production composition은 raw baseline이다.
 모델은 서버에 미리 캐시되어 있어야 하고 서버 시작 시 외부 다운로드는 하지 않는다.
 
 Stage1은 별도의 `CORPUS_DIR`에서 `universe.csv`와 `manifest.jsonl`을 읽는다. 제공 인덱스는
@@ -54,6 +64,7 @@ python -m pip install -r requirements-dev.txt
 python scripts/check_deployment.py
 python scripts/check_real_index.py --allow-partial-index
 pytest -m real_index
+python scripts/compare_query_instruction.py
 uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1
 ```
 
@@ -64,6 +75,10 @@ uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1
 일반 CI에서는 InMemoryRetriever 기반 결정론적 회귀와 임시 SQLite/Chroma 계약 테스트를
 사용한다. 실제 제공 DB 검증은 `real_index` marker와 별도 CLI로만 실행하며, DB와 E5 cache가
 없는 환경에서 `pytest -m real_index`를 실행하면 실패한다.
+`compare_query_instruction.py`도 실제 DB와 로컬 E5 cache가 준비된 runner에서만 실행한다.
+raw baseline은 A/B 실행기 내부에서만 명시적으로 주입하며 운영 설정으로 prefix를 끄지 않는다.
+검색 가능 20개는 유형별 Recall@20 무회귀와 전체 5%p 이상 개선을 요구하고, 정보 한계
+5개는 fail-closed 안전성 gate로 분리 평가한다.
 
 ## 안전 경계
 

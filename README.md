@@ -55,7 +55,16 @@ Stage2는 `STAGE2_MODE`로 두 모드 중 하나를 연다(기본값 `local`).
   HNSW pickle 형식이므로 애플리케이션은 Chroma migration/client를 열지 않고
   `chroma.sqlite3`를 SQLite `mode=ro`로 읽으며 HNSW 파일을 직접 검색한다. 질의 임베딩은
   `STAGE2_EMBEDDING=e5-instruct`, 즉 `intfloat/multilingual-e5-large-instruct` 하나로
-  고정한다.
+  고정한다. 문서 임베딩은 저장 인덱스와 동일한 raw text를 사용한다. E5 adapter와
+  A/B 실행기는 다음 instruction 질의를 지원한다.
+
+  Instruct: Retrieve relevant passages from Korean corporate disclosure filings that directly answer the financial question.
+  Query: {question}
+
+  instruction은 embed_query()에만 적용하며 문서 텍스트에는 적용하지 않는다. 실제 제공
+  인덱스 A/B에서는 검색 성능이 개선됐지만 정보 한계 안전성 gate를 통과하지 못했으므로,
+  현재 production composition은 raw query를 유지한다. 운영 prefix를 끄는 환경변수는
+  제공하지 않으며, 채택 여부는 명시적 A/B 결과로만 바꾼다.
 - `container`: Dockerized Postgres(`STAGE2_RDB_URL`)와 Chroma 서버
   (`STAGE2_CHROMA_HOST`/`STAGE2_CHROMA_PORT`)를 사용한다. 두 값 모두 필수이며, 없으면
   기동 전에 명확한 오류로 실패한다. `LocalHybridRetriever`의 SQL·벡터 검색 코드는
@@ -74,7 +83,9 @@ Stage2는 `STAGE2_MODE`로 두 모드 중 하나를 연다(기본값 `local`).
 Stage1 corpus 자동 탐색이 실패하는 실행 환경에서는 `CORPUS_DIR`에 `universe.csv`와
 `manifest.jsonl`이 있는 corpus 디렉터리를 명시한다(상대경로는 루트 기준).
 
-`CLOVA_API_KEY` 또는 `CLOVASTUDIO_API_KEY`가 없으면 query embedding은 `embedding_unavailable`로 처리된다. 의미 검증 provider가 없으면 최종 답변을 성공으로 가장하지 않는다.
+E5 모델 cache가 없으면 Stage2 초기화가 명확히 실패한다. CLOVA API key는 답변 생성과
+semantic validation을 활성화할 때만 필요하며, 의미 검증 provider가 없으면 최종 답변을
+성공으로 가장하지 않는다.
 
 제공된 local 인덱스를 테스트하려면 다음처럼 설정한다. 압축본을 다시 풀거나 인덱스를
 재생성하지 않으며, 실행 중 SQLite·Chroma에 쓰지 않는다.
@@ -98,10 +109,16 @@ uvicorn app:app --reload
 ```powershell
 python scripts/check_real_index.py --allow-partial-index
 pytest -m real_index
+python scripts/compare_query_instruction.py
 ```
 
 일반 `pytest`는 대용량 인덱스에 의존하지 않으며 `real_index` marker를 자동 제외한다.
 실제 통합 job은 사전 탑재된 DB와 E5 모델 cache가 있는 runner에서 수동 dispatch한다.
+compare_query_instruction.py는 같은 실제 DB·필터·top-k로 raw 질의와 instruction 질의를
+A/B 비교한다. 검색 가능 질의 20개는 Recall@20과 MRR을 계산하고, 정보 한계 질의 5개는
+근거 없는 답변·숫자 생성을 막는 fail-closed gate로 평가한다. 모든 유형 무회귀와 전체
+Recall@20 5%p 이상 개선을 동시에 만족할 때만 prefix 적용을 채택한다. 조건을 만족하지
+않으면 운영 결정은 KEEP_RAW로 남긴다.
 
 `CORPUS_DIR`는 Stage1의 `universe.csv`·`manifest.jsonl` 경로로 유지한다. E5 모델은
 서버의 Hugging Face 캐시에 미리 준비되어 있어야 하며, 기동 시 외부 다운로드는 하지 않는다.
@@ -162,8 +179,8 @@ pytest tests/test_local_e2e.py
 실제 CLOVA 호출은 provider 환경변수가 설정된 NCP smoke에서만 수행한다. CI와 `check_real_index.py`
 pipeline 검증은 deterministic Stage3·Stage4 provider를 사용한다.
 배포 전 오프라인 구성 검사는 `python scripts/check_deployment.py`로 실행한다. 이 검사는 CLOVA endpoint를 호출하지 않고 corpus, SQLite·Chroma index의 일관성까지 검사한다.
-embedding timeout은 `CLOVA_EMBEDDING_TIMEOUT`, 답변·semantic timeout은
-`CLOVA_CHAT_TIMEOUT`, 429 재시도 대기 상한은 `CLOVA_RATE_LIMIT_MAX_WAIT`로 조정한다.
+답변·semantic timeout은 `CLOVA_CHAT_TIMEOUT`, 429 재시도 대기 상한은
+`CLOVA_RATE_LIMIT_MAX_WAIT`로 조정한다.
 실행 중 adapter의 `last_rate_limit`에서 API가 반환한 `x-ratelimit-*` 헤더를 확인할 수
 있으며, API key와 요청 본문은 기록하지 않는다.
 호출 전에는 Chat·Embedding이 공유하는 process-local QPM·TPM limiter가 예상

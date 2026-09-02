@@ -37,6 +37,15 @@ Git, README, 응답에 기록하지 않는다.
 애플리케이션은 시작 시 모델을 외부에서 다운로드하지 않는다. 제공 Chroma 인덱스는
 현재 Chroma writer와 다른 persistent HNSW pickle 형식이므로 local backend는 Chroma
 migration/client 대신 SQLite `mode=ro`와 direct HNSW query adapter를 사용한다.
+A/B candidate 질의 임베딩은 다음 고정 형식을 `embed_query()`에만 적용한다. 저장 문서
+벡터는 raw text 계약을 유지한다. 실제 A/B에서 검색 성능은 개선됐지만 정보 한계 안전성
+gate가 실패했으므로 현재 NCP production 기본값은 raw query이며, 별도 승인 없이 prefix를
+운영에 적용하지 않는다.
+
+```text
+Instruct: Retrieve relevant passages from Korean corporate disclosure filings that directly answer the financial question.
+Query: {question}
+```
 
 ## 실행과 확인
 
@@ -63,7 +72,13 @@ container 모드는 Postgres와 Chroma 서버가 실제로 준비된 별도 환�
 ```powershell
 pytest -m real_index
 python scripts/check_real_index.py --allow-partial-index
+python scripts/compare_query_instruction.py
 ```
+
+`compare_query_instruction.py`는 사전 탑재된 실제 DB와 E5 cache에서만 실행하는 수동
+A/B 검증이다. 검색 가능 20개는 유형별 Recall@20 무회귀와 전체 5%p 이상 개선을 동시에
+요구하고, 정보 한계 5개는 근거 없는 답변·숫자 생성을 검사한다. 조건을 충족하지 않으면
+운영 prefix를 자동으로 바꾸지 않고 `KEEP_RAW` 결과를 기록한다.
 
 NCP live smoke는 별도 터미널에서 worker 1개로 서버를 실행한 뒤
 `python scripts/smoke_api.py --base-url http://127.0.0.1:8000`을 사용한다. 이 CLI는
