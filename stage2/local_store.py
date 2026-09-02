@@ -47,6 +47,7 @@ _SCALAR_METADATA_COLUMNS = (
     "section_name",
 )
 _MAX_VECTOR_CANDIDATES = 2_000
+_CHROMA_METADATA_SAMPLE = 1_000
 
 
 def _normalized_bool(value: Any) -> bool | None:
@@ -235,8 +236,27 @@ class LocalHybridRetriever:
             collection = getattr(self.vectorstore, "_collection", None)
             if collection is None:
                 return [*issues, "Chroma collection is not available"]
-            payload = collection.get(include=["metadatas"])
-            chroma_ids = {str(value) for value in payload.get("ids", [])}
+            chroma_ids: set[str] = set()
+            offset = 0
+            while True:
+                payload = collection.get(include=[], limit=100_000, offset=offset)
+                batch_ids = [str(value) for value in payload.get("ids", [])]
+                if not batch_ids:
+                    break
+                chroma_ids.update(batch_ids)
+                offset += len(batch_ids)
+            metadata_payload = collection.get(
+                include=["metadatas"],
+                limit=_CHROMA_METADATA_SAMPLE,
+            )
+            metadata_ids = {
+                str(metadata.get("chunk_id"))
+                for metadata in metadata_payload.get("metadatas", [])
+                if isinstance(metadata, Mapping) and metadata.get("chunk_id")
+            }
+            sampled_ids = {
+                str(value) for value in metadata_payload.get("ids", [])
+            }
             if not chroma_ids:
                 issues.append("Chroma collection is empty")
             missing_in_chroma = sql_ids - chroma_ids
@@ -245,12 +265,7 @@ class LocalHybridRetriever:
             extra_in_chroma = chroma_ids - sql_ids
             if extra_in_chroma:
                 issues.append("Chroma contains chunk IDs absent from SQLite")
-            metadata_ids = {
-                str(metadata.get("chunk_id"))
-                for metadata in payload.get("metadatas", [])
-                if isinstance(metadata, Mapping) and metadata.get("chunk_id")
-            }
-            if metadata_ids != chroma_ids:
+            if metadata_ids != sampled_ids:
                 issues.append("Chroma collection IDs do not match metadata chunk IDs")
             issues.extend(validate_embedding_dimension(self.vectorstore))
         except Exception as error:  # noqa: BLE001 - readiness boundary
@@ -373,21 +388,40 @@ class LocalHybridRetriever:
         if not chunk_ids:
             return []
         search_query = query.strip() if query and query.strip() else "공시 보고서"
-        # Embedding computation, cosine similarity, and top-k ranking are all
-        # delegated to langchain-chroma; Stage2 does not touch vectors.
+        # Embedding computation and ranking are delegated to the configured
+        # vector backend; Stage2 does not write or transform persisted vectors.
         results = self.vectorstore.similarity_search_with_relevance_scores(
             search_query, k=limit, filter={"chunk_id": {"$in": chunk_ids}},
         )
+        candidate_by_id = {
+            str(row.get("chunk_id") or row.get("id")): row
+            for row in candidates
+        }
         documents = []
         for document, score in results:
             metadata = dict(document.metadata or {})
             identifier = str(metadata.get("chunk_id", ""))
+            candidate = candidate_by_id.get(identifier)
+            if candidate is not None:
+                candidate_metadata = dict(candidate.get("metadata") or {})
+                candidate_metadata.update(metadata)
+                metadata = candidate_metadata
             documents.append({
                 "id": identifier,
-                "doc_id": str(metadata.get("doc_id", identifier)),
+                "doc_id": str(
+                    (candidate or {}).get("doc_id")
+                    or metadata.get("doc_id", identifier)
+                ),
                 "chunk_id": identifier,
-                "text": document.page_content,
-                "source_path": str(metadata.get("source_path", "")),
+                "text": str(
+                    (candidate or {}).get("text")
+                    or document.page_content
+                    or ""
+                ),
+                "source_path": str(
+                    (candidate or {}).get("source_path")
+                    or metadata.get("source_path", "")
+                ),
                 "metadata": metadata,
                 "vector_score": float(score),
             })

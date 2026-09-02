@@ -1,0 +1,19 @@
+{
+  "metrics": [
+    {
+      "key": "revenue",
+      "labels": ["매출액", "매출"],
+      "doc_group": "periodic",
+      "confidence": "high"
+    }
+  ],
+  "derived_metrics": [],
+  "doc_keywords": [
+    {
+      "labels": ["사업보고서"],
+      "doc_group": "periodic",
+      "doc_subtype": "annual"
+    }
+  ],
+  "known_empty_report_nm": []
+}

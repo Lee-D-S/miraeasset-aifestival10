@@ -82,6 +82,15 @@ def raise_if_invalid(issues: list[str], *, tolerate: set[str] | frozenset[str] =
 def validate_embedding_dimension(vectorstore: Any, expected: int = 1024) -> list[str]:
     """Validate one persisted vector without making a provider request."""
 
+    declared_dimension = getattr(vectorstore, "embedding_dimension", None)
+    if declared_dimension is not None:
+        try:
+            dimension = int(declared_dimension)
+        except (TypeError, ValueError):
+            return ["Chroma embedding dimension is unreadable: invalid metadata"]
+        return [] if dimension == expected else [
+            f"Chroma embedding dimension is {dimension}; expected {expected}"
+        ]
     try:
         collection = getattr(vectorstore, "_collection", None)
         if collection is None:

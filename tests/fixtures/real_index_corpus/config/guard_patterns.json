@@ -1,0 +1,10 @@
+{
+  "unsafe": {},
+  "out_of_scope_topic": {},
+  "external_corp_blocklist": [],
+  "corp_suffix_heuristic": {
+    "enabled": false,
+    "suffixes": [],
+    "non_corp_terms": []
+  }
+}

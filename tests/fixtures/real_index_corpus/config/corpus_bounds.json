@@ -1,0 +1,21 @@
+{
+  "fiscal": {
+    "min_year": 2023,
+    "max_year": 2026,
+    "available_periods": {
+      "2023": [12],
+      "2024": [12],
+      "2025": [12]
+    }
+  },
+  "disclosure": {
+    "event_from": "20230101",
+    "event_to": "20261231",
+    "rcept_observed_from": "20230101",
+    "rcept_observed_to": "20261231"
+  },
+  "base_month_by_subtype": {
+    "annual": 12
+  },
+  "quarter_to_period": {}
+}

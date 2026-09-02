@@ -1,0 +1,3 @@
+corp_code,stock_code,corp_name,listed_name,corp_eng_name,market,industry,sector_no,sector,listing_date,fiscal_month,market_cap,n_periodic,n_major,n_exchange,n_holding,note
+00126380,005930,삼성전자,삼성전자,"SAMSUNG ELECTRONICS CO,.LTD",KOSPI,IT,1,반도체·전자부품,1975-06-11,12월,,,,,,real-index metadata-only corpus
+00164779,000660,SK하이닉스,SK하이닉스,SK hynix Inc.,KOSPI,IT,1,반도체·전자부품,1996-12-26,12월,,,,,,real-index metadata-only corpus

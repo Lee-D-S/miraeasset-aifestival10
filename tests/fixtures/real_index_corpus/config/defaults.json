@@ -1,0 +1,43 @@
+{
+  "defaults": {
+    "basis": "연결",
+    "is_correction": false,
+    "correction_mode": "latest_only",
+    "allow_pdf_html": true,
+    "period_when_year_only": "annual"
+  },
+  "clarify_policy": {
+    "mode": "minimal",
+    "clarify_on_ambiguous_corp": true,
+    "clarify_on_missing_corp_and_sector": false,
+    "clarify_on_missing_time": false,
+    "clarify_on_missing_metric": false
+  },
+  "intent_cues": {
+    "exists": ["있는가", "있나", "여부"],
+    "change": ["변화", "추이", "변동"],
+    "compare": ["비교", "더큰", "더많", "가장"],
+    "calc": ["증감", "증가율", "감소율", "성장률", "비중", "비율"],
+    "list": ["정리해", "나열", "목록"],
+    "lookup": ["얼마", "무엇", "몇", "알려줘"]
+  },
+  "exclusion_cues": {
+    "particles": "를을은는이가와과랑만,",
+    "cues": ["제외", "빼고", "말고", "아닌"]
+  },
+  "basis_cues": {
+    "연결": ["연결기준", "연결"],
+    "별도": ["별도기준", "별도"]
+  },
+  "correction_cues": {
+    "include_chain": ["정정", "수정"]
+  },
+  "relative_time_cues": {
+    "올해": {"year_offset": 0},
+    "작년": {"year_offset": -1},
+    "최근": {"prefer_latest": true}
+  },
+  "time_mode_cues": {
+    "disclosure": ["공시한", "공시일", "접수"]
+  }
+}
