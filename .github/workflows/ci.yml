@@ -7,8 +7,10 @@ name: ci
 on:
   pull_request:
     branches: [main]
-  push:
-    branches: [main, "integration/**"]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'img/**'
 
 concurrency:
   group: ci-${{ github.ref }}
