@@ -114,7 +114,16 @@ class E5Embeddings(Embeddings):
     MODEL_NAME = "intfloat/multilingual-e5-large"
 
     def __init__(self, *, cache_dir: str | None = None, threads: int | None = None):
+        import os
+
         from stage2.ingestion.dart.embeddings import l2_normalize, load_e5_model
+
+        # In the container image the ONNX weights are baked at a fixed path so
+        # nothing is fetched at runtime (the eval network may block egress).
+        cache_dir = cache_dir or os.getenv("FASTEMBED_CACHE_DIR") or None
+        if threads is None:
+            env_threads = os.getenv("FASTEMBED_THREADS", "").strip()
+            threads = int(env_threads) if env_threads.isdigit() else None
 
         self._model = load_e5_model(cache_dir=cache_dir, threads=threads)
         self._normalize = l2_normalize

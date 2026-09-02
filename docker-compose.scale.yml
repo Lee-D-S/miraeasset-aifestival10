@@ -1,0 +1,66 @@
+# 확장 구성 오버레이 (STAGE2_MODE=container): app -> Chroma server + Postgres.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.scale.yml --profile scale up -d
+#
+# 목적: 기술제안서의 "시스템 구성도 / 확장성" 그림, 그리고 나중에 app replica 를
+# 여러 개 띄워 인덱스를 공유해야 할 때.  대회 라이브 엔드포인트는 docker-compose.yml
+# (local 단일 컨테이너) 를 쓴다.
+#
+# ⚠️ 선행 작업 필요 (아직 안 됨):
+#   - chunk_index 메타데이터를 Postgres 로 적재 (scripts/build_chunk_index.py --rdb-url ...)
+#   - chromadb/chroma 서버 이미지가 공급 persist 인덱스를 읽는지 검증 (버전 1.5.9)
+
+name: dis164
+
+services:
+  app:
+    depends_on:
+      chroma:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      STAGE2_MODE: container
+      STAGE2_CHROMA_HOST: chroma
+      STAGE2_CHROMA_PORT: "8000"
+      STAGE2_CHROMA_COLLECTION: chunk_vectors
+      STAGE2_SQL_TABLE: chunk_index
+      STAGE2_RDB_URL: postgresql+psycopg://dis164:${POSTGRES_PASSWORD:-dis164}@postgres:5432/dis164
+      STAGE2_ALLOW_PARTIAL_INDEX: "true"
+    # local 인덱스 볼륨은 container 모드에서 불필요
+    volumes: []
+
+  chroma:
+    profiles: ["scale"]
+    image: chromadb/chroma:1.5.9
+    environment:
+      IS_PERSISTENT: "TRUE"
+      ANONYMIZED_TELEMETRY: "FALSE"
+    volumes:
+      - ${CHROMA_DIR:-./data/local_db/chunk_index_chroma}:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/v2/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    restart: unless-stopped
+
+  postgres:
+    profiles: ["scale"]
+    image: postgres:16
+    environment:
+      POSTGRES_USER: dis164
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dis164}
+      POSTGRES_DB: dis164
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dis164 -d dis164"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  pgdata:
