@@ -140,6 +140,7 @@ def _check_pipeline(retriever: LocalHybridRetriever, corpus_dir: Path) -> list[d
     scenarios = (
         ("lookup", "삼성전자의 2025년 연결기준 매출액은 얼마인가?"),
         ("comparison", "삼성전자와 SK하이닉스의 2025년 매출액을 비교해줘"),
+        ("multi-year", "삼성전자의 2023년과 2025년 매출액을 비교해줘"),
         ("out-of-range", "삼성전자의 2022년 매출액은 얼마인가?"),
         ("insufficient", "삼성전자의 2025년 대표이사 취미는 무엇인가?"),
     )

@@ -17,4 +17,4 @@ def test_supplied_index_and_pipeline_are_healthy():
     assert report["hnsw_index_count"] > 0
     assert report["embedding_dimension"] == 1024
     assert len(report["searches"]) == 2
-    assert len(report["pipeline"]) == 4
+    assert len(report["pipeline"]) == 5

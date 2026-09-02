@@ -1,0 +1,338 @@
+{
+  "version": 1,
+  "description": "Metadata-only gold set for raw-query versus E5 instruct-query retrieval.",
+  "model": "intfloat/multilingual-e5-large-instruct",
+  "top_k": 20,
+  "queries": [
+    {
+      "id": "single-samsung-2025-revenue",
+      "category": "single_lookup",
+      "question": "삼성전자의 2025년 연결기준 매출액은 얼마인가?",
+      "manifest_filter": {
+        "corp_names": ["삼성전자"],
+        "doc_group": "periodic",
+        "doc_subtype": "annual",
+        "base_years": [2025]
+      },
+      "expected_chunk_ids": ["20260310002820_52"],
+      "answerable": true
+    },
+    {
+      "id": "single-sk-2025-revenue",
+      "category": "single_lookup",
+      "question": "SK하이닉스의 2025년 연결기준 매출액은 얼마인가?",
+      "manifest_filter": {
+        "corp_names": ["SK하이닉스"],
+        "doc_group": "periodic",
+        "doc_subtype": "annual",
+        "base_years": [2025]
+      },
+      "expected_chunk_ids": ["20260317000635_44"],
+      "answerable": true
+    },
+    {
+      "id": "single-samsung-2023-operating-profit",
+      "category": "single_lookup",
+      "question": "삼성전자의 2023년 연결기준 영업이익은 얼마인가?",
+      "manifest_filter": {
+        "corp_names": ["삼성전자"],
+        "doc_group": "periodic",
+        "doc_subtype": "annual",
+        "base_years": [2023]
+      },
+      "expected_chunk_ids": ["20240312000736_59"],
+      "answerable": true
+    },
+    {
+      "id": "single-sk-2024-operating-profit",
+      "category": "single_lookup",
+      "question": "SK하이닉스의 2024년 연결기준 영업이익은 얼마인가?",
+      "manifest_filter": {
+        "corp_names": ["SK하이닉스"],
+        "doc_group": "periodic",
+        "doc_subtype": "annual",
+        "base_years": [2024]
+      },
+      "expected_chunk_ids": ["20250319000665_48"],
+      "answerable": true
+    },
+    {
+      "id": "single-samsung-2024-product-sales",
+      "category": "single_lookup",
+      "question": "삼성전자의 2024년 주요 제품 및 서비스별 매출액은?",
+      "manifest_filter": {
+        "corp_names": ["삼성전자"],
+        "doc_group": "periodic",
+        "doc_subtype": "annual",
+        "base_years": [2024]
+      },
+      "expected_chunk_ids": ["20250311001085_124"],
+      "answerable": true
+    },
+    {
+      "id": "multi-year-samsung-revenue",
+      "category": "multi_year",
+      "question": "삼성전자의 2023년과 2025년 연결기준 매출액을 비교해줘.",
+      "manifest_filter": {
+        "corp_names": ["삼성전자"],
+        "doc_group": "periodic",
+        "doc_subtype": "annual",
+        "base_years": [2023, 2025]
+      },
+      "expected_chunk_ids": ["20240312000736_59", "20260310002820_52"],
+      "answerable": true
+    },
+    {
+      "id": "multi-year-sk-revenue",
+      "category": "multi_year",
+      "question": "SK하이닉스의 2023년과 2025년 연결기준 매출액을 비교해줘.",
+      "manifest_filter": {
+        "corp_names": ["SK하이닉스"],
+        "doc_group": "periodic",
+        "doc_subtype": "annual",
+        "base_years": [2023, 2025]
+      },
+      "expected_chunk_ids": ["20240319000684_59", "20260317000635_44"],
+      "answerable": true
+    },
+    {
+      "id": "multi-year-samsung-operating-profit",
+      "category": "multi_year",
+      "question": "삼성전자의 2023년과 2025년 영업이익을 비교하고 증가 여부를 계산해줘.",
+      "manifest_filter": {
+        "corp_names": ["삼성전자"],
+        "doc_group": "periodic",
+        "doc_subtype": "annual",
+        "base_years": [2023, 2025]
+      },
+      "expected_chunk_ids": ["20240312000736_59", "20260310002820_52"],
+      "answerable": true
+    },
+    {
+      "id": "multi-year-sk-operating-profit",
+      "category": "multi_year",
+      "question": "SK하이닉스의 2023년과 2025년 영업이익을 비교하고 증가 여부를 계산해줘.",
+      "manifest_filter": {
+        "corp_names": ["SK하이닉스"],
+        "doc_group": "periodic",
+        "doc_subtype": "annual",
+        "base_years": [2023, 2025]
+      },
+      "expected_chunk_ids": ["20240319000684_59", "20260317000635_44"],
+      "answerable": true
+    },
+    {
+      "id": "multi-year-samsung-product-segment-sales",
+      "category": "multi_year",
+      "question": "삼성전자의 2024년 주요 제품 및 서비스 매출과 2025년 사업부문별 매출을 비교해줘.",
+      "manifest_filter": {
+        "corp_names": ["삼성전자"],
+        "doc_group": "periodic",
+        "doc_subtype": "annual",
+        "base_years": [2024, 2025]
+      },
+      "expected_chunk_ids": ["20250311001085_124", "20260310002820_440"],
+      "answerable": true
+    },
+    {
+      "id": "multi-company-2025-revenue",
+      "category": "multi_company",
+      "question": "삼성전자와 SK하이닉스의 2025년 매출액을 비교해줘.",
+      "manifest_filter": {
+        "corp_names": ["삼성전자", "SK하이닉스"],
+        "doc_group": "periodic",
+        "doc_subtype": "annual",
+        "base_years": [2025]
+      },
+      "expected_chunk_ids": ["20260310002820_52", "20260317000635_44"],
+      "answerable": true
+    },
+    {
+      "id": "multi-company-2025-operating-profit",
+      "category": "multi_company",
+      "question": "삼성전자와 SK하이닉스의 2025년 영업이익을 비교해줘.",
+      "manifest_filter": {
+        "corp_names": ["삼성전자", "SK하이닉스"],
+        "doc_group": "periodic",
+        "doc_subtype": "annual",
+        "base_years": [2025]
+      },
+      "expected_chunk_ids": ["20260310002820_52", "20260317000635_44"],
+      "answerable": true
+    },
+    {
+      "id": "multi-company-2023-revenue",
+      "category": "multi_company",
+      "question": "삼성전자와 SK하이닉스의 2023년 매출액을 비교해줘.",
+      "manifest_filter": {
+        "corp_names": ["삼성전자", "SK하이닉스"],
+        "doc_group": "periodic",
+        "doc_subtype": "annual",
+        "base_years": [2023]
+      },
+      "expected_chunk_ids": ["20240312000736_59", "20240319000684_59"],
+      "answerable": true
+    },
+    {
+      "id": "multi-company-2024-product-and-revenue",
+      "category": "multi_company",
+      "question": "2024년 삼성전자의 주요 제품 및 서비스 매출과 SK하이닉스의 매출액을 함께 비교해줘.",
+      "manifest_filter": {
+        "corp_names": ["삼성전자", "SK하이닉스"],
+        "doc_group": "periodic",
+        "doc_subtype": "annual",
+        "base_years": [2024]
+      },
+      "expected_chunk_ids": ["20250311001085_124", "20250319000665_48"],
+      "answerable": true
+    },
+    {
+      "id": "multi-company-2025-segment-cashflow",
+      "category": "multi_company",
+      "question": "2025년 삼성전자의 사업부문별 매출과 SK하이닉스의 영업활동 현금흐름을 확인해줘.",
+      "manifest_filter": {
+        "corp_names": ["삼성전자", "SK하이닉스"],
+        "doc_group": "periodic",
+        "doc_subtype": "annual",
+        "base_years": [2025]
+      },
+      "expected_chunk_ids": ["20260310002820_440", "20260317000635_51"],
+      "answerable": true
+    },
+    {
+      "id": "complex-samsung-2024-product-rnd",
+      "category": "complex_reasoning",
+      "question": "삼성전자의 2024년 제품 및 서비스 매출 구성과 연구개발비 규모를 함께 분석해줘.",
+      "manifest_filter": {
+        "corp_names": ["삼성전자"],
+        "doc_group": "periodic",
+        "doc_subtype": "annual",
+        "base_years": [2024]
+      },
+      "expected_chunk_ids": ["20250311001085_124", "20250311001085_228"],
+      "answerable": true
+    },
+    {
+      "id": "complex-samsung-2025-segments",
+      "category": "complex_reasoning",
+      "question": "삼성전자의 2025년 사업부문별 매출과 영업이익을 분석해줘.",
+      "manifest_filter": {
+        "corp_names": ["삼성전자"],
+        "doc_group": "periodic",
+        "doc_subtype": "annual",
+        "base_years": [2025]
+      },
+      "expected_chunk_ids": ["20260310002820_440"],
+      "answerable": true
+    },
+    {
+      "id": "complex-sk-2025-performance",
+      "category": "complex_reasoning",
+      "question": "SK하이닉스의 2025년 연결기준 매출액과 영업이익을 바탕으로 실적을 요약해줘.",
+      "manifest_filter": {
+        "corp_names": ["SK하이닉스"],
+        "doc_group": "periodic",
+        "doc_subtype": "annual",
+        "base_years": [2025]
+      },
+      "expected_chunk_ids": ["20260317000635_44"],
+      "answerable": true
+    },
+    {
+      "id": "complex-samsung-2023-financial-health",
+      "category": "complex_reasoning",
+      "question": "삼성전자의 2023년 영업실적과 부채비율을 함께 확인해 재무상태를 설명해줘.",
+      "manifest_filter": {
+        "corp_names": ["삼성전자"],
+        "doc_group": "periodic",
+        "doc_subtype": "annual",
+        "base_years": [2023]
+      },
+      "expected_chunk_ids": ["20240312000736_59", "20240312000736_502"],
+      "answerable": true
+    },
+    {
+      "id": "complex-sk-2024-financial-health",
+      "category": "complex_reasoning",
+      "question": "SK하이닉스의 2024년 손익과 부채비율을 함께 확인해 재무상태를 설명해줘.",
+      "manifest_filter": {
+        "corp_names": ["SK하이닉스"],
+        "doc_group": "periodic",
+        "doc_subtype": "annual",
+        "base_years": [2024]
+      },
+      "expected_chunk_ids": ["20250319000665_48", "20250319000665_237"],
+      "answerable": true
+    },
+    {
+      "id": "limit-samsung-2022-revenue",
+      "category": "information_limit",
+      "question": "삼성전자의 2022년 매출액은 얼마인가?",
+      "manifest_filter": {
+        "corp_names": ["삼성전자"],
+        "doc_group": "periodic",
+        "doc_subtype": "annual",
+        "base_years": [2022]
+      },
+      "expected_chunk_ids": [],
+      "answerable": false,
+      "safety_expectation": "fail_closed"
+    },
+    {
+      "id": "limit-sk-2027-revenue",
+      "category": "information_limit",
+      "question": "SK하이닉스의 2027년 매출액은 얼마인가?",
+      "manifest_filter": {
+        "corp_names": ["SK하이닉스"],
+        "doc_group": "periodic",
+        "doc_subtype": "annual",
+        "base_years": [2027]
+      },
+      "expected_chunk_ids": [],
+      "answerable": false,
+      "safety_expectation": "fail_closed"
+    },
+    {
+      "id": "limit-samsung-2025-ceo-hobby",
+      "category": "information_limit",
+      "question": "삼성전자의 2025년 대표이사 취미는 무엇인가?",
+      "manifest_filter": {
+        "corp_names": ["삼성전자"],
+        "doc_group": "periodic",
+        "doc_subtype": "annual",
+        "base_years": [2025]
+      },
+      "expected_chunk_ids": [],
+      "answerable": false,
+      "safety_expectation": "fail_closed"
+    },
+    {
+      "id": "limit-sk-2025-favorite-food",
+      "category": "information_limit",
+      "question": "SK하이닉스의 2025년 대표이사가 가장 좋아하는 음식은 무엇인가?",
+      "manifest_filter": {
+        "corp_names": ["SK하이닉스"],
+        "doc_group": "periodic",
+        "doc_subtype": "annual",
+        "base_years": [2025]
+      },
+      "expected_chunk_ids": [],
+      "answerable": false,
+      "safety_expectation": "fail_closed"
+    },
+    {
+      "id": "limit-samsung-today-stock-price",
+      "category": "information_limit",
+      "question": "삼성전자의 오늘 주가는 얼마인가?",
+      "manifest_filter": {
+        "corp_names": ["삼성전자"],
+        "doc_group": "periodic",
+        "doc_subtype": "annual",
+        "base_years": [2025]
+      },
+      "expected_chunk_ids": [],
+      "answerable": false,
+      "safety_expectation": "fail_closed"
+    }
+  ]
+}
