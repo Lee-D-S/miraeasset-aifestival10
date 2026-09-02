@@ -34,6 +34,14 @@ tests/                  # 현재 통합 계약 테스트
 python scripts/render_graph.py --png integration/graph.png
 ```
 
+## NCP & instance level architecture
+
+![instance_levle_arch](img/instance_level_schema.drawio.png)
+
+단일 ec2인스턴스 내 
+- 단일 agent app
+- vector DB, RDB 가 포함되어 있다.
+
 ## 설치 및 실행
 
 ```powershell
