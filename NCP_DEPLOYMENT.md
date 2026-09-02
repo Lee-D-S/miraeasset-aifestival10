@@ -34,7 +34,9 @@ Git, README, 응답에 기록하지 않는다.
 
 `STAGE2_EMBEDDING=e5-instruct`를 사용하는 서버에는
 `intfloat/multilingual-e5-large-instruct` 모델을 Hugging Face 캐시에 배포 전에 준비한다.
-애플리케이션은 시작 시 모델을 외부에서 다운로드하지 않는다.
+애플리케이션은 시작 시 모델을 외부에서 다운로드하지 않는다. 제공 Chroma 인덱스는
+현재 Chroma writer와 다른 persistent HNSW pickle 형식이므로 local backend는 Chroma
+migration/client 대신 SQLite `mode=ro`와 direct HNSW query adapter를 사용한다.
 
 ## 실행과 확인
 
@@ -43,6 +45,7 @@ python -m pip install -r requirements.txt
 python -m pip install -r requirements-langgraph.txt
 python -m pip install -r requirements-dev.txt
 python scripts/check_deployment.py
+python scripts/check_real_index.py --allow-partial-index
 uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1
 ```
 
@@ -53,3 +56,16 @@ uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1
 
 container 모드는 Postgres와 Chroma 서버가 실제로 준비된 별도 환경에서만 사용한다. 현재
 제공 인덱스 검증과 서버 테스트의 기준은 `STAGE2_MODE=local`이다.
+
+일반 회귀 테스트는 대용량 인덱스를 필요로 하지 않고 `pytest`에서 `real_index` marker를
+제외한다. 실제 인덱스가 사전 탑재된 runner에서는 수동으로 다음 명령을 실행한다.
+
+```powershell
+pytest -m real_index
+python scripts/check_real_index.py --allow-partial-index
+```
+
+NCP live smoke는 별도 터미널에서 worker 1개로 서버를 실행한 뒤
+`python scripts/smoke_api.py --base-url http://127.0.0.1:8000`을 사용한다. 이 CLI는
+`/health` → `/ready` → `/answer` 순서와 5개 문자열 필드만 확인하고 API key·authorization
+header·응답 전문을 출력하지 않는다.

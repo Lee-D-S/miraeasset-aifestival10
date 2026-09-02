@@ -10,10 +10,10 @@ config.py               # 프로젝트 루트 기준 경로·Stage2 모드 단�
 integration/            # LangGraph 조립, Supervisor, API adapter
 shared_state.py         # 공용 AgentState와 Stage write contract
 stage1/                 # 질의 정규화·Intent·manifest filter
-stage2/                 # fixture / local / container hybrid retrieval·embedding·rerank
+stage2/                 # local / container hybrid retrieval·embedding·rerank
 stage3/                 # Fact·event·계산·답변 초안
 stage4/                 # 수치·출처·의미 검증
-legacy/                 # 과거 구현과 fixture 보관
+legacy/                 # 현재 실행 경로가 아닌 과거 구현 보관
 tests/                  # 현재 통합 계약 테스트
 ```
 
@@ -47,17 +47,15 @@ uvicorn app:app --reload
 선택은 모두 프로젝트 루트의 **`config.py`** 한 곳에서 관리한다. 환경변수의 상대경로는
 실행 CWD가 아니라 프로젝트 루트를 기준으로 해석된다.
 
-Stage2는 `STAGE2_MODE`로 세 모드 중 하나를 연다(기본값 `fixture`).
+Stage2는 `STAGE2_MODE`로 두 모드 중 하나를 연다(기본값 `local`).
 
-- `fixture` (기본값, 테스트용): "DB"가 CLOVA API로 사전 계산한 임베딩 JSON 파일이다
-  (`legacy/test_data/disclosure_clova_local.json`, `STAGE2_FIXTURE_PATH`로 변경 가능). 쿼리는
-  같은 CLOVA 임베딩 엔드포인트로 실시간 계산한다. 로컬 SQL·VectorDB가 전혀 필요 없다.
-- `local`: 로컬 SQLite(`STAGE2_INDEX_PATH`)로 `manifest_filter`를 SQL `WHERE`절로 필터링하고,
-  로컬 Chroma persist 디렉터리(`STAGE2_CHROMA_PATH`)로 임베딩·유사도·정렬을 위임한다
-  (`LocalHybridRetriever`). 기본값은 `data/team-feature2-local-db/local_db/`의
-  `chunk_index.db`와 `chunk_index_chroma/`이며, `STAGE2_SQL_TABLE=chunk_index`로 기존
-  인덱스를 read-only로 연다. 질의 임베딩은 `STAGE2_EMBEDDING=e5-instruct`로
-  `intfloat/multilingual-e5-large-instruct`를 사용한다.
+- `local`: 제공된 로컬 SQLite(`STAGE2_INDEX_PATH`)의 `chunk_index`로
+  `manifest_filter`를 SQL `WHERE`절로 필터링하고, 기존 Chroma persistent HNSW 파일을
+  query-only로 읽는다. 현재 제공 인덱스는 최신 Chroma writer와 호환되지 않는 legacy
+  HNSW pickle 형식이므로 애플리케이션은 Chroma migration/client를 열지 않고
+  `chroma.sqlite3`를 SQLite `mode=ro`로 읽으며 HNSW 파일을 직접 검색한다. 질의 임베딩은
+  `STAGE2_EMBEDDING=e5-instruct`, 즉 `intfloat/multilingual-e5-large-instruct` 하나로
+  고정한다.
 - `container`: Dockerized Postgres(`STAGE2_RDB_URL`)와 Chroma 서버
   (`STAGE2_CHROMA_HOST`/`STAGE2_CHROMA_PORT`)를 사용한다. 두 값 모두 필수이며, 없으면
   기동 전에 명확한 오류로 실패한다. `LocalHybridRetriever`의 SQL·벡터 검색 코드는
@@ -70,6 +68,8 @@ Stage2는 `STAGE2_MODE`로 세 모드 중 하나를 연다(기본값 `fixture`).
 약 800,460개 벡터로 구성되어 있다. 벡터 커버리지와 Stage1 manifest 문서 집합이 완전히
 일치하지 않을 수 있으므로, 해당 인덱스를 테스트할 때만
 `STAGE2_ALLOW_PARTIAL_INDEX=true`를 명시한다. 스키마·빈 테이블·차원 오류는 계속 실패한다.
+`chunk_index`와 Chroma collection의 ID 관계는 readiness에서 확인하며, HNSW에 실제로
+검색 가능한 벡터가 없는 후보는 결과에서 제외된다.
 
 Stage1 corpus 자동 탐색이 실패하는 실행 환경에서는 `CORPUS_DIR`에 `universe.csv`와
 `manifest.jsonl`이 있는 corpus 디렉터리를 명시한다(상대경로는 루트 기준).
@@ -91,6 +91,17 @@ $env:CLOVA_LLM_ENABLED = "true"  # 답변 생성·semantic validation을 CLOVA�
 python scripts/check_deployment.py
 uvicorn app:app --reload
 ```
+
+제공 인덱스의 구조·대표 질의·read-only 파일 불변성·mock 전체 pipeline 검증은 다음 명령으로
+실행한다. 이 검증은 네트워크 다운로드나 인덱스 변경을 수행하지 않는다.
+
+```powershell
+python scripts/check_real_index.py --allow-partial-index
+pytest -m real_index
+```
+
+일반 `pytest`는 대용량 인덱스에 의존하지 않으며 `real_index` marker를 자동 제외한다.
+실제 통합 job은 사전 탑재된 DB와 E5 모델 cache가 있는 runner에서 수동 dispatch한다.
 
 `CORPUS_DIR`는 Stage1의 `universe.csv`·`manifest.jsonl` 경로로 유지한다. E5 모델은
 서버의 Hugging Face 캐시에 미리 준비되어 있어야 하며, 기동 시 외부 다운로드는 하지 않는다.
@@ -139,15 +150,17 @@ pytest
 
 ## 로컬 무비용 E2E
 
-외부 CLOVA·DB·임베딩 서버 없이 검증하려면 `integration.testing.build_deterministic_pipeline()`에
-deterministic Intent와 fixture 문서를 주입한다. 이 factory는 테스트 전용이며 production
-fallback으로 사용하지 않는다.
+외부 CLOVA·대용량 DB·임베딩 서버 없이 일반 회귀를 검증하려면
+`integration.testing.build_deterministic_pipeline()`에 deterministic Intent와 InMemory 문서를
+주입한다. 이 factory와 InMemoryRetriever는 테스트 전용이며 production fallback으로 사용하지
+않는다. local store 계약 테스트는 임시 SQLite/Chroma를 사용한다.
 
 ```powershell
 pytest tests/test_local_e2e.py
 ```
 
-실제 CLOVA 호출은 provider 환경변수가 설정된 전체 API 테스트에서만 수행한다.
+실제 CLOVA 호출은 provider 환경변수가 설정된 NCP smoke에서만 수행한다. CI와 `check_real_index.py`
+pipeline 검증은 deterministic Stage3·Stage4 provider를 사용한다.
 배포 전 오프라인 구성 검사는 `python scripts/check_deployment.py`로 실행한다. 이 검사는 CLOVA endpoint를 호출하지 않고 corpus, SQLite·Chroma index의 일관성까지 검사한다.
 embedding timeout은 `CLOVA_EMBEDDING_TIMEOUT`, 답변·semantic timeout은
 `CLOVA_CHAT_TIMEOUT`, 429 재시도 대기 상한은 `CLOVA_RATE_LIMIT_MAX_WAIT`로 조정한다.
