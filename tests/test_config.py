@@ -9,7 +9,6 @@ from integration.readiness import validate_container_settings, validate_environm
 
 _STAGE2_ENV = (
     "STAGE2_MODE",
-    "STAGE2_FIXTURE_PATH",
     "STAGE2_INDEX_PATH",
     "STAGE2_CHROMA_PATH",
     "STAGE2_CHROMA_COLLECTION",
@@ -18,6 +17,7 @@ _STAGE2_ENV = (
     "STAGE2_ALLOW_PARTIAL_INDEX",
     "STAGE2_RDB_URL",
     "STAGE2_CHROMA_HOST",
+    "CLOVA_LLM_ENABLED",
     "CORPUS_DIR",
 )
 
@@ -40,8 +40,8 @@ def test_resolve_path_keeps_absolute_and_falls_back_to_default(tmp_path):
     assert config.resolve_path(None, tmp_path / "default.db") == tmp_path / "default.db"
 
 
-def test_mode_defaults_to_fixture():
-    assert config.resolve_stage2_mode() == "fixture"
+def test_mode_defaults_to_local():
+    assert config.resolve_stage2_mode() == "local"
 
 
 def test_stage2_mode_env_is_authoritative(monkeypatch):
@@ -61,11 +61,16 @@ def test_settings_resolve_paths_and_sqlite_url(monkeypatch):
     assert settings.embedding == "e5-instruct"
 
 
-def test_validate_environment_flags_unknown_mode_and_missing_key(monkeypatch):
+def test_validate_environment_flags_unknown_mode(monkeypatch):
     assert validate_environment("local") == []
     assert any("STAGE2_MODE" in issue for issue in validate_environment("sqlite"))
+
+
+def test_validate_environment_requires_key_only_for_live_llm(monkeypatch):
     monkeypatch.delenv("CLOVA_API_KEY", raising=False)
-    assert any("CLOVA_API_KEY" in issue for issue in validate_environment("fixture"))
+    assert validate_environment("local") == []
+    monkeypatch.setenv("CLOVA_LLM_ENABLED", "true")
+    assert any("CLOVA_API_KEY" in issue for issue in validate_environment("local"))
 
 
 def test_validate_environment_rejects_unknown_embedding_and_table(monkeypatch):

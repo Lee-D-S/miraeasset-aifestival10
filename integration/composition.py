@@ -15,16 +15,12 @@ from integration.readiness import (
     validate_container_settings,
     validate_corpus_directory,
     validate_environment,
-    validate_fixture,
     validate_sqlite_path,
 )
 from integration.service import StagePipeline
 from stage1 import build_stage1_node
 from stage2 import (
-    ClovaEmbeddings,
-    ClovaQueryEmbedding,
     E5InstructEmbeddings,
-    JsonFixtureRetriever,
     LocalHybridRetriever,
     RetrievalConfig,
     build_stage2_node,
@@ -62,34 +58,25 @@ def _shared_clova_rate_limiter() -> ClovaRateLimiter:
     )
 
 
-def _embedding_function(settings: config.Stage2Settings, rate_limiter: ClovaRateLimiter):
-    if settings.embedding == "e5-instruct":
-        return E5InstructEmbeddings()
-    return ClovaEmbeddings(rate_limiter=rate_limiter)
+def _embedding_function(settings: config.Stage2Settings):
+    if settings.embedding != "e5-instruct":
+        raise RuntimeError(
+            "unsupported Stage2 embedding: "
+            f"{settings.embedding}; choose e5-instruct"
+        )
+    return E5InstructEmbeddings()
 
 
 def _build_retriever(
     settings: config.Stage2Settings,
     *,
     corpus: Path | None,
-    rate_limiter: ClovaRateLimiter,
 ):
     """Open the Stage2 retriever for the configured mode.
 
     Every path and connection string comes from :mod:`config`; nothing here
     recomputes a project-relative path or reads the environment directly.
     """
-
-    if settings.mode == "fixture":
-        # "Naver API" test DB: a JSON file of CLOVA-precomputed document
-        # embeddings; queries are embedded live against the same CLOVA
-        # endpoint. No SQL RDB or vector DB service required.
-        retriever = JsonFixtureRetriever.from_path(
-            settings.fixture_path,
-            query_embedder=ClovaQueryEmbedding(rate_limiter=rate_limiter),
-        )
-        raise_if_invalid(validate_fixture(retriever))
-        return retriever
 
     if settings.mode == "local":
         # Local hybrid store: a SQLite file for metadata filtering + a local
@@ -100,7 +87,7 @@ def _build_retriever(
             engine=readonly_sqlite_engine(settings.sqlite_path),
             vectorstore=local_chroma(
                 settings.chroma_path,
-                embedding_function=_embedding_function(settings, rate_limiter),
+                embedding_function=_embedding_function(settings),
                 collection_name=settings.chroma_collection,
                 create_directory=False,
             ),
@@ -118,7 +105,7 @@ def _build_retriever(
             vectorstore=chroma_server(
                 settings.chroma_host,
                 settings.chroma_port,
-                embedding_function=_embedding_function(settings, rate_limiter),
+                embedding_function=_embedding_function(settings),
                 collection_name=settings.chroma_collection,
             ),
             table_name=settings.sqlite_table,
@@ -155,7 +142,7 @@ def build_pipeline() -> StagePipeline:
     clova_rate_limiter = _shared_clova_rate_limiter()
     answer_client = ClovaChatClient(rate_limiter=clova_rate_limiter) if live_llm else None
 
-    retriever = _build_retriever(settings, corpus=corpus, rate_limiter=clova_rate_limiter)
+    retriever = _build_retriever(settings, corpus=corpus)
 
     return StagePipeline(StageNodes(
         stage1=stage1,

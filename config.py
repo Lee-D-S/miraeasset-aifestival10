@@ -1,7 +1,7 @@
 """Project-wide path and Stage2 backend configuration.
 
-Every module that opens a database, a vector store, a corpus, or a fixture
-reads its location from here instead of recomputing
+Every module that opens a database, a vector store, or a corpus reads its
+location from here instead of recomputing
 ``Path(__file__).resolve().parents[...]`` or calling ``os.getenv`` directly.
 This mirrors ``app/config.py`` in the reference implementation: one module
 owns the project-root anchor and the mode selection.
@@ -51,12 +51,6 @@ def resolve_path(value: str | os.PathLike[str] | None, default: Path) -> Path:
 # --- Shared directories -------------------------------------------------------
 DATA_DIR = resolve_path(os.getenv("DATA_DIR"), PROJECT_ROOT / "data")
 
-# Legacy CLOVA-precomputed embedding fixture ("Naver API" test DB).
-FIXTURE_PATH = resolve_path(
-    os.getenv("STAGE2_FIXTURE_PATH"),
-    PROJECT_ROOT / "legacy" / "test_data" / "disclosure_clova_local.json",
-)
-
 # Local hybrid store: a SQLite file for metadata filtering + a Chroma
 # persist directory for vector search.
 LOCAL_DB_DIR = DATA_DIR / "team-feature2-local-db" / "local_db"
@@ -84,18 +78,17 @@ except ValueError:
 
 
 # --- Stage2 mode -------------------------------------------------------------
-VALID_STAGE2_MODES: tuple[str, ...] = ("fixture", "local", "container")
-VALID_STAGE2_EMBEDDINGS: tuple[str, ...] = ("clova", "e5-instruct")
+VALID_STAGE2_MODES: tuple[str, ...] = ("local", "container")
+VALID_STAGE2_EMBEDDINGS: tuple[str, ...] = ("e5-instruct",)
 VALID_STAGE2_SQL_TABLES: tuple[str, ...] = ("chunk_index", "chunks")
-DEFAULT_STAGE2_MODE = "fixture"
+DEFAULT_STAGE2_MODE = "local"
 
 
 def resolve_stage2_mode() -> str:
     """Return the configured Stage2 mode.
 
-    ``STAGE2_MODE`` (``fixture`` | ``local`` | ``container``) is the only
-    backend selector.  Leaving it unset preserves the fixture default for
-    tests and minimal environments.
+    ``STAGE2_MODE`` (``local`` | ``container``) is the only backend selector.
+    Leaving it unset selects the supplied local read-only index.
     """
 
     mode = os.getenv("STAGE2_MODE", "").strip().lower()
@@ -129,7 +122,6 @@ class Stage2Settings:
     """Resolved Stage2 configuration for one ``build_pipeline`` call."""
 
     mode: str
-    fixture_path: Path
     sqlite_path: Path
     chroma_path: Path
     rdb_url: str
@@ -150,9 +142,6 @@ class Stage2Settings:
 
         return cls(
             mode=resolve_stage2_mode(),
-            fixture_path=resolve_path(
-                os.getenv("STAGE2_FIXTURE_PATH"), FIXTURE_PATH
-            ),
             sqlite_path=resolve_path(os.getenv("STAGE2_INDEX_PATH"), SQLITE_PATH),
             chroma_path=resolve_path(os.getenv("STAGE2_CHROMA_PATH"), CHROMA_PATH),
             rdb_url=os.getenv("STAGE2_RDB_URL", "").strip(),
@@ -171,7 +160,6 @@ __all__ = [
     "PROJECT_ROOT",
     "DATA_DIR",
     "LOCAL_DB_DIR",
-    "FIXTURE_PATH",
     "SQLITE_PATH",
     "CHROMA_PATH",
     "CHROMA_COLLECTION",

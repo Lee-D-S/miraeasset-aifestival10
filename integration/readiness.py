@@ -37,9 +37,10 @@ def validate_environment(mode: str) -> list[str]:
         issues.append(
             "STAGE2_MODE must be one of " + ", ".join(config.VALID_STAGE2_MODES)
         )
-    if not _api_key():
+    live_llm = os.getenv("CLOVA_LLM_ENABLED", "false").strip().lower() == "true"
+    if live_llm and not _api_key():
         issues.append("CLOVA_API_KEY is not configured")
-    if not os.getenv("CLOVA_API_HOST", "clovastudio.stream.ntruss.com").strip():
+    if live_llm and not os.getenv("CLOVA_API_HOST", "clovastudio.stream.ntruss.com").strip():
         issues.append("CLOVA_API_HOST is empty")
     embedding = os.getenv("STAGE2_EMBEDDING", config.EMBEDDING).strip().lower()
     if embedding not in config.VALID_STAGE2_EMBEDDINGS:
@@ -76,19 +77,6 @@ def raise_if_invalid(issues: list[str], *, tolerate: set[str] | frozenset[str] =
         logger.warning("tolerating partial-index issue: %s", issue)
     if fatal:
         raise RuntimeError("deployment readiness failed: " + "; ".join(fatal))
-
-
-def validate_fixture(retriever: Any) -> list[str]:
-    issues: list[str] = []
-    documents = getattr(retriever, "documents", [])
-    if not documents:
-        return ["fixture contains no documents"]
-    for document in documents:
-        embedding = document.get("embedding")
-        if not isinstance(embedding, list) or len(embedding) != 1024:
-            issues.append(f"fixture document {document.get('id', '')} has invalid embedding dimension")
-            break
-    return issues
 
 
 def validate_embedding_dimension(vectorstore: Any, expected: int = 1024) -> list[str]:
