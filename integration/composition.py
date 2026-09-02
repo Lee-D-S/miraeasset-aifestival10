@@ -20,6 +20,7 @@ from integration.readiness import (
 from integration.service import StagePipeline
 from stage1 import build_stage1_node
 from stage2 import (
+    E5Embeddings,
     E5InstructEmbeddings,
     LocalHybridRetriever,
     RetrievalConfig,
@@ -59,16 +60,26 @@ def _shared_clova_rate_limiter() -> ClovaRateLimiter:
 
 
 def _embedding_function(settings: config.Stage2Settings):
-    if settings.embedding != "e5-instruct":
-        raise RuntimeError(
-            "unsupported Stage2 embedding: "
-            f"{settings.embedding}; choose e5-instruct"
-        )
-    # The supplied-index A/B run improved retrieval but failed the information-
-    # limit safety gate. Keep the production baseline raw until that separate
-    # fail-closed issue is fixed; the instructed candidate remains available to
-    # the explicit A/B runner.
-    return E5InstructEmbeddings(query_instruction=None)
+    """Dispatch to the configured embedding adapter.
+
+    ``e5`` (default) is the model the supplied index was built with. ``e5-instruct``
+    stays wired for the instruction-prefix A/B path -- both directions are kept
+    open rather than hard-locking to one. The supplied-index A/B run improved
+    retrieval but failed the information-limit safety gate, so even the instruct
+    adapter runs with ``query_instruction=None`` (raw query) until that
+    fail-closed issue is fixed; the prefixed candidate stays available to the
+    explicit A/B runner.
+    """
+
+    embedding = settings.embedding
+    if embedding == "e5":
+        return E5Embeddings()
+    if embedding == "e5-instruct":
+        return E5InstructEmbeddings(query_instruction=None)
+    raise RuntimeError(
+        "unsupported Stage2 embedding: "
+        f"{embedding}; choose one of {', '.join(config.VALID_STAGE2_EMBEDDINGS)}"
+    )
 
 
 def _build_retriever(

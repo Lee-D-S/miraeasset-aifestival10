@@ -65,7 +65,7 @@ CHROMA_PATH = resolve_path(
 # a Chroma server address the same logical collection.
 CHROMA_COLLECTION = os.getenv("STAGE2_CHROMA_COLLECTION", "").strip() or "chunk_vectors"
 SQLITE_TABLE = os.getenv("STAGE2_SQL_TABLE", "").strip() or "chunk_index"
-EMBEDDING = os.getenv("STAGE2_EMBEDDING", "").strip().lower() or "e5-instruct"
+EMBEDDING = os.getenv("STAGE2_EMBEDDING", "").strip().lower() or "e5"
 
 # Container store: a Dockerized Postgres RDB and a Chroma *server*.
 RDB_URL = os.getenv("STAGE2_RDB_URL", "").strip()
@@ -79,7 +79,10 @@ except ValueError:
 
 # --- Stage2 mode -------------------------------------------------------------
 VALID_STAGE2_MODES: tuple[str, ...] = ("local", "container")
-VALID_STAGE2_EMBEDDINGS: tuple[str, ...] = ("e5-instruct",)
+# ``e5`` (default, fastembed / non-instruct -- the model the supplied index was
+# built with) and ``e5-instruct`` (sentence-transformers, A/B path) are both
+# kept selectable; do not collapse this to a single value.
+VALID_STAGE2_EMBEDDINGS: tuple[str, ...] = ("e5", "e5-instruct")
 VALID_STAGE2_SQL_TABLES: tuple[str, ...] = ("chunk_index", "chunks")
 DEFAULT_STAGE2_MODE = "local"
 
