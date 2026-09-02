@@ -16,6 +16,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from stage1.index.corpus_index import CorpusIndex
 from stage1.pipeline.build_intent import build_intent
 
+# Gold cases need the supplied DART corpus (CorpusIndex.load()); run on the
+# self-hosted runner, skipped by hosted CI (see pytest.ini `needs_corpus`).
+pytestmark = pytest.mark.needs_corpus
+
 GOLD_PATH = Path(__file__).resolve().parent / "gold_queries.jsonl"
 
 
