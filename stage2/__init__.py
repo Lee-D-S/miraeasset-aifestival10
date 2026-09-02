@@ -2,7 +2,7 @@
 
 from stage2.node import build_stage2_node
 from stage2.retrieval import InMemoryRetriever, RetrievalConfig, Stage2Retriever
-from stage2.embedding import E5InstructEmbeddings
+from stage2.embedding import E5InstructEmbeddings, QUERY_INSTRUCTION, format_e5_query
 from stage2.local_store import LocalHybridRetriever
 from stage2.backends import (
     chroma_server,
@@ -18,6 +18,8 @@ __all__ = [
     "Stage2Retriever",
     "build_stage2_node",
     "E5InstructEmbeddings",
+    "QUERY_INSTRUCTION",
+    "format_e5_query",
     "LocalHybridRetriever",
     "chroma_server",
     "local_chroma",

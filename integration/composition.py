@@ -64,7 +64,11 @@ def _embedding_function(settings: config.Stage2Settings):
             "unsupported Stage2 embedding: "
             f"{settings.embedding}; choose e5-instruct"
         )
-    return E5InstructEmbeddings()
+    # The supplied-index A/B run improved retrieval but failed the information-
+    # limit safety gate. Keep the production baseline raw until that separate
+    # fail-closed issue is fixed; the instructed candidate remains available to
+    # the explicit A/B runner.
+    return E5InstructEmbeddings(query_instruction=None)
 
 
 def _build_retriever(
