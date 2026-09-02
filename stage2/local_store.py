@@ -1,4 +1,4 @@
-"""Local hybrid Stage2 retriever: SQLite filtering + Chroma vector search.
+"""Read-only hybrid Stage2 retriever: SQL filtering + Chroma vector search.
 
 Replaces the previous ``SQLiteStage2Repository``, which scanned every row in
 Python and computed cosine similarity by hand.  Candidate filtering is now a
@@ -20,7 +20,6 @@ from typing import Any
 from sqlalchemy import Engine, inspect, text
 
 from stage2.backends import local_chroma, local_sqlite_engine, readonly_sqlite_engine
-from stage2.embedding import ClovaEmbeddings
 from integration.readiness import validate_embedding_dimension
 from stage2.retrieval import _tokens
 
@@ -150,7 +149,8 @@ def build_manifest_where_and_params(manifest_filter: Mapping[str, Any]) -> tuple
 class LocalHybridRetriever:
     """Stage2Retriever backed by a SQL RDB (filtering) + a vector DB (vector search).
 
-    Defaults to a local SQLite file and a local Chroma persist directory.
+    Defaults to a read-only local SQLite file and a local Chroma persist
+    directory.
     Pass ``engine``/``vectorstore`` directly (e.g. from
     :mod:`stage2.backends`'s ``postgres_engine``/``chroma_server``) to point
     the same class at a Dockerized RDB/vector DB instead -- the SQL and
@@ -192,9 +192,13 @@ class LocalHybridRetriever:
                 if self.sqlite_path is None:
                     raise ValueError("LocalHybridRetriever requires either chroma_dir or vectorstore")
                 chroma_dir = self.sqlite_path.parent / f"{self.sqlite_path.stem}_chroma"
+            if embedding_function is None:
+                raise ValueError(
+                    "LocalHybridRetriever requires an explicit Stage2 embedding function"
+                )
             self.vectorstore = local_chroma(
                 chroma_dir,
-                embedding_function=embedding_function or ClovaEmbeddings(),
+                embedding_function=embedding_function,
                 collection_name=collection_name,
                 create_directory=not read_only,
             )
@@ -231,7 +235,8 @@ class LocalHybridRetriever:
             collection = getattr(self.vectorstore, "_collection", None)
             if collection is None:
                 return [*issues, "Chroma collection is not available"]
-            chroma_ids = {str(value) for value in collection.get(include=[]).get("ids", [])}
+            payload = collection.get(include=["metadatas"])
+            chroma_ids = {str(value) for value in payload.get("ids", [])}
             if not chroma_ids:
                 issues.append("Chroma collection is empty")
             missing_in_chroma = sql_ids - chroma_ids
@@ -240,6 +245,13 @@ class LocalHybridRetriever:
             extra_in_chroma = chroma_ids - sql_ids
             if extra_in_chroma:
                 issues.append("Chroma contains chunk IDs absent from SQLite")
+            metadata_ids = {
+                str(metadata.get("chunk_id"))
+                for metadata in payload.get("metadatas", [])
+                if isinstance(metadata, Mapping) and metadata.get("chunk_id")
+            }
+            if metadata_ids != chroma_ids:
+                issues.append("Chroma collection IDs do not match metadata chunk IDs")
             issues.extend(validate_embedding_dimension(self.vectorstore))
         except Exception as error:  # noqa: BLE001 - readiness boundary
             issues.append(f"Chroma index is not readable: {type(error).__name__}")
@@ -320,30 +332,29 @@ class LocalHybridRetriever:
         )
         with self.engine.connect() as connection:
             rows = connection.execute(text(sql), {**params, "limit": limit}).mappings().all()
-        documents = []
-        for row in rows:
-            raw_metadata = row["metadata_json"]
-            try:
-                metadata = json.loads(raw_metadata or "{}")
-            except (TypeError, json.JSONDecodeError):
-                metadata = {}
-            if not isinstance(metadata, dict):
-                metadata = {}
-            for key in _SCALAR_METADATA_COLUMNS:
-                value = row.get(key)
-                if key not in metadata and value not in (None, ""):
-                    metadata[key] = value
-            documents.append(
-                {
-                    "id": row["id"],
-                    "doc_id": row["doc_id"],
-                    "chunk_id": row["chunk_id"],
-                    "text": row["text"],
-                    "source_path": row["source_path"],
-                    "metadata": metadata,
-                }
-            )
-        return documents
+        return [self._document_from_row(row) for row in rows]
+
+    @staticmethod
+    def _document_from_row(row: Mapping[str, Any]) -> dict[str, Any]:
+        raw_metadata = row.get("metadata_json")
+        try:
+            metadata = json.loads(raw_metadata or "{}")
+        except (TypeError, json.JSONDecodeError):
+            metadata = {}
+        if not isinstance(metadata, dict):
+            metadata = {}
+        for key in _SCALAR_METADATA_COLUMNS:
+            value = row.get(key)
+            if key not in metadata and value not in (None, ""):
+                metadata[key] = value
+        return {
+            "id": str(row.get("id") or row.get("chunk_id") or ""),
+            "doc_id": str(row.get("doc_id") or ""),
+            "chunk_id": str(row.get("chunk_id") or row.get("id") or ""),
+            "text": str(row.get("text") or ""),
+            "source_path": str(row.get("source_path") or ""),
+            "metadata": metadata,
+        }
 
     def keyword_search(self, query: str, candidates: Sequence[Mapping[str, Any]], limit: int) -> list[dict[str, Any]]:
         query_tokens = _tokens(query)

@@ -81,6 +81,17 @@ def test_validate_environment_rejects_unknown_embedding_and_table(monkeypatch):
     assert any("STAGE2_SQL_TABLE" in issue for issue in issues)
 
 
+@pytest.mark.parametrize("embedding", ["clova", "e5", "multilingual-e5-large"])
+def test_validate_environment_rejects_legacy_embedding_aliases(monkeypatch, embedding):
+    monkeypatch.setenv("STAGE2_EMBEDDING", embedding)
+    assert any("STAGE2_EMBEDDING" in issue for issue in validate_environment("local"))
+
+
+def test_validate_environment_rejects_fixture_mode(monkeypatch):
+    monkeypatch.setenv("STAGE2_MODE", "fixture")
+    assert any("STAGE2_MODE" in issue for issue in validate_environment("fixture"))
+
+
 def test_validate_container_settings_requires_both_endpoints():
     incomplete = config.Stage2Settings.from_env()
     issues = validate_container_settings(incomplete)

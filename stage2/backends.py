@@ -46,9 +46,8 @@ def readonly_sqlite_engine(path: str | Path) -> Engine:
 def postgres_engine(dsn: str) -> Engine:
     """RDB connection for a (typically Dockerized) Postgres instance.
 
-    ``LocalHybridRetriever`` only ever emits portable ANSI SQL (a WHERE
-    clause built from plain comparisons/IN lists, and DELETE+INSERT instead
-    of SQLite's ``INSERT OR REPLACE``), so it runs unchanged against this
+    ``LocalHybridRetriever`` only emits portable ANSI SQL for read-only
+    WHERE clauses, so it runs unchanged against this
     engine -- only the connection changes. Requires ``psycopg[binary]``
     (already a project dependency) to be installed.
     """
@@ -66,7 +65,7 @@ def local_chroma(
     """Open a local Chroma persist directory.
 
     ``create_directory=False`` is used for the supplied read-only index so a
-    typo cannot silently create a new empty Chroma database.
+    typo cannot silently create a new empty Chroma database or collection.
     """
 
     persist_directory = Path(persist_directory)
@@ -79,6 +78,7 @@ def local_chroma(
         embedding_function=embedding_function,
         collection_name=collection_name,
         collection_metadata=_COLLECTION_METADATA,
+        create_collection_if_not_exists=create_directory,
     )
 
 
@@ -106,6 +106,7 @@ def chroma_server(
         embedding_function=embedding_function,
         collection_name=collection_name,
         collection_metadata=_COLLECTION_METADATA,
+        create_collection_if_not_exists=False,
     )
 
 

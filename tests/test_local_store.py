@@ -145,6 +145,7 @@ def test_filter_candidates_runs_as_sql_where_clause(tmp_path):
 
     unfiltered = repository.filter_candidates({}, limit=10)
     assert [row["id"] for row in unfiltered] == ["chunk-a", "chunk-b"]
+    assert repository.filter_candidates({"corp_names": ["삼성전자"]}, 1)[0]["metadata"]["corp_name"] == "삼성전자"
 
 
 def test_keyword_search_is_token_overlap(tmp_path):
@@ -206,3 +207,31 @@ def test_readonly_sqlite_engine_rejects_writes(tmp_path):
     with pytest.raises(Exception):
         with readonly.begin() as connection:
             connection.execute(text("CREATE TABLE should_not_exist (id TEXT)"))
+
+
+def test_readonly_chroma_requires_an_existing_collection(tmp_path):
+    persist = tmp_path / "chroma"
+    local_chroma(
+        persist,
+        embedding_function=_WideVocabEmbeddings(),
+        collection_name="existing",
+    )
+
+    with pytest.raises(Exception):
+        local_chroma(
+            persist,
+            embedding_function=_WideVocabEmbeddings(),
+            collection_name="missing",
+            create_directory=False,
+        )
+
+
+def test_readiness_checks_chroma_metadata_chunk_ids(tmp_path):
+    repository = _repository(tmp_path)
+    assert repository.readiness_issues() == []
+
+    repository.vectorstore._collection.update(
+        ids=["chunk-a"],
+        metadatas=[{"chunk_id": "wrong-id"}],
+    )
+    assert "Chroma collection IDs do not match metadata chunk IDs" in repository.readiness_issues()
