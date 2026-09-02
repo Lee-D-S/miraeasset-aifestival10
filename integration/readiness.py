@@ -3,10 +3,26 @@
 from __future__ import annotations
 
 import os
+import logging
 from pathlib import Path
 from typing import Any
 
 import config
+
+
+logger = logging.getLogger(__name__)
+
+# These are expected when a shared index has fewer vectors/documents than the
+# Stage1 corpus. They may be downgraded to warnings only when the operator
+# explicitly opts into partial-index execution.
+PARTIAL_INDEX_ISSUES = frozenset(
+    {
+        "Chroma is missing SQLite chunk IDs",
+        "Chroma contains chunk IDs absent from SQLite",
+        "manifest contains documents absent from Stage2 index",
+        "Stage2 index contains documents absent from manifest",
+    }
+)
 
 
 def _api_key() -> str:
@@ -25,6 +41,18 @@ def validate_environment(mode: str) -> list[str]:
         issues.append("CLOVA_API_KEY is not configured")
     if not os.getenv("CLOVA_API_HOST", "clovastudio.stream.ntruss.com").strip():
         issues.append("CLOVA_API_HOST is empty")
+    embedding = os.getenv("STAGE2_EMBEDDING", config.EMBEDDING).strip().lower()
+    if embedding not in config.VALID_STAGE2_EMBEDDINGS:
+        issues.append(
+            "STAGE2_EMBEDDING must be one of "
+            + ", ".join(config.VALID_STAGE2_EMBEDDINGS)
+        )
+    table = os.getenv("STAGE2_SQL_TABLE", config.SQLITE_TABLE).strip()
+    if table not in config.VALID_STAGE2_SQL_TABLES:
+        issues.append(
+            "STAGE2_SQL_TABLE must be one of "
+            + ", ".join(config.VALID_STAGE2_SQL_TABLES)
+        )
     return issues
 
 
@@ -39,9 +67,15 @@ def validate_container_settings(settings: "config.Stage2Settings") -> list[str]:
     return issues
 
 
-def raise_if_invalid(issues: list[str]) -> None:
-    if issues:
-        raise RuntimeError("deployment readiness failed: " + "; ".join(issues))
+def raise_if_invalid(issues: list[str], *, tolerate: set[str] | frozenset[str] = frozenset()) -> None:
+    """Raise on structural issues and log explicitly tolerated warnings."""
+
+    tolerated = sorted(set(issues) & set(tolerate))
+    fatal = [issue for issue in issues if issue not in tolerate]
+    for issue in tolerated:
+        logger.warning("tolerating partial-index issue: %s", issue)
+    if fatal:
+        raise RuntimeError("deployment readiness failed: " + "; ".join(fatal))
 
 
 def validate_fixture(retriever: Any) -> list[str]:

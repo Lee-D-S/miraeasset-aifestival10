@@ -17,6 +17,8 @@ from integration.rate_limit import is_rate_limit_error, rate_limit_event
 
 
 _TOKEN_RE = re.compile(r"[\w가-힣]+", re.UNICODE)
+_SPACED_HANGUL_RE = re.compile(r"(?<![가-힣])(?:[가-힣]\s+){2,}[가-힣](?![가-힣])")
+_KOREAN_PARTICLES = ("으로", "에서", "에게", "까지", "부터", "은", "는", "이", "가", "을", "를", "의", "과", "와", "도", "로")
 
 
 def _text(value: Any) -> str:
@@ -24,7 +26,15 @@ def _text(value: Any) -> str:
 
 
 def _tokens(value: Any) -> set[str]:
-    return {token.lower() for token in _TOKEN_RE.findall(_text(value))}
+    raw = _text(value)
+    compact = _SPACED_HANGUL_RE.sub(lambda match: re.sub(r"\s+", "", match.group(0)), raw)
+    tokens = {token.lower() for token in _TOKEN_RE.findall(raw + " " + compact)}
+    for token in tuple(tokens):
+        for particle in _KOREAN_PARTICLES:
+            if token.endswith(particle) and len(token) > len(particle) + 1:
+                tokens.add(token[: -len(particle)])
+                break
+    return tokens
 
 
 def _metadata(document: Mapping[str, Any]) -> Mapping[str, Any]:

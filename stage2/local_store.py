@@ -19,58 +19,35 @@ from typing import Any
 
 from sqlalchemy import Engine, inspect, text
 
-from stage2.backends import local_chroma, local_sqlite_engine
+from stage2.backends import local_chroma, local_sqlite_engine, readonly_sqlite_engine
 from stage2.embedding import ClovaEmbeddings
 from integration.readiness import validate_embedding_dimension
 from stage2.retrieval import _tokens
 
-_CHUNKS_TABLE_DDL = """CREATE TABLE IF NOT EXISTS chunks (
-    id TEXT PRIMARY KEY,
-    doc_id TEXT NOT NULL,
-    chunk_id TEXT NOT NULL,
-    text TEXT NOT NULL,
-    source_path TEXT NOT NULL,
-    corp_name TEXT,
-    sector TEXT,
-    doc_group TEXT,
-    doc_subtype TEXT,
-    base_year INTEGER,
-    base_month INTEGER,
-    rcept_dt TEXT,
-    is_correction INTEGER,
-    report_nm TEXT,
-    basis TEXT,
-    metadata_json TEXT NOT NULL
-)"""
-
-_DELETE_SQL = "DELETE FROM chunks WHERE id = :id"
-
-# Deliberately DELETE+INSERT rather than "INSERT OR REPLACE" (SQLite-only) or
-# "ON CONFLICT DO UPDATE" (Postgres-only): plain ANSI SQL that upserts
-# identically against a local SQLite file or a Dockerized Postgres RDB.
-_INSERT_SQL = """INSERT INTO chunks (
-    id, doc_id, chunk_id, text, source_path, corp_name, sector, doc_group,
-    doc_subtype, base_year, base_month, rcept_dt, is_correction, report_nm,
-    basis, metadata_json
-) VALUES (
-    :id, :doc_id, :chunk_id, :text, :source_path, :corp_name, :sector, :doc_group,
-    :doc_subtype, :base_year, :base_month, :rcept_dt, :is_correction, :report_nm,
-    :basis, :metadata_json
-)"""
-
-_SELECT_COLUMNS = "id, doc_id, chunk_id, text, source_path, metadata_json"
-
-
-def _text_or_none(value: Any) -> str | None:
-    text_value = str(value).strip() if value is not None else ""
-    return text_value or None
-
-
-def _int_or_none(value: Any) -> int | None:
-    try:
-        return int(value) if value is not None and str(value).strip() != "" else None
-    except (TypeError, ValueError):
-        return None
+_VALID_TABLES = frozenset({"chunk_index", "chunks"})
+_REQUIRED_COLUMNS = (
+    "id",
+    "doc_id",
+    "chunk_id",
+    "text",
+    "source_path",
+    "metadata_json",
+)
+_SCALAR_METADATA_COLUMNS = (
+    "corp_name",
+    "sector",
+    "doc_group",
+    "doc_subtype",
+    "base_year",
+    "base_month",
+    "rcept_dt",
+    "rcept_no",
+    "is_correction",
+    "report_nm",
+    "basis",
+    "section_name",
+)
+_MAX_VECTOR_CANDIDATES = 2_000
 
 
 def _normalized_bool(value: Any) -> bool | None:
@@ -185,16 +162,26 @@ class LocalHybridRetriever:
         sqlite_path: str | Path | None = None,
         *,
         chroma_dir: str | Path | None = None,
-        collection_name: str = "stage2_chunks",
+        collection_name: str = "chunk_vectors",
         embedding_function: Any | None = None,
         engine: Engine | None = None,
         vectorstore: Any | None = None,
+        table_name: str = "chunk_index",
+        read_only: bool = True,
     ):
+        if table_name not in _VALID_TABLES:
+            raise ValueError(f"unsupported Stage2 SQL table: {table_name}")
         self.sqlite_path = Path(sqlite_path) if sqlite_path is not None else None
+        self.table_name = table_name
+        self.read_only = read_only
         if engine is not None:
             self.engine = engine
         elif self.sqlite_path is not None:
-            self.engine = local_sqlite_engine(self.sqlite_path)
+            self.engine = (
+                readonly_sqlite_engine(self.sqlite_path)
+                if read_only
+                else local_sqlite_engine(self.sqlite_path)
+            )
         else:
             raise ValueError("LocalHybridRetriever requires either sqlite_path or engine")
 
@@ -209,6 +196,7 @@ class LocalHybridRetriever:
                 chroma_dir,
                 embedding_function=embedding_function or ClovaEmbeddings(),
                 collection_name=collection_name,
+                create_directory=not read_only,
             )
         self._initialized = False
 
@@ -219,15 +207,23 @@ class LocalHybridRetriever:
         try:
             self.initialize()
             with self.engine.connect() as connection:
-                columns = {str(column["name"]) for column in inspect(self.engine).get_columns("chunks")}
-                required = {"id", "doc_id", "chunk_id", "text", "metadata_json"}
+                columns = {
+                    str(column["name"])
+                    for column in inspect(self.engine).get_columns(self.table_name)
+                }
+                required = set(_REQUIRED_COLUMNS)
                 missing = sorted(required - columns)
                 if missing:
-                    issues.append("SQLite chunks schema missing: " + ", ".join(missing))
-                rows = connection.exec_driver_sql("SELECT chunk_id FROM chunks").fetchall()
+                    issues.append(
+                        f"SQLite {self.table_name} schema missing: "
+                        + ", ".join(missing)
+                    )
+                rows = connection.exec_driver_sql(
+                    f"SELECT chunk_id FROM {self.table_name}"
+                ).fetchall()
             sql_ids = {str(row[0]) for row in rows}
             if not sql_ids:
-                issues.append("SQLite chunks table is empty")
+                issues.append(f"SQLite {self.table_name} table is empty")
         except Exception as error:  # noqa: BLE001 - readiness boundary
             return [f"SQLite index is not readable: {type(error).__name__}"]
 
@@ -269,7 +265,9 @@ class LocalHybridRetriever:
         with self.engine.connect() as connection:
             indexed_ids = {
                 str(row[0])
-                for row in connection.execute(text("SELECT DISTINCT doc_id FROM chunks")).fetchall()
+                for row in connection.execute(
+                    text(f"SELECT DISTINCT doc_id FROM {self.table_name}")
+                ).fetchall()
             }
         missing = manifest_ids - indexed_ids
         extra = indexed_ids - manifest_ids
@@ -283,106 +281,69 @@ class LocalHybridRetriever:
     def initialize(self) -> None:
         if self._initialized:
             return
-        with self.engine.begin() as connection:
-            connection.execute(text(_CHUNKS_TABLE_DDL))
+        inspector = inspect(self.engine)
+        tables = set(inspector.get_table_names())
+        if self.table_name not in tables:
+            raise RuntimeError(
+                f"SQLite index is missing required table: {self.table_name}"
+            )
+        self._table_columns = {
+            str(column["name"])
+            for column in inspector.get_columns(self.table_name)
+        }
+        missing = set(_REQUIRED_COLUMNS) - self._table_columns
+        if missing:
+            raise RuntimeError(
+                f"SQLite {self.table_name} schema missing: "
+                + ", ".join(sorted(missing))
+            )
         self._initialized = True
 
-    def write_rows(self, rows: Sequence[Mapping[str, Any]]) -> None:
-        self._write_rows(rows, use_existing_embeddings=False)
-
-    def write_rows_with_embeddings(self, rows: Sequence[Mapping[str, Any]]) -> None:
-        """Write rows while reusing already-computed embedding vectors.
-
-        This is intended for offline index migration. Normal ingestion should
-        continue to use :meth:`write_rows`, which delegates document embedding
-        to the configured provider.
-        """
-        self._write_rows(rows, use_existing_embeddings=True)
-
-    def _write_rows(self, rows: Sequence[Mapping[str, Any]], *, use_existing_embeddings: bool) -> None:
-        self.initialize()
-        sql_payload = []
-        texts: list[str] = []
-        metadatas: list[dict[str, Any]] = []
-        ids: list[str] = []
-        embeddings: list[list[float]] = []
-        for row in rows:
-            metadata = dict(row.get("metadata") or {})
-            doc_id = str(row.get("doc_id", row["id"]))
-            chunk_id = str(row.get("chunk_id") or row["id"])
-            text_value = str(row.get("text", ""))
-            source_path = str(row.get("source_path", row.get("source", "")))
-            sql_payload.append({
-                "id": str(row["id"]),
-                "doc_id": doc_id,
-                "chunk_id": chunk_id,
-                "text": text_value,
-                "source_path": source_path,
-                "corp_name": _text_or_none(metadata.get("corp_name")),
-                "sector": _text_or_none(metadata.get("sector")),
-                "doc_group": _text_or_none(metadata.get("doc_group")),
-                "doc_subtype": _text_or_none(metadata.get("doc_subtype")),
-                "base_year": _int_or_none(metadata.get("base_year")),
-                "base_month": _int_or_none(metadata.get("base_month")),
-                "rcept_dt": _text_or_none(metadata.get("rcept_dt")),
-                "is_correction": 1 if metadata.get("is_correction") else 0,
-                "report_nm": _text_or_none(metadata.get("report_nm")),
-                "basis": _text_or_none(metadata.get("basis")),
-                "metadata_json": json.dumps(metadata, ensure_ascii=False),
-            })
-            texts.append(text_value)
-            metadatas.append({**metadata, "chunk_id": chunk_id, "doc_id": doc_id, "source_path": source_path})
-            ids.append(chunk_id)
-            if use_existing_embeddings:
-                raw_embedding = row.get("embedding")
-                if not isinstance(raw_embedding, list) or not raw_embedding:
-                    raise ValueError(f"row {row.get('id', '')} has no embedding")
-                try:
-                    embedding = [float(value) for value in raw_embedding]
-                except (TypeError, ValueError) as error:
-                    raise ValueError(f"row {row.get('id', '')} has an invalid embedding") from error
-                if len(embedding) != 1024:
-                    raise ValueError(f"row {row.get('id', '')} embedding dimension must be 1024")
-                embeddings.append(embedding)
-
-        with self.engine.begin() as connection:
-            for payload in sql_payload:
-                connection.execute(text(_DELETE_SQL), {"id": payload["id"]})
-                connection.execute(text(_INSERT_SQL), payload)
-        if texts:
-            if use_existing_embeddings:
-                collection = getattr(self.vectorstore, "_collection", None)
-                if collection is None:
-                    raise RuntimeError("vectorstore does not expose a Chroma collection")
-                collection.upsert(
-                    ids=ids,
-                    embeddings=embeddings,
-                    metadatas=metadatas,
-                    documents=texts,
-                )
-            else:
-                # Chroma computes and stores the embeddings itself via the
-                # configured embedding function.
-                self.vectorstore.add_texts(texts=texts, metadatas=metadatas, ids=ids)
+    def _select_columns(self) -> str:
+        columns = [
+            column
+            for column in (
+                *_REQUIRED_COLUMNS,
+                *_SCALAR_METADATA_COLUMNS,
+            )
+            if column in self._table_columns
+        ]
+        return ", ".join(dict.fromkeys(columns))
 
     def filter_candidates(self, manifest_filter: Mapping[str, Any], limit: int) -> list[dict[str, Any]]:
         self.initialize()
         where_sql, params = build_manifest_where_and_params(manifest_filter or {})
-        # ``rowid`` is SQLite-only; explicit-key ordering also works on PostgreSQL.
-        sql = f"SELECT {_SELECT_COLUMNS} FROM chunks{where_sql} ORDER BY id ASC LIMIT :limit"
+        # Explicit-key ordering works on both SQLite and PostgreSQL.
+        sql = (
+            f"SELECT {self._select_columns()} FROM {self.table_name}"
+            f"{where_sql} ORDER BY id ASC LIMIT :limit"
+        )
         with self.engine.connect() as connection:
             rows = connection.execute(text(sql), {**params, "limit": limit}).mappings().all()
-        return [
-            {
-                "id": row["id"],
-                "doc_id": row["doc_id"],
-                "chunk_id": row["chunk_id"],
-                "text": row["text"],
-                "source_path": row["source_path"],
-                "metadata": json.loads(row["metadata_json"]),
-            }
-            for row in rows
-        ]
+        documents = []
+        for row in rows:
+            raw_metadata = row["metadata_json"]
+            try:
+                metadata = json.loads(raw_metadata or "{}")
+            except (TypeError, json.JSONDecodeError):
+                metadata = {}
+            if not isinstance(metadata, dict):
+                metadata = {}
+            for key in _SCALAR_METADATA_COLUMNS:
+                value = row.get(key)
+                if key not in metadata and value not in (None, ""):
+                    metadata[key] = value
+            documents.append(
+                {
+                    "id": row["id"],
+                    "doc_id": row["doc_id"],
+                    "chunk_id": row["chunk_id"],
+                    "text": row["text"],
+                    "source_path": row["source_path"],
+                    "metadata": metadata,
+                }
+            )
+        return documents
 
     def keyword_search(self, query: str, candidates: Sequence[Mapping[str, Any]], limit: int) -> list[dict[str, Any]]:
         query_tokens = _tokens(query)
@@ -397,7 +358,7 @@ class LocalHybridRetriever:
 
     def vector_search(self, query: str, candidates: Sequence[Mapping[str, Any]], limit: int) -> list[dict[str, Any]]:
         chunk_ids = [str(row.get("chunk_id") or row.get("id")) for row in candidates if row.get("chunk_id") or row.get("id")]
-        chunk_ids = chunk_ids[:500]
+        chunk_ids = chunk_ids[:_MAX_VECTOR_CANDIDATES]
         if not chunk_ids:
             return []
         search_query = query.strip() if query and query.strip() else "공시 보고서"

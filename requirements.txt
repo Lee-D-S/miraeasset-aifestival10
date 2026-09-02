@@ -8,3 +8,7 @@ beautifulsoup4>=4.12,<5
 lxml>=5,<7
 sqlalchemy>=2.0,<3
 langchain-chroma>=1.0,<2
+langchain-huggingface>=1,<2
+sentence-transformers>=3,<4
+transformers>=4.41,<4.50
+huggingface-hub>=0.23,<1

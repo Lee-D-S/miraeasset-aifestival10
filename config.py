@@ -51,11 +51,6 @@ def resolve_path(value: str | os.PathLike[str] | None, default: Path) -> Path:
 # --- Shared directories -------------------------------------------------------
 DATA_DIR = resolve_path(os.getenv("DATA_DIR"), PROJECT_ROOT / "data")
 
-# All local DB artifacts (SQLite file + Chroma persist dir) live under one
-# directory, overridable with STAGE2_DB_DIR. Default keeps the historical
-# ``data/local_smoke`` location.
-DB_DIR = resolve_path(os.getenv("STAGE2_DB_DIR"), DATA_DIR / "local_smoke")
-
 # Legacy CLOVA-precomputed embedding fixture ("Naver API" test DB).
 FIXTURE_PATH = resolve_path(
     os.getenv("STAGE2_FIXTURE_PATH"),
@@ -64,12 +59,19 @@ FIXTURE_PATH = resolve_path(
 
 # Local hybrid store: a SQLite file for metadata filtering + a Chroma
 # persist directory for vector search.
-SQLITE_PATH = resolve_path(os.getenv("STAGE2_INDEX_PATH"), DB_DIR / "smoke.db")
-CHROMA_PATH = resolve_path(os.getenv("STAGE2_CHROMA_PATH"), DB_DIR / "smoke_chroma")
+LOCAL_DB_DIR = DATA_DIR / "team-feature2-local-db" / "local_db"
+SQLITE_PATH = resolve_path(
+    os.getenv("STAGE2_INDEX_PATH"), LOCAL_DB_DIR / "chunk_index.db"
+)
+CHROMA_PATH = resolve_path(
+    os.getenv("STAGE2_CHROMA_PATH"), LOCAL_DB_DIR / "chunk_index_chroma"
+)
 
 # One collection name for every vector-store mode so a local persist dir and
 # a Chroma server address the same logical collection.
-CHROMA_COLLECTION = os.getenv("STAGE2_CHROMA_COLLECTION", "").strip() or "stage2_chunks"
+CHROMA_COLLECTION = os.getenv("STAGE2_CHROMA_COLLECTION", "").strip() or "chunk_vectors"
+SQLITE_TABLE = os.getenv("STAGE2_SQL_TABLE", "").strip() or "chunk_index"
+EMBEDDING = os.getenv("STAGE2_EMBEDDING", "").strip().lower() or "e5-instruct"
 
 # Container store: a Dockerized Postgres RDB and a Chroma *server*.
 RDB_URL = os.getenv("STAGE2_RDB_URL", "").strip()
@@ -83,33 +85,32 @@ except ValueError:
 
 # --- Stage2 mode -------------------------------------------------------------
 VALID_STAGE2_MODES: tuple[str, ...] = ("fixture", "local", "container")
+VALID_STAGE2_EMBEDDINGS: tuple[str, ...] = ("clova", "e5-instruct")
+VALID_STAGE2_SQL_TABLES: tuple[str, ...] = ("chunk_index", "chunks")
 DEFAULT_STAGE2_MODE = "fixture"
 
 
 def resolve_stage2_mode() -> str:
     """Return the configured Stage2 mode.
 
-    ``STAGE2_MODE`` (``fixture`` | ``local`` | ``container``) is authoritative.
-    When it is unset the legacy ``STAGE2_BACKEND`` is honoured: ``fixture`` maps
-    to ``fixture``; ``sqlite`` maps to ``container`` if a Postgres DSN or a
-    Chroma host is configured, otherwise ``local``.
+    ``STAGE2_MODE`` (``fixture`` | ``local`` | ``container``) is the only
+    backend selector.  Leaving it unset preserves the fixture default for
+    tests and minimal environments.
     """
 
     mode = os.getenv("STAGE2_MODE", "").strip().lower()
-    if mode:
-        return mode
+    return mode or DEFAULT_STAGE2_MODE
 
-    legacy = os.getenv("STAGE2_BACKEND", "").strip().lower()
-    if legacy == "sqlite":
-        networked = bool(
-            os.getenv("STAGE2_RDB_URL", "").strip()
-            or os.getenv("STAGE2_CHROMA_HOST", "").strip()
-        )
-        return "container" if networked else "local"
-    if legacy:
-        # Unknown legacy value: pass it through so validate_environment rejects it.
-        return legacy
-    return DEFAULT_STAGE2_MODE
+
+def allow_partial_index() -> bool:
+    """Return whether expected partial-index consistency issues are tolerated."""
+
+    return os.getenv("STAGE2_ALLOW_PARTIAL_INDEX", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def corpus_dir() -> Path | None:
@@ -135,6 +136,9 @@ class Stage2Settings:
     chroma_host: str
     chroma_port: int
     chroma_collection: str
+    sqlite_table: str
+    embedding: str
+    allow_partial_index: bool
 
     @property
     def sqlite_url(self) -> str:
@@ -157,24 +161,32 @@ class Stage2Settings:
             chroma_collection=(
                 os.getenv("STAGE2_CHROMA_COLLECTION", "").strip() or CHROMA_COLLECTION
             ),
+            sqlite_table=os.getenv("STAGE2_SQL_TABLE", "").strip() or SQLITE_TABLE,
+            embedding=os.getenv("STAGE2_EMBEDDING", "").strip().lower() or EMBEDDING,
+            allow_partial_index=allow_partial_index(),
         )
 
 
 __all__ = [
     "PROJECT_ROOT",
     "DATA_DIR",
-    "DB_DIR",
+    "LOCAL_DB_DIR",
     "FIXTURE_PATH",
     "SQLITE_PATH",
     "CHROMA_PATH",
     "CHROMA_COLLECTION",
+    "SQLITE_TABLE",
+    "EMBEDDING",
     "RDB_URL",
     "CHROMA_HOST",
     "CHROMA_PORT",
     "VALID_STAGE2_MODES",
+    "VALID_STAGE2_EMBEDDINGS",
+    "VALID_STAGE2_SQL_TABLES",
     "DEFAULT_STAGE2_MODE",
     "Stage2Settings",
     "resolve_path",
     "resolve_stage2_mode",
+    "allow_partial_index",
     "corpus_dir",
 ]

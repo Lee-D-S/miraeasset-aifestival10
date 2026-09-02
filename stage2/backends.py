@@ -1,12 +1,9 @@
 """Factory helpers for Stage2's SQL RDB and vector DB connections.
 
 Local SQLite + a local Chroma persist directory is the default today. These
-factories exist so a later move to a containerized Postgres RDB and/or a
-Chroma *server* is a configuration change (a DSN, a host/port) rather than a
-rewrite of ``LocalHybridRetriever``'s SQL-building or vector-search code:
-that code only ever talks to a SQLAlchemy ``Engine`` and a
-``langchain_chroma.Chroma`` instance, never to "SQLite" or "a local
-directory" specifically.
+factories keep the transport separate from ``LocalHybridRetriever``'s
+read-only SQL-building and vector-search code. The supplied local index is
+opened without creating or modifying database files.
 """
 
 from __future__ import annotations
@@ -21,11 +18,29 @@ _COLLECTION_METADATA = {"hnsw:space": "cosine"}
 
 
 def local_sqlite_engine(path: str | Path) -> Engine:
-    """The default RDB connection: a local SQLite file."""
+    """Create a writable SQLite engine for isolated tests only."""
 
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     return create_engine(f"sqlite:///{path}")
+
+
+def readonly_sqlite_engine(path: str | Path) -> Engine:
+    """Open an existing SQLite file using SQLite's read-only URI mode."""
+
+    resolved = Path(path).resolve()
+    if not resolved.is_file():
+        raise FileNotFoundError(f"SQLite index does not exist: {resolved}")
+
+    def connect():
+        import sqlite3
+
+        return sqlite3.connect(
+            f"file:{resolved.as_posix()}?mode=ro",
+            uri=True,
+        )
+
+    return create_engine("sqlite://", creator=connect)
 
 
 def postgres_engine(dsn: str) -> Engine:
@@ -41,11 +56,24 @@ def postgres_engine(dsn: str) -> Engine:
     return create_engine(dsn)
 
 
-def local_chroma(persist_directory: str | Path, *, embedding_function: Any, collection_name: str = "stage2_chunks") -> Chroma:
-    """The default vector DB connection: a local Chroma persist directory."""
+def local_chroma(
+    persist_directory: str | Path,
+    *,
+    embedding_function: Any,
+    collection_name: str = "chunk_vectors",
+    create_directory: bool = True,
+) -> Chroma:
+    """Open a local Chroma persist directory.
+
+    ``create_directory=False`` is used for the supplied read-only index so a
+    typo cannot silently create a new empty Chroma database.
+    """
 
     persist_directory = Path(persist_directory)
-    persist_directory.mkdir(parents=True, exist_ok=True)
+    if create_directory:
+        persist_directory.mkdir(parents=True, exist_ok=True)
+    elif not persist_directory.is_dir():
+        raise FileNotFoundError(f"Chroma directory does not exist: {persist_directory}")
     return Chroma(
         persist_directory=str(persist_directory),
         embedding_function=embedding_function,
@@ -59,7 +87,7 @@ def chroma_server(
     port: int,
     *,
     embedding_function: Any,
-    collection_name: str = "stage2_chunks",
+    collection_name: str = "chunk_vectors",
     **client_kwargs: Any,
 ) -> Chroma:
     """Vector DB connection for a networked/Dockerized Chroma server.
@@ -81,4 +109,10 @@ def chroma_server(
     )
 
 
-__all__ = ["chroma_server", "local_chroma", "local_sqlite_engine", "postgres_engine"]
+__all__ = [
+    "chroma_server",
+    "local_chroma",
+    "local_sqlite_engine",
+    "postgres_engine",
+    "readonly_sqlite_engine",
+]

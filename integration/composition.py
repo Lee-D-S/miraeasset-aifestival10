@@ -10,6 +10,7 @@ from integration.graph import StageNodes
 from integration.clova import ClovaChatClient
 from integration.rate_limit import ClovaRateLimiter
 from integration.readiness import (
+    PARTIAL_INDEX_ISSUES,
     raise_if_invalid,
     validate_container_settings,
     validate_corpus_directory,
@@ -22,12 +23,15 @@ from stage1 import build_stage1_node
 from stage2 import (
     ClovaEmbeddings,
     ClovaQueryEmbedding,
+    E5InstructEmbeddings,
     JsonFixtureRetriever,
     LocalHybridRetriever,
     RetrievalConfig,
     build_stage2_node,
     chroma_server,
+    local_chroma,
     postgres_engine,
+    readonly_sqlite_engine,
 )
 from stage3 import build_stage3_node
 from stage4 import build_stage4_node
@@ -58,6 +62,12 @@ def _shared_clova_rate_limiter() -> ClovaRateLimiter:
     )
 
 
+def _embedding_function(settings: config.Stage2Settings, rate_limiter: ClovaRateLimiter):
+    if settings.embedding == "e5-instruct":
+        return E5InstructEmbeddings()
+    return ClovaEmbeddings(rate_limiter=rate_limiter)
+
+
 def _build_retriever(
     settings: config.Stage2Settings,
     *,
@@ -83,13 +93,20 @@ def _build_retriever(
 
     if settings.mode == "local":
         # Local hybrid store: a SQLite file for metadata filtering + a local
-        # Chroma persist directory for vector search.
+        # Chroma persist directory for vector search. Both are opened without
+        # creating or writing index files.
         raise_if_invalid(validate_sqlite_path(settings.sqlite_path))
         retriever = LocalHybridRetriever(
-            settings.sqlite_path,
-            chroma_dir=settings.chroma_path,
+            engine=readonly_sqlite_engine(settings.sqlite_path),
+            vectorstore=local_chroma(
+                settings.chroma_path,
+                embedding_function=_embedding_function(settings, rate_limiter),
+                collection_name=settings.chroma_collection,
+                create_directory=False,
+            ),
             collection_name=settings.chroma_collection,
-            embedding_function=ClovaEmbeddings(rate_limiter=rate_limiter),
+            table_name=settings.sqlite_table,
+            read_only=True,
         )
     elif settings.mode == "container":
         # Dockerized Postgres RDB + Chroma server. LocalHybridRetriever's
@@ -101,9 +118,11 @@ def _build_retriever(
             vectorstore=chroma_server(
                 settings.chroma_host,
                 settings.chroma_port,
-                embedding_function=ClovaEmbeddings(rate_limiter=rate_limiter),
+                embedding_function=_embedding_function(settings, rate_limiter),
                 collection_name=settings.chroma_collection,
             ),
+            table_name=settings.sqlite_table,
+            read_only=True,
         )
     else:
         raise RuntimeError(
@@ -111,10 +130,12 @@ def _build_retriever(
             f"choose one of {', '.join(config.VALID_STAGE2_MODES)}"
         )
 
-    raise_if_invalid(retriever.readiness_issues())
+    tolerated = PARTIAL_INDEX_ISSUES if settings.allow_partial_index else frozenset()
+    raise_if_invalid(retriever.readiness_issues(), tolerate=tolerated)
     if corpus is not None:
         raise_if_invalid(
-            retriever.manifest_consistency_issues(corpus / "manifest.jsonl")
+            retriever.manifest_consistency_issues(corpus / "manifest.jsonl"),
+            tolerate=tolerated,
         )
     return retriever
 
@@ -138,11 +159,18 @@ def build_pipeline() -> StagePipeline:
 
     return StagePipeline(StageNodes(
         stage1=stage1,
-        # Keep all metadata-filtered chunks in the small smoke corpus so
-        # Stage3 can recover aggregate rows that rank below subsidiary or
-        # segment rows in the hybrid score.  Retrieval prompt compaction still
-        # bounds what is sent to external LLMs.
-        stage2=build_stage2_node(retriever=retriever, config=RetrievalConfig(final_limit=20)),
+        # Keep all metadata-filtered chunks available so Stage3 can recover
+        # aggregate rows that rank below subsidiary or segment rows in the
+        # hybrid score. Retrieval prompt compaction still bounds what is sent
+        # to external LLMs.
+        stage2=build_stage2_node(
+            retriever=retriever,
+            config=RetrievalConfig(
+                candidate_limit=1000,
+                branch_limit=100,
+                final_limit=200,
+            ),
+        ),
         stage3=build_stage3_node(answer_writer=AnswerWriter(answer_client)),
         stage4=build_stage4_node(validator_client=answer_client),
     ))
