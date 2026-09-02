@@ -1,8 +1,29 @@
 # 배포 설계·계획 문서 (team-feature2 → NCP)
 
 > 상태: **작성 중 / 살아있는 문서.** Claude와 사용자가 같이 참조·갱신한다.
-> 최초 2026-09-03. 관련: [`sync-chunk-index.md`](./sync-chunk-index.md)
+> 최초 2026-09-03. 관련: [`sync-chunk-index.md`](./sync-chunk-index.md), [`merge-plan-lds.md`](./merge-plan-lds.md), [`ncp-deploy.md`](./ncp-deploy.md)
 > 결정에는 **[결정] / [잠정] / [미정]** 태그. 바뀌면 이 문서를 고친다.
+
+---
+
+## 진행 현황 (2026-09-03 세션 종료 시점)
+
+**완료:**
+- `origin/lds`(친구, 35커밋) ↔ `refactor/centralized-db-config`(우리) **선별 병합** → `main` 에 반영 (PR #4). 상세: `merge-plan-lds.md`.
+  - 임베딩 = `e5` (fastembed / non-instruct) 기본, `e5-instruct` 는 선택지로 유지. 디스패치는 `integration/composition._embedding_function`.
+  - write 경로는 `stage2/ingestion/writer.py` 로 분리 (엔진 무관 — SQLite/Postgres). 서빙 retriever 는 read-only 유지.
+  - `chromadb==1.5.9` 고정, `fastembed`/`hnswlib` 추가. postgres 경로(psycopg/pgvector) 유지.
+- `chunk_index.db` 스키마 확인 — 서빙 코드 기대치와 일치 (`chunk_index` 테이블, 필수 6컬럼 + 스칼라 메타 + `raw_json_content`).
+- **컨테이너화 완료:** `Dockerfile`(멀티스테이지, e5 ONNX 내장, non-root), `.dockerignore`, `docker-compose.yml`(local), `docker-compose.scale.yml`(app+chroma+postgres 오버레이).
+- **CI:** `.github/workflows/ci.yml` — main 대상 PR 에서 `pytest`(real_index/needs_corpus 제외) + `docker build`. `pytest.ini` 에서 데이터 의존 테스트 opt-in.
+- **NCP 배포 가이드:** `docs/ncp-deploy.md` (단계별), `NCP_DEPLOYMENT.md`(환경 레퍼런스, e5 로 갱신).
+- 브랜치 운영: `main` 은 PR 로만 갱신하기로 합의 (충돌 재발 방지). 워크플로 파일은 사용자가 전담.
+
+**아직 안 됨 (D-3):**
+- **풀 환경 `pytest` 통과 확인** — 이 세션 환경엔 deps 없어 정적 검증만 함. CI(`913edfe` 이후)에서 초록인지 확인 필요.
+- **실 인덱스 스모크** — `scripts/check_real_index.py`, `GET /answer` (`STAGE2_EMBEDDING=e5`, 실 Chroma+sqlite).
+- **NCP 서버 실제 배포** — `docs/ncp-deploy.md` 따라. endpoint URL 확정.
+- **제출물** — README 에 실행법·API 명세(요청/응답 5필드) + endpoint URL, 기술제안서.
 
 ---
 
