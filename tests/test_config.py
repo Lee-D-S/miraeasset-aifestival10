@@ -9,11 +9,13 @@ from integration.readiness import validate_container_settings, validate_environm
 
 _STAGE2_ENV = (
     "STAGE2_MODE",
-    "STAGE2_BACKEND",
     "STAGE2_FIXTURE_PATH",
     "STAGE2_INDEX_PATH",
     "STAGE2_CHROMA_PATH",
     "STAGE2_CHROMA_COLLECTION",
+    "STAGE2_SQL_TABLE",
+    "STAGE2_EMBEDDING",
+    "STAGE2_ALLOW_PARTIAL_INDEX",
     "STAGE2_RDB_URL",
     "STAGE2_CHROMA_HOST",
     "CORPUS_DIR",
@@ -44,25 +46,19 @@ def test_mode_defaults_to_fixture():
 
 def test_stage2_mode_env_is_authoritative(monkeypatch):
     monkeypatch.setenv("STAGE2_MODE", "container")
-    monkeypatch.setenv("STAGE2_BACKEND", "fixture")
-    assert config.resolve_stage2_mode() == "container"
-
-
-def test_legacy_backend_sqlite_maps_to_local_or_container(monkeypatch):
-    monkeypatch.setenv("STAGE2_BACKEND", "sqlite")
-    assert config.resolve_stage2_mode() == "local"
-    monkeypatch.setenv("STAGE2_RDB_URL", "postgresql+psycopg://u:p@h:5432/db")
     assert config.resolve_stage2_mode() == "container"
 
 
 def test_settings_resolve_paths_and_sqlite_url(monkeypatch):
     monkeypatch.setenv("STAGE2_MODE", "local")
-    monkeypatch.setenv("STAGE2_INDEX_PATH", "data/local_smoke/custom.db")
+    monkeypatch.setenv("STAGE2_INDEX_PATH", "data/test_index/custom.db")
     settings = config.Stage2Settings.from_env()
     assert settings.mode == "local"
-    assert settings.sqlite_path == config.PROJECT_ROOT / "data/local_smoke/custom.db"
+    assert settings.sqlite_path == config.PROJECT_ROOT / "data/test_index/custom.db"
     assert settings.sqlite_url == f"sqlite:///{settings.sqlite_path}"
-    assert settings.chroma_collection == "stage2_chunks"
+    assert settings.chroma_collection == "chunk_vectors"
+    assert settings.sqlite_table == "chunk_index"
+    assert settings.embedding == "e5-instruct"
 
 
 def test_validate_environment_flags_unknown_mode_and_missing_key(monkeypatch):
@@ -70,6 +66,14 @@ def test_validate_environment_flags_unknown_mode_and_missing_key(monkeypatch):
     assert any("STAGE2_MODE" in issue for issue in validate_environment("sqlite"))
     monkeypatch.delenv("CLOVA_API_KEY", raising=False)
     assert any("CLOVA_API_KEY" in issue for issue in validate_environment("fixture"))
+
+
+def test_validate_environment_rejects_unknown_embedding_and_table(monkeypatch):
+    monkeypatch.setenv("STAGE2_EMBEDDING", "unknown")
+    monkeypatch.setenv("STAGE2_SQL_TABLE", "unknown")
+    issues = validate_environment("local")
+    assert any("STAGE2_EMBEDDING" in issue for issue in issues)
+    assert any("STAGE2_SQL_TABLE" in issue for issue in issues)
 
 
 def test_validate_container_settings_requires_both_endpoints():

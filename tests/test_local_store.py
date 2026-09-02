@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import math
 
+import pytest
 from langchain_core.embeddings import Embeddings
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 
-from stage2.backends import local_chroma
+from stage2.backends import local_chroma, readonly_sqlite_engine
 from stage2.local_store import LocalHybridRetriever
 
 _VOCAB = ["삼성전자", "매출액", "영업이익", "다른", "기업"]
@@ -29,6 +31,29 @@ _ROWS = [
     },
 ]
 
+_INDEX_DDL = """
+CREATE TABLE chunk_index (
+    id TEXT PRIMARY KEY,
+    doc_id TEXT NOT NULL,
+    chunk_id TEXT NOT NULL,
+    text TEXT NOT NULL,
+    source_path TEXT NOT NULL,
+    corp_name TEXT,
+    sector TEXT,
+    doc_group TEXT,
+    doc_subtype TEXT,
+    base_year INTEGER,
+    base_month INTEGER,
+    rcept_dt TEXT,
+    rcept_no TEXT,
+    is_correction INTEGER,
+    report_nm TEXT,
+    basis TEXT,
+    section_name TEXT,
+    metadata_json TEXT NOT NULL
+)
+"""
+
 
 class _VocabEmbeddings(Embeddings):
     """Deterministic bag-of-vocabulary embedding so vector ranking is testable offline."""
@@ -51,13 +76,62 @@ class _WideVocabEmbeddings(_VocabEmbeddings):
 
 
 def _repository(tmp_path) -> LocalHybridRetriever:
-    repository = LocalHybridRetriever(
-        tmp_path / "smoke.db",
-        chroma_dir=tmp_path / "smoke_chroma",
-        embedding_function=_VocabEmbeddings(),
+    engine = create_engine(f"sqlite:///{tmp_path / 'index.db'}")
+    with engine.begin() as connection:
+        connection.execute(text(_INDEX_DDL))
+        for row in _ROWS:
+            metadata = dict(row["metadata"])
+            connection.execute(
+                text(
+                    "INSERT INTO chunk_index "
+                    "(id, doc_id, chunk_id, text, source_path, corp_name, "
+                    "sector, doc_group, doc_subtype, base_year, base_month, "
+                    "is_correction, metadata_json) VALUES "
+                    "(:id, :doc_id, :chunk_id, :text, :source_path, :corp_name, "
+                    ":sector, :doc_group, :doc_subtype, :base_year, :base_month, "
+                    ":is_correction, :metadata_json)"
+                ),
+                {
+                    "id": row["id"],
+                    "doc_id": row["doc_id"],
+                    "chunk_id": row["chunk_id"],
+                    "text": row["text"],
+                    "source_path": row["source_path"],
+                    "corp_name": metadata.get("corp_name"),
+                    "sector": metadata.get("sector"),
+                    "doc_group": metadata.get("doc_group"),
+                    "doc_subtype": metadata.get("doc_subtype"),
+                    "base_year": metadata.get("base_year"),
+                    "base_month": metadata.get("base_month"),
+                    "is_correction": int(metadata.get("is_correction", False)),
+                    "metadata_json": json.dumps(metadata, ensure_ascii=False),
+                },
+            )
+    vectorstore = local_chroma(
+        tmp_path / "index_chroma",
+        embedding_function=_WideVocabEmbeddings(),
+        collection_name="chunk_vectors",
     )
-    repository.write_rows(_ROWS)
-    return repository
+    vectorstore.add_texts(
+        texts=[row["text"] for row in _ROWS],
+        metadatas=[
+            {
+                **row["metadata"],
+                "chunk_id": row["chunk_id"],
+                "doc_id": row["doc_id"],
+                "source_path": row["source_path"],
+            }
+            for row in _ROWS
+        ],
+        ids=[row["chunk_id"] for row in _ROWS],
+    )
+    return LocalHybridRetriever(
+        engine=engine,
+        vectorstore=vectorstore,
+        collection_name="chunk_vectors",
+        table_name="chunk_index",
+        read_only=True,
+    )
 
 
 def test_filter_candidates_runs_as_sql_where_clause(tmp_path):
@@ -104,11 +178,7 @@ def test_accepts_an_injected_engine_and_vectorstore(tmp_path):
     """Proves the SQL/vector-search code is agnostic to where engine/vectorstore
     point -- the seam a later Dockerized Postgres/Chroma server swap would use
     (see stage2/backends.py's postgres_engine/chroma_server)."""
-    engine = create_engine("sqlite:///:memory:")
-    vectorstore = local_chroma(tmp_path / "injected_chroma", embedding_function=_VocabEmbeddings())
-    repository = LocalHybridRetriever(engine=engine, vectorstore=vectorstore)
-
-    repository.write_rows(_ROWS)
+    repository = _repository(tmp_path)
     candidates = repository.filter_candidates({"corp_names": ["삼성전자"]}, limit=10)
     assert [row["id"] for row in candidates] == ["chunk-a"]
 
@@ -125,32 +195,14 @@ def test_requires_sqlite_path_or_engine(tmp_path):
         raise AssertionError("expected a ValueError when neither sqlite_path nor engine is given")
 
 
-def test_write_rows_with_embeddings_reuses_vectors_without_embedding_provider(tmp_path):
-    repository = LocalHybridRetriever(
-        tmp_path / "smoke.db",
-        chroma_dir=tmp_path / "smoke_chroma",
-        embedding_function=_WideVocabEmbeddings(),
-    )
-    vector = [0.0] * 1024
-    vector[0] = 1.0
-    row = {**_ROWS[0], "embedding": vector}
+def test_readonly_sqlite_engine_rejects_writes(tmp_path):
+    path = tmp_path / "index.db"
+    writable = create_engine(f"sqlite:///{path}")
+    with writable.begin() as connection:
+        connection.execute(text(_INDEX_DDL))
+    writable.dispose()
 
-    repository.write_rows_with_embeddings([row])
-
-    assert repository.readiness_issues() == []
-    result = repository.vector_search("아무 단어", [row], limit=1)
-    assert result[0]["id"] == "chunk-a"
-
-
-def test_write_rows_with_embeddings_rejects_wrong_dimension(tmp_path):
-    repository = LocalHybridRetriever(
-        tmp_path / "smoke.db",
-        chroma_dir=tmp_path / "smoke_chroma",
-        embedding_function=_VocabEmbeddings(),
-    )
-    try:
-        repository.write_rows_with_embeddings([{**_ROWS[0], "embedding": [1.0]}])
-    except ValueError as error:
-        assert "1024" in str(error)
-    else:
-        raise AssertionError("expected embedding dimension validation failure")
+    readonly = readonly_sqlite_engine(path)
+    with pytest.raises(Exception):
+        with readonly.begin() as connection:
+            connection.execute(text("CREATE TABLE should_not_exist (id TEXT)"))
