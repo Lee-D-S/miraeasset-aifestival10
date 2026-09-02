@@ -112,6 +112,27 @@ class FactExtractionTests(unittest.TestCase):
         self.assertTrue(any(item.table_context.get("row_label") == "연결조정 후" for item in revenue_facts))
         self.assertTrue(all(item.currency == "KRW" for item in revenue_facts))
 
+    def test_extracts_spaced_korean_labels_from_local_markdown_chunk(self):
+        bundle = adapt_stage2_bundle([{
+            "id": "samsung-markdown",
+            "source": "samsung.md",
+            "text": (
+                "[삼성전자 | 사업보고서 (2023.12)]\n"
+                "| 과목 | 주석 | 제 55 (당) 기 | 제 54 (전) 기 |\n"
+                "| --- | --- | --- | --- |\n"
+                "| Ⅰ. 매    출    액 | 29 |  | 258,935,494 |  | 302,231,360 |"
+            ),
+            "metadata": {"corp_name": "삼성전자", "base_year": 2023, "base_month": 12, "basis": "연결"},
+        }])
+        facts = [item for item in extract_facts(bundle.documents, self.intent) if item.metric == "revenue"]
+        current = next(item for item in facts if item.value == 258935494.0)
+        prior = next(item for item in facts if item.value == 302231360.0)
+        self.assertEqual(current.period, "2023")
+        self.assertEqual(prior.period, "2022")
+        self.assertEqual(current.unit, "")
+        self.assertEqual(prior.unit, "")
+        self.assertNotIn(29.0, [item.value for item in facts])
+
     def test_stage1_total_assets_splits_balance_sheet_fact_metrics(self):
         intent = adapt_stage1_intent({
             "route": "ok",

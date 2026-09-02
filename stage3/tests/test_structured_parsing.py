@@ -37,6 +37,19 @@ class StructuredParsingTests(unittest.TestCase):
         malformed = parse_structured_evidence("<DOCUMENT><TABLE><TR><TD>매출액")
         self.assertTrue(malformed.warnings)
 
+    def test_parses_markdown_tables_from_local_chunk_index(self):
+        parsed = parse_structured_evidence(
+            "[삼성전자 | 사업보고서 (2023.12)]\n"
+            "| 과목 | 주석 | 제 55 (당) 기 | 제 54 (전) 기 |\n"
+            "| --- | --- | --- | --- |\n"
+            "| Ⅰ. 매    출    액 | 29 |  | 258,935,494 |  | 302,231,360 |"
+        )
+        self.assertEqual(parsed.source_format, "markdown")
+        values = {cell["value"] for cell in parsed.numeric_cells if "매" in cell["row_label"]}
+        self.assertEqual(values, {"258,935,494", "302,231,360"})
+        columns = [cell["column_label"] for cell in parsed.numeric_cells if "매" in cell["row_label"]]
+        self.assertEqual(columns, ["제 55 (당) 기", "제 54 (전) 기"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -58,6 +58,11 @@ def _relevant_facts(intent: Stage3Intent, facts: list[Stage3Fact], limit: int | 
             points += 20
         if basis and str(fact.basis or "").strip().lower() == basis:
             points += 10
+        if fact.table_context:
+            points += 10
+            column_label = re.sub(r"\s+", "", str(fact.table_context.get("column_label") or ""))
+            if "당" in column_label:
+                points += 10
         if fact.kind != "numeric" or fact.aggregation_scope == requested_scope:
             points += 25
         elif requested_scope != "unknown":

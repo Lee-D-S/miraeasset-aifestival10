@@ -37,6 +37,8 @@ def aggregation_scope_for_context(
         context.get("section_name", ""),
         context.get("row_label", ""),
         context.get("column_label", ""),
+        context.get("basis", ""),
+        context.get("basis_label", ""),
     ]
     joined = " ".join(_text(value) for value in values if _text(value))
 

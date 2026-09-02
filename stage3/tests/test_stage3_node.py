@@ -149,6 +149,50 @@ class Stage3NodeTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "insufficient_evidence")
 
+    def test_lookup_prefers_current_period_financial_table_over_subsidiary_note(self):
+        state = _state()
+        state["question"] = "삼성전자의 2023년 매출액은 얼마인가?"
+        state["intent"]["raw_question"] = state["question"]
+        state["intent"]["normalized_question"] = state["question"]
+        state["intent"]["time"] = {"years": [2023], "base_months": [12]}
+        state["intent"]["basis"] = "연결"
+        state["intent"]["manifest_filter"] = {"corp_names": ["삼성전자"]}
+        state["stage2_result"]["documents"] = [
+            {
+                "id": "subsidiary-note",
+                "source": "annual.md",
+                "text": "eMagin Corporation 편입 이후 매출 및 당기순손실은 27,781백만원입니다.",
+                "metadata": {
+                    "corp_name": "삼성전자",
+                    "base_year": 2023,
+                    "base_month": 12,
+                    "basis": "연결",
+                },
+            },
+            {
+                "id": "financial-table",
+                "source": "annual.md",
+                "text": (
+                    "| 과목 | 주석 | 제 55 (당) 기 | 제 54 (전) 기 |\n"
+                    "| --- | --- | --- | --- |\n"
+                    "| Ⅰ. 매    출    액 | 29 |  | 258,935,494 |  | 302,231,360 |"
+                ),
+                "metadata": {
+                    "corp_name": "삼성전자",
+                    "base_year": 2023,
+                    "base_month": 12,
+                    "basis": "연결",
+                },
+            },
+        ]
+
+        update = build_stage3_node()(state)
+
+        result = update["stage3_result"]
+        self.assertEqual(result["status"], "success")
+        self.assertIn("258935494", update["answer"].replace(",", ""))
+        self.assertIn("financial-table", update["answer"])
+
     def test_multi_period_trend_uses_first_and_last_period_and_keeps_series(self):
         state = _state(
             question_type="calculation",

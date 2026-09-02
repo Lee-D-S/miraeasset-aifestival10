@@ -42,14 +42,19 @@ class StructuredTable:
         if not self.rows:
             return []
         column_labels = _column_labels(self.rows)
+        header_index = _column_header_index(self.rows)
         results: list[dict[str, Any]] = []
         for row_index, row in enumerate(self.rows):
+            if row_index == header_index:
+                continue
             row_label = _row_label(row)
             for column_index, value in enumerate(row):
                 number_match = _NUMBER_RE.search(value)
                 if not number_match:
                     continue
                 column_label = column_labels[column_index] if column_index < len(column_labels) else ""
+                if re.sub(r"\s+", "", column_label) in {"주석", "주"}:
+                    continue
                 unit = _unit_for_column(self.unit_label, column_label, row_label, value)
                 currency = "USD" if re.search(r"\bUSD\b|\$", value) else ("KRW" if unit in _CURRENCY_UNITS else None)
                 basis = (
@@ -232,8 +237,15 @@ def _expand_rows(rows: Iterable[Iterable[_CellToken]]) -> list[list[str]]:
 
 def _table_metadata(rows: list[list[str]]) -> tuple[str | None, str | None, str | None]:
     all_text = "\n".join(" | ".join(row) for row in rows)
-    unit_match = _UNIT_RE.search(all_text)
-    unit_label = _clean_text(unit_match.group(1)) if unit_match else None
+    unit_label = None
+    for row in rows:
+        row_text = " | ".join(row)
+        unit_match = _UNIT_RE.search(row_text)
+        # A unit embedded in a metric row (for example basic EPS ``(단위:
+        # 원)``) applies only to that row, not to the complete table.
+        if unit_match and not any(_NUMBER_RE.search(value) for value in row):
+            unit_label = _clean_text(unit_match.group(1))
+            break
     basis_label = next((value for row in rows for value in row if "연결" in value or "별도" in value), None)
     period_match = _PERIOD_RE.search(all_text)
     period_label = _clean_text(period_match.group(0)) if period_match else None
@@ -252,11 +264,26 @@ def _make_tables(raw_tables: Iterable[Iterable[Iterable[_CellToken]]], source_fo
 
 
 def _column_labels(rows: list[list[str]]) -> list[str]:
-    for row in rows:
+    header_index = _column_header_index(rows)
+    if header_index is not None:
+        row = rows[header_index]
+        max_columns = max(len(item) for item in rows)
+        labels = list(row)
+        # DART-to-markdown conversion sometimes inserts an empty cell
+        # before each period value. Expand the two period labels over
+        # those value columns so current/prior facts remain distinguishable.
+        if len(labels) == 4 and max_columns >= 6 and re.sub(r"\s+", "", labels[1]) in {"주석", "주"}:
+            labels = [labels[0], labels[1], labels[2], labels[2], labels[3], labels[3]]
+        return labels + [""] * (max_columns - len(labels))
+    return rows[0] if rows else []
+
+
+def _column_header_index(rows: list[list[str]]) -> int | None:
+    for index, row in enumerate(rows):
         nonnumeric = [value for value in row if value and not _NUMBER_RE.search(value)]
         if len(nonnumeric) >= 2 and not any("단위" in value for value in nonnumeric):
-            return row
-    return rows[0] if rows else []
+            return index
+    return None
 
 
 def _row_label(row: list[str]) -> str:
@@ -283,6 +310,21 @@ def _unit_for_column(unit_label: str | None, column_label: str, row_label: str =
     return ""
 
 
+def _markdown_rows(value: str) -> list[list[_CellToken]]:
+    rows: list[list[_CellToken]] = []
+    for line in value.splitlines():
+        stripped = line.strip()
+        if not (stripped.startswith("|") and stripped.endswith("|")):
+            continue
+        cells = [_clean_text(cell) for cell in stripped[1:-1].split("|")]
+        if len(cells) < 2:
+            continue
+        if all(re.fullmatch(r":?-{2,}:?", cell) for cell in cells):
+            continue
+        rows.append([_CellToken(cell) for cell in cells])
+    return rows
+
+
 def _looks_like_html(value: str) -> bool:
     return bool(re.search(r"<\s*html(?:\s|>)", value, re.IGNORECASE))
 
@@ -292,6 +334,9 @@ def parse_structured_evidence(value: str) -> StructuredEvidence:
 
     raw = str(value or "")
     if not raw.lstrip().startswith("<"):
+        markdown_rows = _markdown_rows(raw)
+        if markdown_rows:
+            return StructuredEvidence(raw, "markdown", _make_tables((markdown_rows,), "markdown"))
         return StructuredEvidence(raw, "text")
 
     if _looks_like_html(raw):

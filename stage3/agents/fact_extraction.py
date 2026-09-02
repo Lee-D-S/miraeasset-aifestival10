@@ -27,6 +27,32 @@ ALL_LABELS = tuple(dict.fromkeys(label for labels in METRIC_LABELS.values() for 
 UNIT_PATTERN = r"조원|조|십억원|억원|백만원|천만원|만원|천원|원|%"
 NUMBER_PATTERN = r"(?:△|▲|-)?\s*\d[\d,]*(?:\.\d+)?"
 DATE_PATTERN = re.compile(r"(?:20\d{2}년\s*\d{1,2}월\s*\d{1,2}일?|20\d{2}[-./]\s*\d{1,2}[-./]\s*\d{1,2}|20\d{2}년\s*(?:[1-4]분기|상반기|하반기|연간)|20\d{2}년(?!\s*\d{1,2}월))")
+_SPACED_HANGUL_RE = re.compile(r"(?<![가-힣])(?:[가-힣]\s+){2,}[가-힣](?![가-힣])")
+
+
+def _normalize_disclosure_spacing(value: str) -> str:
+    """Join Hangul labels split into one-character cells by DART conversion."""
+
+    return _SPACED_HANGUL_RE.sub(
+        lambda match: re.sub(r"\s+", "", match.group(0)),
+        value,
+    )
+
+
+def _period_from_table_context(context: dict, metadata: dict) -> str | None:
+    column_label = re.sub(r"\s+", "", str(context.get("column_label") or ""))
+    year = metadata.get("base_year")
+    if year is None:
+        return None
+    try:
+        year_value = int(float(year))
+    except (TypeError, ValueError):
+        return None
+    if "전" in column_label:
+        return str(year_value - 1)
+    if "당" in column_label:
+        return str(year_value)
+    return None
 
 
 def _period(text: str, metadata: dict) -> str | None:
@@ -184,14 +210,22 @@ def extract_facts(documents: Iterable[Stage3Document], intent: Stage3Intent) -> 
     )
     for document in documents:
         structured = parse_structured_evidence(document.text or "")
-        text = structured.text
+        text = _normalize_disclosure_spacing(structured.text)
         metadata = document.metadata
         company = metadata.get("corp_name") or (intent.companies[0] if len(intent.companies) == 1 else None)
-        numeric_sources: list[tuple[str, dict]] = [(text, {})]
+        # Once a structured table is available, extract numeric facts from
+        # its cell context instead of scanning the rendered table wholesale.
+        # The latter can associate a footnote number (for example ``29``)
+        # with the first metric on the row.
+        numeric_sources: list[tuple[str, dict]] = [] if structured.has_structured_tables else [(text, {})]
         for cell in structured.numeric_cells:
+            if structured.source_format == "markdown":
+                cell_source = f"{cell.get('row_label', '')} | {cell.get('value', '')}"
+            else:
+                cell_source = f"{cell.get('row_label', '')} | {cell.get('column_label', '')} | {cell.get('value', '')}"
             numeric_sources.append(
                 (
-                    f"{cell.get('row_label', '')} | {cell.get('column_label', '')} | {cell.get('value', '')}",
+                    _normalize_disclosure_spacing(cell_source),
                     cell,
                 )
             )
@@ -214,8 +248,14 @@ def extract_facts(documents: Iterable[Stage3Document], intent: Stage3Intent) -> 
                     unit = "%"
                 metric = fact_metric_for_label(match.group("label"), intent.metric)
                 evidence = source_text.strip() if context else _evidence(text, match.start(), match.end())
-                period = context.get("period_label") or _period(evidence, metadata) or _period(text, metadata)
+                period = (
+                    context.get("period_label")
+                    or _period_from_table_context(context, metadata)
+                    or _period(evidence, metadata)
+                    or _period(text, metadata)
+                )
                 basis = context.get("basis") or _basis(evidence, metadata, intent)
+                scope_context = {**context, "basis": basis}
                 fact = Stage3Fact(
                     metric=metric,
                     label=match.group("label"),
@@ -237,7 +277,7 @@ def extract_facts(documents: Iterable[Stage3Document], intent: Stage3Intent) -> 
                     aggregation_scope=aggregation_scope_for_context(
                         label=match.group("label"),
                         evidence=evidence,
-                        table_context=context,
+                        table_context=scope_context,
                     ),
                     display_value=display_value,
                 )
