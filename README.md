@@ -43,44 +43,58 @@ python -m pip install -r requirements-dev.txt
 uvicorn app:app --reload
 ```
 
-기본 factory는 `integration/composition.py`에서 Stage1~Stage4를 조립한다. 경로와 backend
+기본 factory는 `integration/composition.py`에서 Stage1~Stage4를 조립한다. 경로와 Stage2 모드
 선택은 모두 프로젝트 루트의 **`config.py`** 한 곳에서 관리한다. 환경변수의 상대경로는
 실행 CWD가 아니라 프로젝트 루트를 기준으로 해석된다.
 
-Stage2는 `STAGE2_MODE`로 세 모드 중 하나를 연다(기본값 `fixture`). 구
-`STAGE2_BACKEND=fixture|sqlite`도 계속 인식된다(`sqlite`는 DSN·host 설정 여부에 따라
-`local` 또는 `container`로 매핑).
+Stage2는 `STAGE2_MODE`로 세 모드 중 하나를 연다(기본값 `fixture`).
 
 - `fixture` (기본값, 테스트용): "DB"가 CLOVA API로 사전 계산한 임베딩 JSON 파일이다
   (`legacy/test_data/disclosure_clova_local.json`, `STAGE2_FIXTURE_PATH`로 변경 가능). 쿼리는
   같은 CLOVA 임베딩 엔드포인트로 실시간 계산한다. 로컬 SQL·VectorDB가 전혀 필요 없다.
 - `local`: 로컬 SQLite(`STAGE2_INDEX_PATH`)로 `manifest_filter`를 SQL `WHERE`절로 필터링하고,
   로컬 Chroma persist 디렉터리(`STAGE2_CHROMA_PATH`)로 임베딩·유사도·정렬을 위임한다
-  (`LocalHybridRetriever`). 두 경로 모두 비우면 `config.py`의 기본값(`data/local_smoke/`)을 쓴다.
+  (`LocalHybridRetriever`). 기본값은 `data/team-feature2-local-db/local_db/`의
+  `chunk_index.db`와 `chunk_index_chroma/`이며, `STAGE2_SQL_TABLE=chunk_index`로 기존
+  인덱스를 read-only로 연다. 질의 임베딩은 `STAGE2_EMBEDDING=e5-instruct`로
+  `intfloat/multilingual-e5-large-instruct`를 사용한다.
 - `container`: Dockerized Postgres(`STAGE2_RDB_URL`)와 Chroma 서버
   (`STAGE2_CHROMA_HOST`/`STAGE2_CHROMA_PORT`)를 사용한다. 두 값 모두 필수이며, 없으면
   기동 전에 명확한 오류로 실패한다. `LocalHybridRetriever`의 SQL·벡터 검색 코드는
   `local`과 동일하고 연결만 바뀐다(`stage2/backends.py`).
 
-`local`·`container`는 `STAGE2_CHROMA_COLLECTION`(기본 `stage2_chunks`)으로 하나의 벡터
+`local`·`container`는 `STAGE2_CHROMA_COLLECTION`(기본 `chunk_vectors`)으로 하나의 벡터
 컬렉션을 가리킨다. 인덱스를 만든 시점의 컬렉션 이름과 서빙 시점 값이 반드시 일치해야 한다.
+
+제공된 local 인덱스는 SQLite `chunk_index` 약 1,155,170행과 Chroma `chunk_vectors`
+약 800,460개 벡터로 구성되어 있다. 벡터 커버리지와 Stage1 manifest 문서 집합이 완전히
+일치하지 않을 수 있으므로, 해당 인덱스를 테스트할 때만
+`STAGE2_ALLOW_PARTIAL_INDEX=true`를 명시한다. 스키마·빈 테이블·차원 오류는 계속 실패한다.
 
 Stage1 corpus 자동 탐색이 실패하는 실행 환경에서는 `CORPUS_DIR`에 `universe.csv`와
 `manifest.jsonl`이 있는 corpus 디렉터리를 명시한다(상대경로는 루트 기준).
 
 `CLOVA_API_KEY` 또는 `CLOVASTUDIO_API_KEY`가 없으면 query embedding은 `embedding_unavailable`로 처리된다. 의미 검증 provider가 없으면 최종 답변을 성공으로 가장하지 않는다.
 
-실제 `local` smoke index를 사용하려면 먼저 `scripts/build_local_sqlite.py`로 SQLite+Chroma
-인덱스를 만든 뒤 다음처럼 설정한다. (Chroma가 문서 임베딩을 자체 계산하므로 CLOVA 임베딩
-provider가 필요하다.)
+제공된 local 인덱스를 테스트하려면 다음처럼 설정한다. 압축본을 다시 풀거나 인덱스를
+재생성하지 않으며, 실행 중 SQLite·Chroma에 쓰지 않는다.
 
 ```powershell
 $env:STAGE2_MODE = "local"
-$env:STAGE2_INDEX_PATH = "data/local_smoke/smoke.db"      # 비우면 config.py 기본값
-$env:STAGE2_CHROMA_PATH = "data/local_smoke/smoke_chroma" # 비우면 config.py 기본값
+$env:STAGE2_INDEX_PATH = "data/team-feature2-local-db/local_db/chunk_index.db"
+$env:STAGE2_CHROMA_PATH = "data/team-feature2-local-db/local_db/chunk_index_chroma"
+$env:STAGE2_CHROMA_COLLECTION = "chunk_vectors"
+$env:STAGE2_SQL_TABLE = "chunk_index"
+$env:STAGE2_EMBEDDING = "e5-instruct"
+$env:STAGE2_ALLOW_PARTIAL_INDEX = "true"
 $env:CLOVA_LLM_ENABLED = "true"  # 답변 생성·semantic validation을 CLOVA로 활성화
+python scripts/check_deployment.py
 uvicorn app:app --reload
 ```
+
+`CORPUS_DIR`는 Stage1의 `universe.csv`·`manifest.jsonl` 경로로 유지한다. E5 모델은
+서버의 Hugging Face 캐시에 미리 준비되어 있어야 하며, 기동 시 외부 다운로드는 하지 않는다.
+이후 `/answer`는 기존 API의 5개 문자열 필드를 반환한다.
 
 ## API
 
@@ -133,7 +147,7 @@ fallback으로 사용하지 않는다.
 pytest tests/test_local_e2e.py
 ```
 
-실제 CLOVA 호출은 provider 환경변수가 설정된 별도 smoke test에서만 수행한다.
+실제 CLOVA 호출은 provider 환경변수가 설정된 전체 API 테스트에서만 수행한다.
 배포 전 오프라인 구성 검사는 `python scripts/check_deployment.py`로 실행한다. 이 검사는 CLOVA endpoint를 호출하지 않고 corpus, SQLite·Chroma index의 일관성까지 검사한다.
 embedding timeout은 `CLOVA_EMBEDDING_TIMEOUT`, 답변·semantic timeout은
 `CLOVA_CHAT_TIMEOUT`, 429 재시도 대기 상한은 `CLOVA_RATE_LIMIT_MAX_WAIT`로 조정한다.
@@ -153,9 +167,10 @@ embedding timeout은 `CLOVA_EMBEDDING_TIMEOUT`, 답변·semantic timeout은
 근거 500자까지 전달한다. 이 범위는 `CLOVA_PROMPT_*`와 `CLOVA_SEMANTIC_*`
 prompt 환경변수로 조정할 수 있다.
 
-기본 factory는 metadata-filtered 후보를 최대 20개까지 Stage3에 전달한다. 소규모
-smoke corpus에서 연결·부문·종속기업 chunk가 함께 검색될 때 aggregate 근거가 hybrid
-상위 순위에서 탈락하지 않도록 하기 위한 설정이며, 외부 LLM prompt는 별도로 축약된다.
+기본 factory는 metadata-filtered 후보 최대 1,000개에서 keyword·vector branch를 각각
+최대 100개까지 합치고, hybrid 결과 최대 200개를 Stage3에 전달한다. 제공 인덱스에서
+집계표가 자회사·부문 chunk보다 낮게 검색되더라도 Stage3가 현재기 표를 회수할 수 있게
+하기 위한 설정이며, 외부 LLM prompt는 별도로 축약된다.
 
 Stage3 답변 생성은 질문과 관련된 Fact를 우선 전달한다. strict grounding client가 핵심
 수치 또는 citation ID를 포함하지 않은 답변을 반환하면 deterministic grounding fallback으로
