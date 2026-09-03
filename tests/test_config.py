@@ -58,7 +58,7 @@ def test_settings_resolve_paths_and_sqlite_url(monkeypatch):
     assert settings.sqlite_url == f"sqlite:///{settings.sqlite_path}"
     assert settings.chroma_collection == "chunk_vectors"
     assert settings.sqlite_table == "chunk_index"
-    assert settings.embedding == "e5-instruct"
+    assert settings.embedding == config.DEFAULT_STAGE2_EMBEDDING
 
 
 def test_validate_environment_flags_unknown_mode(monkeypatch):

@@ -129,8 +129,8 @@ class FactExtractionTests(unittest.TestCase):
         prior = next(item for item in facts if item.value == 302231360.0)
         self.assertEqual(current.period, "2023")
         self.assertEqual(prior.period, "2022")
-        self.assertEqual(current.unit, "")
-        self.assertEqual(prior.unit, "")
+        self.assertEqual(current.unit, "백만원")
+        self.assertEqual(prior.unit, "백만원")
         self.assertNotIn(29.0, [item.value for item in facts])
 
     def test_stage1_total_assets_splits_balance_sheet_fact_metrics(self):
@@ -176,6 +176,65 @@ class FactExtractionTests(unittest.TestCase):
         text_fact = next(item for item in facts if item.kind == "text")
         self.assertEqual(text_fact.metric, "rnd")
         self.assertIn("연구개발", text_fact.value)
+
+    def test_extracts_debt_and_equity_ratios_from_markdown_cells(self):
+        intent = adapt_stage1_intent({
+            "raw_question": "삼성전자의 2025년 부채비율은?",
+            "normalized_question": "삼성전자의 2025년 부채비율은?",
+            "route": "ok",
+            "intent": "lookup",
+            "metric": "total_assets",
+            "basis": "연결",
+            "time": {"years": [2025], "base_months": [12]},
+        })
+        bundle = adapt_stage2_bundle([{
+            "id": "ratio",
+            "text": (
+                "| 구분 | 제 57 (당) 기 |\n"
+                "| 부채비율 | 41.1% |\n"
+                "| 자기자본비율 | 70.8% |"
+            ),
+            "metadata": {"corp_name": "삼성전자", "base_year": 2025, "base_month": 12, "basis": "연결"},
+        }])
+        facts = extract_facts(bundle.documents, intent)
+        debt = next(item for item in facts if item.label == "부채비율")
+        equity = next(item for item in facts if item.label == "자기자본비율")
+        self.assertEqual(debt.metric, "ratio")
+        self.assertEqual(debt.unit, "%")
+        self.assertEqual(debt.value, 41.1)
+        self.assertEqual(equity.metric, "ratio")
+        self.assertEqual(equity.value, 70.8)
+        from stage3.grounding import matching_facts
+        self.assertTrue(matching_facts([debt], intent))
+        equity_intent = adapt_stage1_intent({
+            "raw_question": "삼성전자의 2025년 자기자본비율은?",
+            "normalized_question": "삼성전자의 2025년 자기자본비율은?",
+            "route": "ok",
+            "intent": "lookup",
+            "metric": "total_assets",
+            "basis": "연결",
+            "time": {"years": [2025], "base_months": [12]},
+        })
+        self.assertTrue(matching_facts([equity], equity_intent))
+
+    def test_rejects_glued_table_numbers(self):
+        intent = adapt_stage1_intent({
+            "route": "ok",
+            "intent": "lookup",
+            "metric": "operating_profit",
+            "basis": "연결",
+            "time": {"years": [2026], "base_months": [3]},
+        })
+        bundle = adapt_stage2_bundle([{
+            "id": "glued",
+            "text": "영업이익1,852,115579,183148,2952,579,593",
+            "metadata": {"corp_name": "현대자동차", "report_period": "2026-03", "basis": "연결"},
+        }])
+        facts = extract_facts(bundle.documents, intent)
+        numeric = [item for item in facts if item.kind == "numeric"]
+        self.assertTrue(numeric)
+        self.assertFalse([item for item in numeric if abs(float(item.value)) > 1e15])
+        self.assertEqual(numeric[0].value, 1_852_115.0)
 
 
 if __name__ == "__main__":

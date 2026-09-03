@@ -339,6 +339,23 @@ class LocalHybridRetriever:
 
     def filter_candidates(self, manifest_filter: Mapping[str, Any], limit: int) -> list[dict[str, Any]]:
         self.initialize()
+        filter_dict = dict(manifest_filter or {})
+        years = [year for year in (filter_dict.get("base_years") or []) if str(year).strip()]
+        if len(years) > 1 and limit > 0:
+            per_year = max(limit // len(years), 1)
+            seen: set[str] = set()
+            merged: list[dict[str, Any]] = []
+            for year in years:
+                year_filter = {**filter_dict, "base_years": [year]}
+                for row in self._query_candidates(year_filter, per_year):
+                    row_id = str(row.get("id") or row.get("chunk_id") or "")
+                    if row_id and row_id not in seen:
+                        seen.add(row_id)
+                        merged.append(row)
+            return merged[:limit]
+        return self._query_candidates(filter_dict, limit)
+
+    def _query_candidates(self, manifest_filter: Mapping[str, Any], limit: int) -> list[dict[str, Any]]:
         where_sql, params = build_manifest_where_and_params(manifest_filter or {})
         # Explicit-key ordering works on both SQLite and PostgreSQL.
         sql = (

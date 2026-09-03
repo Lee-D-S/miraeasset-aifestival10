@@ -310,6 +310,49 @@ class Stage3NodeTests(unittest.TestCase):
         self.assertIn("doc-a", update["answer"])
         self.assertIn("answer_mode=deterministic_grounding_fallback", update["stage3_result"]["trace"])
 
+    def test_multi_year_lookup_lists_each_requested_year(self):
+        state = _state()
+        state["question"] = "기업A의 최근 3년 매출액을 알려줘"
+        state["intent"]["raw_question"] = state["question"]
+        state["intent"]["normalized_question"] = state["question"]
+        state["intent"]["time"] = {"years": [2023, 2024, 2025], "base_months": [12]}
+        state["stage2_result"]["documents"] = [
+            {"id": "y23", "source": "a.xml", "text": "2023년 연결 매출액 100억원", "metadata": {"corp_name": "기업A", "report_period": "2023-12", "basis": "연결"}},
+            {"id": "y24", "source": "b.xml", "text": "2024년 연결 매출액 80억원", "metadata": {"corp_name": "기업A", "report_period": "2024-12", "basis": "연결"}},
+            {"id": "y25", "source": "c.xml", "text": "2025년 연결 매출액 90억원", "metadata": {"corp_name": "기업A", "report_period": "2025-12", "basis": "연결"}},
+        ]
+
+        update = build_stage3_node()(state)
+
+        self.assertIn("100", update["answer"])
+        self.assertIn("80", update["answer"])
+        self.assertIn("90", update["answer"])
+        self.assertIn("2023", update["answer"])
+        self.assertIn("2024", update["answer"])
+        self.assertIn("2025", update["answer"])
+
+    def test_percentage_change_accepts_year_only_fact_periods(self):
+        state = _state(question_type="calculation", calculation={"operation": "percentage_change"})
+        state["question"] = "기업A의 2024년과 2025년 매출액을 비교해줘"
+        state["intent"]["raw_question"] = state["question"]
+        state["intent"]["normalized_question"] = state["question"]
+        state["intent"]["time"] = {"years": [2024, 2025], "base_months": [12]}
+        state["stage2_result"]["documents"] = [
+            {"id": "y24", "source": "b.xml", "text": "연결 매출액 80억원", "metadata": {"corp_name": "기업A", "report_period": "2024", "basis": "연결"}},
+            {"id": "y25", "source": "c.xml", "text": "연결 매출액 100억원", "metadata": {"corp_name": "기업A", "report_period": "2025", "basis": "연결"}},
+        ]
+
+        update = build_stage3_node()(state)
+
+        self.assertEqual(update["stage3_result"]["status"], "success")
+        calculations = update["stage3_result"]["calculations"]
+        self.assertTrue(calculations)
+        self.assertEqual(calculations[0]["status"], "ok")
+        self.assertEqual(calculations[0]["result"], 25.0)
+        self.assertIn("80", update["answer"])
+        self.assertIn("100", update["answer"])
+        self.assertIn("25", update["answer"])
+
     def test_event_linking_requires_stage1_event_marker(self):
         state = _state()
         state["stage2_result"]["documents"] = [
@@ -339,6 +382,51 @@ class Stage3NodeTests(unittest.TestCase):
         events = update["stage3_result"]["linked_events"]
         self.assertTrue(events)
         self.assertEqual(events[0]["source_ids"], ["origin", "correction"])
+
+    def test_debt_ratio_lookup_does_not_answer_with_total_assets(self):
+        state = _state()
+        question = "삼성전자의 2025년 부채비율은?"
+        state["question"] = question
+        state["intent"]["raw_question"] = question
+        state["intent"]["normalized_question"] = question
+        state["intent"]["metric"] = "total_assets"
+        state["intent"]["corps"] = [{"corp_name": "삼성전자"}]
+        state["stage2_result"]["documents"] = [{
+            "id": "ratio",
+            "source": "a.xml",
+            "text": (
+                "| 구분 | 제 57 (당) 기 |\n"
+                "| 자산총계 | 358,902,051 |\n"
+                "| 부채비율 | 41.1% |"
+            ),
+            "metadata": {"corp_name": "삼성전자", "base_year": 2025, "base_month": 12, "basis": "연결"},
+        }]
+
+        update = build_stage3_node()(state)
+
+        self.assertIn("41.1", update["answer"])
+        self.assertNotIn("358902051", update["answer"].replace(",", ""))
+
+    def test_multi_year_lookup_prefers_statement_amount_over_index(self):
+        state = _state()
+        state["question"] = "기업A의 최근 3년 매출액을 알려줘"
+        state["intent"]["raw_question"] = state["question"]
+        state["intent"]["normalized_question"] = state["question"]
+        state["intent"]["time"] = {"years": [2023, 2024, 2025], "base_months": [12]}
+        state["stage2_result"]["documents"] = [
+            {"id": "y23", "source": "a.xml", "text": "2023년 연결 매출액 258,935,494백만원", "metadata": {"corp_name": "기업A", "report_period": "2023-12", "basis": "연결"}},
+            {"id": "y24-index", "source": "b.xml", "text": "2024년 연결 매출액 100", "metadata": {"corp_name": "기업A", "report_period": "2024-12", "basis": "연결"}},
+            {"id": "y24", "source": "c.xml", "text": "2024년 연결 매출액 300,870,991백만원", "metadata": {"corp_name": "기업A", "report_period": "2024-12", "basis": "연결"}},
+            {"id": "y25", "source": "d.xml", "text": "2025년 연결 매출액 238,043,009백만원", "metadata": {"corp_name": "기업A", "report_period": "2025-12", "basis": "연결"}},
+        ]
+
+        update = build_stage3_node()(state)
+        compact = update["answer"].replace(",", "")
+
+        self.assertIn("258935494", compact)
+        self.assertIn("300870991", compact)
+        self.assertIn("238043009", compact)
+        self.assertNotRegex(update["answer"], r"- 2024-12: 100(\.0)?(?![\d,])")
 
 
 if __name__ == "__main__":

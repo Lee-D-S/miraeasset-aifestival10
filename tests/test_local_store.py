@@ -148,6 +148,57 @@ def test_filter_candidates_runs_as_sql_where_clause(tmp_path):
     assert repository.filter_candidates({"corp_names": ["삼성전자"]}, 1)[0]["metadata"]["corp_name"] == "삼성전자"
 
 
+def test_filter_candidates_samples_each_requested_year(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'multi_year.db'}")
+    with engine.begin() as connection:
+        connection.execute(text(_INDEX_DDL))
+        rows = [
+            ("samsung-2023-a", 2023, "삼성전자 2023년 매출액"),
+            ("samsung-2023-b", 2023, "삼성전자 2023년 영업이익"),
+            ("samsung-2024", 2024, "삼성전자 2024년 매출액"),
+            ("samsung-2025", 2025, "삼성전자 2025년 매출액"),
+        ]
+        for chunk_id, year, chunk_text in rows:
+            connection.execute(
+                text(
+                    "INSERT INTO chunk_index "
+                    "(id, doc_id, chunk_id, text, source_path, corp_name, base_year, metadata_json) "
+                    "VALUES (:id, :doc_id, :chunk_id, :text, :source_path, :corp_name, :base_year, :metadata_json)"
+                ),
+                {
+                    "id": chunk_id,
+                    "doc_id": chunk_id,
+                    "chunk_id": chunk_id,
+                    "text": chunk_text,
+                    "source_path": f"{chunk_id}.xml",
+                    "corp_name": "삼성전자",
+                    "base_year": year,
+                    "metadata_json": json.dumps(
+                        {"corp_name": "삼성전자", "base_year": year},
+                        ensure_ascii=False,
+                    ),
+                },
+            )
+    repository = LocalHybridRetriever(
+        engine=engine,
+        vectorstore=local_chroma(
+            tmp_path / "multi_year_chroma",
+            embedding_function=_WideVocabEmbeddings(),
+            collection_name="chunk_vectors",
+        ),
+        collection_name="chunk_vectors",
+        table_name="chunk_index",
+        read_only=True,
+    )
+
+    candidates = repository.filter_candidates(
+        {"corp_names": ["삼성전자"], "base_years": [2023, 2024, 2025]},
+        limit=3,
+    )
+
+    assert {row["metadata"]["base_year"] for row in candidates} == {2023, 2024, 2025}
+
+
 def test_keyword_search_is_token_overlap(tmp_path):
     repository = _repository(tmp_path)
     candidates = repository.filter_candidates({}, limit=10)
