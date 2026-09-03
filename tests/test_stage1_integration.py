@@ -1,13 +1,23 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+
+import pytest
 
 from integration import StageNodes, StagePipeline
 from stage1 import build_intent, build_stage1_node
 from stage1.index.corpus_index import CorpusIndex
 
+# Needs the supplied DART corpus -- runs on the self-hosted runner, skipped by
+# hosted CI (see pytest.ini `needs_corpus`).
+pytestmark = pytest.mark.needs_corpus
 
-CORPUS = Path(r"C:\Users\idong\OneDrive\바탕 화면\공모전\2026 미래에셋 ai 페스티벌\data\3.공시\corpus")
+# CORPUS_DIR overrides; the fallback is one contributor's local checkout.
+CORPUS = Path(
+    os.environ.get("CORPUS_DIR")
+    or r"C:\Users\idong\OneDrive\바탕 화면\공모전\2026 미래에셋 ai 페스티벌\data\3.공시\corpus"
+)
 
 
 def test_stage1_node_emits_shared_state_partial_update():

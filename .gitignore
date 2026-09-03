@@ -12,3 +12,6 @@ data/
 *.key
 *.crt
 .pytest_cache/
+
+# local Claude Code instructions, not part of the submission
+CLAUDE.md

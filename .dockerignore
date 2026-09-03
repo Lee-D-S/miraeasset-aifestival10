@@ -1,0 +1,29 @@
+# 인덱스/대용량 데이터 -- 이미지에 절대 넣지 않음 (볼륨 마운트)
+data/
+*.pdf
+
+# VCS / 로컬 환경
+.git/
+.gitignore
+.venv/
+venv/
+.env
+*.log
+
+# 파이썬 캐시
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 런타임에 불필요 (tests/ 는 남긴다 -- scripts/check_real_index.py 가
+# tests/fixtures/real_index_corpus 를 쓰고, 용량도 무시할 수준)
+legacy/
+docs/
+CLAUDE.md
+.github/
+docker-compose*.yml
+Dockerfile
+.dockerignore

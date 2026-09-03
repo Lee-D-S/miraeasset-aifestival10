@@ -1,0 +1,50 @@
+name: ci
+
+# main 으로 가는 PR과 통합 브랜치 push 에서 유닛 테스트 + 이미지 빌드를 돌린다.
+# 실 인덱스(real_index) 테스트는 pytest.ini 의 `-m "not real_index"` 로 제외되며,
+# 그건 self-hosted 러너의 real-index.yml 이 담당한다. 배포(CD)는 자동화하지 않는다.
+
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'img/**'
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-langgraph.txt -r requirements-dev.txt
+      - name: Compile check
+        run: python -m compileall -q stage1 stage2 stage3 stage4 integration config.py app.py scripts
+      - name: Unit tests
+        run: pytest -q
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image (no push, skip model download)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: dis164-agent:ci
+          build-args: SKIP_MODEL_DOWNLOAD=1
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

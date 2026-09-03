@@ -58,7 +58,7 @@ def test_settings_resolve_paths_and_sqlite_url(monkeypatch):
     assert settings.sqlite_url == f"sqlite:///{settings.sqlite_path}"
     assert settings.chroma_collection == "chunk_vectors"
     assert settings.sqlite_table == "chunk_index"
-    assert settings.embedding == "e5-instruct"
+    assert settings.embedding == config.DEFAULT_STAGE2_EMBEDDING
 
 
 def test_validate_environment_flags_unknown_mode(monkeypatch):
@@ -81,10 +81,20 @@ def test_validate_environment_rejects_unknown_embedding_and_table(monkeypatch):
     assert any("STAGE2_SQL_TABLE" in issue for issue in issues)
 
 
-@pytest.mark.parametrize("embedding", ["clova", "e5", "multilingual-e5-large"])
+# ``e5`` and ``e5-instruct`` are both valid (see config.VALID_STAGE2_EMBEDDINGS);
+# only genuinely unsupported aliases are rejected.
+@pytest.mark.parametrize("embedding", ["clova", "multilingual-e5-large"])
 def test_validate_environment_rejects_legacy_embedding_aliases(monkeypatch, embedding):
     monkeypatch.setenv("STAGE2_EMBEDDING", embedding)
     assert any("STAGE2_EMBEDDING" in issue for issue in validate_environment("local"))
+
+
+@pytest.mark.parametrize("embedding", ["e5", "e5-instruct"])
+def test_validate_environment_accepts_supported_embeddings(monkeypatch, embedding):
+    monkeypatch.setenv("STAGE2_EMBEDDING", embedding)
+    assert not any(
+        "STAGE2_EMBEDDING" in issue for issue in validate_environment("local")
+    )
 
 
 def test_validate_environment_rejects_fixture_mode(monkeypatch):

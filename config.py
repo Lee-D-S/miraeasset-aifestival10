@@ -65,8 +65,11 @@ CHROMA_PATH = resolve_path(
 # a Chroma server address the same logical collection.
 CHROMA_COLLECTION = os.getenv("STAGE2_CHROMA_COLLECTION", "").strip() or "chunk_vectors"
 SQLITE_TABLE = os.getenv("STAGE2_SQL_TABLE", "").strip() or "chunk_index"
-EMBEDDING = "e5-instruct"
-
+# Canonical default for unset ``STAGE2_EMBEDDING``. Keep this a module constant
+# rather than reading ``os.getenv`` at import time so CI legacy ``e5`` env vars
+# do not freeze ``config.EMBEDDING`` before tests clear the environment.
+DEFAULT_STAGE2_EMBEDDING = "e5"
+EMBEDDING = DEFAULT_STAGE2_EMBEDDING
 
 # Container store: a Dockerized Postgres RDB and a Chroma *server*.
 RDB_URL = os.getenv("STAGE2_RDB_URL", "").strip()
@@ -80,7 +83,10 @@ except ValueError:
 
 # --- Stage2 mode -------------------------------------------------------------
 VALID_STAGE2_MODES: tuple[str, ...] = ("local", "container")
-VALID_STAGE2_EMBEDDINGS: tuple[str, ...] = ("e5-instruct",)
+# ``e5`` (default, fastembed / non-instruct -- the model the supplied index was
+# built with) and ``e5-instruct`` (sentence-transformers, A/B path) are both
+# kept selectable; do not collapse this to a single value.
+VALID_STAGE2_EMBEDDINGS: tuple[str, ...] = ("e5", "e5-instruct")
 VALID_STAGE2_SQL_TABLES: tuple[str, ...] = ("chunk_index", "chunks")
 DEFAULT_STAGE2_MODE = "local"
 
@@ -152,8 +158,8 @@ class Stage2Settings:
                 os.getenv("STAGE2_CHROMA_COLLECTION", "").strip() or CHROMA_COLLECTION
             ),
             sqlite_table=os.getenv("STAGE2_SQL_TABLE", "").strip() or SQLITE_TABLE,
-            embedding=os.getenv("STAGE2_EMBEDDING", "").strip().lower() or "e5-instruct",
-
+            embedding=os.getenv("STAGE2_EMBEDDING", "").strip().lower()
+            or DEFAULT_STAGE2_EMBEDDING,
             allow_partial_index=allow_partial_index(),
         )
 
@@ -174,6 +180,7 @@ __all__ = [
     "VALID_STAGE2_EMBEDDINGS",
     "VALID_STAGE2_SQL_TABLES",
     "DEFAULT_STAGE2_MODE",
+    "DEFAULT_STAGE2_EMBEDDING",
     "Stage2Settings",
     "resolve_path",
     "resolve_stage2_mode",
