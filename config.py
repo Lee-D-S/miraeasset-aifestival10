@@ -65,7 +65,8 @@ CHROMA_PATH = resolve_path(
 # a Chroma server address the same logical collection.
 CHROMA_COLLECTION = os.getenv("STAGE2_CHROMA_COLLECTION", "").strip() or "chunk_vectors"
 SQLITE_TABLE = os.getenv("STAGE2_SQL_TABLE", "").strip() or "chunk_index"
-EMBEDDING = os.getenv("STAGE2_EMBEDDING", "").strip().lower() or "e5-instruct"
+EMBEDDING = "e5-instruct"
+
 
 # Container store: a Dockerized Postgres RDB and a Chroma *server*.
 RDB_URL = os.getenv("STAGE2_RDB_URL", "").strip()
@@ -151,7 +152,8 @@ class Stage2Settings:
                 os.getenv("STAGE2_CHROMA_COLLECTION", "").strip() or CHROMA_COLLECTION
             ),
             sqlite_table=os.getenv("STAGE2_SQL_TABLE", "").strip() or SQLITE_TABLE,
-            embedding=os.getenv("STAGE2_EMBEDDING", "").strip().lower() or EMBEDDING,
+            embedding=os.getenv("STAGE2_EMBEDDING", "").strip().lower() or "e5-instruct",
+
             allow_partial_index=allow_partial_index(),
         )
 
