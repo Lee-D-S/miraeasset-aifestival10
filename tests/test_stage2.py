@@ -4,7 +4,7 @@ import copy
 
 from stage2 import InMemoryRetriever, RetrievalConfig, build_stage2_node
 from integration.supervisor import retry_search_tool
-from stage2.retrieval import matches_manifest_filter
+from stage2.retrieval import matches_manifest_filter, build_search_query
 
 
 DOCUMENTS = [
@@ -126,6 +126,45 @@ def test_empty_search_returns_not_found():
     assert result["status"] == "not_found"
     assert result["documents"] == []
     assert result["cited_documents"] == []
+
+
+def test_stage2_search_query_uses_korean_metric_labels():
+    query = build_search_query(
+        "삼성전자의 2025년 부채비율은?",
+        {
+            "normalized_question": "삼성전자의 2025년 부채비율은?",
+            "metric": "total_assets",
+            "basis": "연결",
+            "time": {"years": [2025]},
+        },
+    )
+    assert "부채비율" in query
+    assert "total_assets" not in query
+
+
+def test_stage2_search_query_includes_requested_years():
+    query = build_search_query(
+        "삼성전자의 최근 3년 매출액을 알려줘",
+        {
+            "normalized_question": "삼성전자의 최근 3년 매출액을 알려줘",
+            "metric": "revenue",
+            "time": {"years": [2023, 2024, 2025]},
+        },
+    )
+    assert "2023" in query and "2025" in query
+
+
+def test_stage2_diversify_by_year_keeps_each_requested_year():
+    from stage2.retrieval import _diversify_by_year
+
+    docs = [
+        {"id": "y25", "metadata": {"base_year": 2025}, "hybrid_score": 0.2},
+        {"id": "y24a", "metadata": {"base_year": 2024}, "hybrid_score": 0.9},
+        {"id": "y24b", "metadata": {"base_year": 2024}, "hybrid_score": 0.8},
+        {"id": "y23", "metadata": {"base_year": 2023}, "hybrid_score": 0.1},
+    ]
+    picked = _diversify_by_year(docs, ["2023", "2024", "2025"], 3)
+    assert {item["id"] for item in picked} == {"y25", "y24a", "y23"}
 
 
 def test_stage3_consumes_cited_documents_from_stage2_result():
