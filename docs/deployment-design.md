@@ -15,7 +15,7 @@
   - `chromadb==1.5.9` 고정, `fastembed`/`hnswlib` 추가. postgres 경로(psycopg/pgvector) 유지.
 - `chunk_index.db` 스키마 확인 — 서빙 코드 기대치와 일치 (`chunk_index` 테이블, 필수 6컬럼 + 스칼라 메타 + `raw_json_content`).
 - **컨테이너화 완료:** `Dockerfile`(멀티스테이지, e5 ONNX 내장, non-root), `.dockerignore`, `docker-compose.yml`(local), `docker-compose.scale.yml`(app+chroma+postgres 오버레이).
-- **CI:** `.github/workflows/ci.yml` — main 대상 PR 에서 `pytest`(real_index/needs_corpus 제외) + `docker build`. `pytest.ini` 에서 데이터 의존 테스트 opt-in.
+- **CI:** 대회 측 제약(GitHub Actions 사용 금지)에 따라 `.github/workflows/` 워크플로우는 제거함. 로컬 검증 명령은 `pytest.ini` 기준으로 수행.
 - **NCP 배포 가이드:** `docs/ncp-deploy.md` (단계별), `NCP_DEPLOYMENT.md`(환경 레퍼런스, e5 로 갱신).
 - 브랜치 운영: `main` 은 PR 로만 갱신하기로 합의 (충돌 재발 방지). 워크플로 파일은 사용자가 전담.
 
