@@ -6,17 +6,20 @@ from typing import Any
 
 from stage3.contracts import Stage3Fact, Stage3Intent
 from stage3.deterministic.calculation_registry import execute_operation
+from stage3.grounding import period_matches
 
 
 def numeric_facts(facts: Iterable[Stage3Fact], *, metric: str | None = None) -> list[Stage3Fact]:
-    return [
-        fact
-        for fact in facts
-        if fact.kind == "numeric"
-        and isinstance(fact.normalized_value, (int, float))
-        and fact.unit.strip()
-        and (metric is None or fact.metric == metric)
-    ]
+    selected: list[Stage3Fact] = []
+    for fact in facts:
+        if fact.kind != "numeric" or not isinstance(fact.normalized_value, (int, float)) or not fact.unit.strip():
+            continue
+        if metric is not None and fact.metric != metric:
+            continue
+        if metric in {"revenue", "operating_profit", "net_income"} and fact.unit == "%":
+            continue
+        selected.append(fact)
+    return selected
 
 
 def _requested_periods(intent: Stage3Intent) -> list[str]:
@@ -31,15 +34,26 @@ def _requested_periods(intent: Stage3Intent) -> list[str]:
 
 
 def _matches_period(fact: Stage3Fact, requested: str) -> bool:
-    period = str(fact.period or "")
-    return period == requested or (len(requested) == 4 and period.startswith(requested))
+    return period_matches(fact.period, requested)
 
 
 def _pick_best(facts: Iterable[Stage3Fact]) -> Stage3Fact | None:
     candidates = list(facts)
     if not candidates:
         return None
-    return max(candidates, key=lambda fact: (fact.confidence, str(fact.document_id)))
+
+    def rank(fact: Stage3Fact) -> tuple:
+        unit = str(fact.unit or "")
+        try:
+            magnitude = abs(float(fact.normalized_value or fact.value))
+        except (TypeError, ValueError):
+            magnitude = 0.0
+        amount_unit = 1 if unit in {"백만원", "원", "천원", "억원", "조원", "조"} else 0
+        not_percent = 0 if unit == "%" else 1
+        label_match = 1 if fact.label in {"매출액", "매출"} else 0
+        return (not_percent, label_match, amount_unit, fact.confidence, magnitude, str(fact.document_id))
+
+    return max(candidates, key=rank)
 
 
 def _filter_periods(facts: list[Stage3Fact], periods: list[str]) -> list[Stage3Fact]:
@@ -91,15 +105,45 @@ def _common_display_unit(facts: list[Stage3Fact]) -> str:
     return ""
 
 
+def _display_amount(fact: Stage3Fact) -> float | str:
+    if fact.display_value:
+        return fact.display_value
+    return fact.value
+
+
 def _input_dict(fact: Stage3Fact) -> dict[str, Any]:
     return {
-        "value": fact.normalized_value,
+        "value": _display_amount(fact),
         "unit": fact.unit,
         "currency": fact.currency,
         "period": fact.period,
         "basis": fact.basis,
         "document_id": fact.document_id,
     }
+
+
+def _preferred_metric_facts(facts: Iterable[Stage3Fact], intent: Stage3Intent) -> list[Stage3Fact]:
+    metric = str(intent.metric or "").strip().lower()
+    items = list(facts)
+    if metric == "revenue":
+        labeled = [fact for fact in items if fact.label in {"매출액", "매출"}]
+        if labeled:
+            return labeled
+    if metric == "operating_profit":
+        labeled = [fact for fact in items if "영업이익" in fact.label and "률" not in fact.label]
+        if labeled:
+            return labeled
+    if metric == "total_assets":
+        question = f"{intent.question} {intent.normalized_question}".replace(" ", "")
+        if "자기자본비율" in question:
+            labeled = [fact for fact in items if "자기자본비율" in fact.label.replace(" ", "")]
+            if labeled:
+                return labeled
+        if "부채비율" in question:
+            labeled = [fact for fact in items if "부채비율" in fact.label.replace(" ", "")]
+            if labeled:
+                return labeled
+    return items
 
 
 def _calculation_result(operation: str, facts: list[Stage3Fact], result: float, formula: str, unit: str) -> dict[str, Any]:
@@ -170,9 +214,8 @@ def _requested_period_series(
     chosen: list[Stage3Fact] = []
     for period in periods:
         fact = _pick_best(fact for fact in series if _matches_period(fact, period))
-        if fact is None:
-            return []
-        chosen.append(fact)
+        if fact is not None:
+            chosen.append(fact)
     return chosen
 
 
@@ -247,6 +290,15 @@ def _ratio_inputs(
     return None
 
 
+def _coalesce_units(facts: list[Stage3Fact]) -> list[Stage3Fact]:
+    units = [fact.unit for fact in facts if fact.unit]
+    if not units:
+        return facts
+    preferred = "백만원" if "백만원" in units else max(set(units), key=units.count)
+    same = [fact for fact in facts if fact.unit == preferred]
+    return same or facts
+
+
 def calculate_facts(facts: Iterable[Stage3Fact], intent: Stage3Intent, *, operation: str | None = None) -> dict[str, Any]:
     """Run a whitelist calculation only on aligned, grounded Facts."""
 
@@ -255,9 +307,13 @@ def calculate_facts(facts: Iterable[Stage3Fact], intent: Stage3Intent, *, operat
     if operation in {"ratio_percent", "margin"}:
         selected = all_numeric
     else:
+        selected = _preferred_metric_facts(numeric_facts(all_numeric, metric=intent.metric), intent)
+    if not selected:
         selected = numeric_facts(all_numeric, metric=intent.metric)
     if not selected:
         return _error(operation, "insufficient_evidence", "계산에 필요한 수치 근거가 없습니다.")
+    if operation in {"percentage_change", "cagr", "sum", "average", "min", "max"}:
+        selected = _coalesce_units(selected)
 
     if operation in {"compare", "rank"}:
         return _compare_values(selected, intent, operation)
@@ -300,7 +356,7 @@ def calculate_facts(facts: Iterable[Stage3Fact], intent: Stage3Intent, *, operat
             calculation["series"] = [
                 {
                     "period": fact.period,
-                    "value": fact.normalized_value,
+                    "value": _display_amount(fact),
                     "unit": fact.unit,
                     "document_id": fact.document_id,
                 }

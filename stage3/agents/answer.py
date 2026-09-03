@@ -7,7 +7,7 @@ from typing import Any
 
 from stage3.contracts import AgentResult, Stage3Fact, Stage3Intent
 from stage3.state import Stage3GraphState
-from stage3.grounding import requested_aggregation_scope
+from stage3.grounding import matching_facts, period_matches, requested_aggregation_scope
 
 
 def _citation_lines(citations: list[dict[str, Any]]) -> list[str]:
@@ -24,6 +24,33 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _format_fact_value(fact: Stage3Fact) -> str:
+    if fact.display_value:
+        return str(fact.display_value)
+    try:
+        number = float(fact.value)
+        if number.is_integer():
+            integer = int(number)
+            formatted = f"{integer:,}" if abs(integer) >= 10_000 else str(integer)
+        else:
+            formatted = f"{number:,.4f}".rstrip("0").rstrip(".")
+    except (TypeError, ValueError):
+        formatted = str(fact.value)
+    return f"{formatted}{fact.unit or ''}"
+
+
+def _index_like_amount(fact: Stage3Fact) -> bool:
+    unit = str(fact.unit or "")
+    if unit == "%":
+        return True
+    if unit in {"백만원", "원", "천원", "억원", "조원", "조"}:
+        return False
+    try:
+        return abs(float(fact.value)) <= 1000
+    except (TypeError, ValueError):
+        return False
+
+
 def _relevant_facts(intent: Stage3Intent, facts: list[Stage3Fact], limit: int | None = None) -> list[Stage3Fact]:
     """Prioritize facts matching the requested metric, period, and company."""
     requested_metrics = {str(intent.metric or "").strip().lower()} if intent.metric else set()
@@ -38,7 +65,9 @@ def _relevant_facts(intent: Stage3Intent, facts: list[Stage3Fact], limit: int | 
     requested_scope = requested_aggregation_scope(intent)
     excluded_terms = {
         "revenue": ("매출채권", "매출원가", "매출총이익", "매출채권회전율"),
+        "operating_profit": ("영업이익률",),
     }.get(requested_metric, ())
+    grounded = matching_facts(facts, intent)
 
     def score(fact: Stage3Fact) -> tuple[int, float, str]:
         value = str(fact.value)
@@ -46,12 +75,20 @@ def _relevant_facts(intent: Stage3Intent, facts: list[Stage3Fact], limit: int | 
         fact_company = str(fact.company or "").strip().lower()
         fact_context = f"{fact.label} {fact.evidence}".lower()
         points = 0
+        if grounded and fact in grounded:
+            points += 400
         if excluded_terms and any(term in fact_context for term in excluded_terms):
+            points -= 1_000
+        if requested_metric in {"revenue", "operating_profit", "net_income"} and _index_like_amount(fact):
             points -= 1_000
         if requested_metrics and fact.metric.lower() in requested_metrics:
             points += 100
         if requested_metrics and any(metric in fact.label.lower() for metric in requested_metrics):
             points += 30
+        if requested_metric == "revenue" and fact.label in {"매출액", "매출"}:
+            points += 80
+        if requested_metric == "operating_profit" and "영업이익" in fact.label:
+            points += 80
         if years and any(year in fact_period for year in years):
             points += 20
         if companies and fact_company in companies:
@@ -75,10 +112,16 @@ def _relevant_facts(intent: Stage3Intent, facts: list[Stage3Fact], limit: int | 
             magnitude = abs(float(fact.value)) if fact.kind != "date" else 0.0
         except (TypeError, ValueError):
             magnitude = 0.0
+        if requested_metric in {"revenue", "operating_profit", "net_income", "assets", "liabilities", "equity"}:
+            try:
+                magnitude = abs(float(fact.normalized_value or fact.value))
+            except (TypeError, ValueError):
+                pass
         return (-points, -magnitude, fact.document_id)
 
+    pool = grounded or facts
     fact_limit = limit if limit is not None else _env_int("CLOVA_PROMPT_FACT_LIMIT", 8)
-    return sorted(facts, key=score)[:fact_limit]
+    return sorted(pool, key=score)[:fact_limit]
 
 
 def _has_required_claim(answer: str, facts: list[Stage3Fact], citations: list[dict[str, Any]]) -> bool:
@@ -133,7 +176,7 @@ def _lookup_claim(fact: Stage3Fact, intent: Stage3Intent, citations: list[dict[s
     ) or "요청 기간"
     basis = fact.basis or intent.basis or "공시 기준"
     metric = fact.label or fact.metric or intent.metric or "요청 지표"
-    value = fact.display_value or f"{fact.value}{fact.unit}"
+    value = _format_fact_value(fact)
     citation = _citation_for_fact(fact, citations)
     source_line = ""
     if citation:
@@ -141,6 +184,72 @@ def _lookup_claim(fact: Stage3Fact, intent: Stage3Intent, citations: list[dict[s
         source = str(citation.get("source", "")).strip()
         source_line = f"\n\n출처: {source or '공시 문서'} [문서ID: {document_id}]"
     return f"결론\n{subject}의 {period} {basis} {metric}은 {value}입니다.{source_line}"
+
+
+def _requested_years(intent: Stage3Intent) -> list[str]:
+    time = intent.time if isinstance(intent.time, dict) else {}
+    return [str(year) for year in time.get("years", []) if str(year).strip()]
+
+
+def _lookup_facts(intent: Stage3Intent, facts: list[Stage3Fact]) -> list[Stage3Fact]:
+    """Pick one Fact per requested year for multi-period lookups."""
+
+    years = _requested_years(intent)
+    pool = matching_facts(facts, intent) or facts
+    if len(years) <= 1:
+        return _relevant_facts(intent, pool, limit=1)
+    selected: list[Stage3Fact] = []
+    for year in years:
+        bucket = [
+            fact
+            for fact in pool
+            if period_matches(fact.period, year) or period_matches(fact.period, f"{year}-12")
+        ]
+        picked = _relevant_facts(intent, bucket, limit=1)
+        if picked:
+            selected.append(picked[0])
+    return selected or _relevant_facts(intent, pool, limit=1)
+
+
+def _selected_answer_facts(intent: Stage3Intent, facts: list[Stage3Fact]) -> list[Stage3Fact]:
+    question_type = str(intent.question_type or intent.intent).lower()
+    if question_type in {"lookup", "text", "exists"}:
+        selected = _lookup_facts(intent, facts)
+        extra = [fact for fact in _relevant_facts(intent, facts) if fact not in selected]
+        return selected + extra[: max(0, 8 - len(selected))]
+    return _relevant_facts(intent, facts)
+
+
+def _multi_period_lookup_claim(
+    facts: list[Stage3Fact], intent: Stage3Intent, citations: list[dict[str, Any]]
+) -> str:
+    subject = facts[0].company or (intent.companies[0] if intent.companies else "요청 기업")
+    basis = facts[0].basis or intent.basis or "공시 기준"
+    metric = facts[0].label or facts[0].metric or intent.metric or "요청 지표"
+    lines = []
+    for fact in facts:
+        value = _format_fact_value(fact)
+        lines.append(f"- {fact.period or '기간 미상'}: {value}")
+    citation = _citation_for_fact(facts[-1], citations)
+    source_line = ""
+    if citation:
+        document_id = str(citation.get("document_id", "")).strip()
+        source = str(citation.get("source", "")).strip()
+        source_line = f"\n\n출처: {source or '공시 문서'} [문서ID: {document_id}]"
+    return f"결론\n{subject}의 {basis} {metric}\n" + "\n".join(lines) + source_line
+
+
+def _format_calc_input(item: dict[str, Any]) -> str:
+    period = item.get("period") or "기간 미상"
+    value = item.get("value")
+    unit = str(item.get("unit") or "")
+    if isinstance(value, float) and value.is_integer():
+        text = f"{int(value):,}"
+    elif isinstance(value, (int, float)):
+        text = f"{value:,.4f}".rstrip("0").rstrip(".")
+    else:
+        text = str(value)
+    return f"- {period}: {text}{unit}"
 
 
 class AnswerWriter:
@@ -161,7 +270,7 @@ class AnswerWriter:
         citations: list[dict[str, Any]],
         warnings: list[str],
     ) -> tuple[str, str]:
-        selected_facts = _relevant_facts(intent, facts)
+        selected_facts = _selected_answer_facts(intent, facts)
         prompt_citations = _compact_prompt_citations(citations, selected_facts)
         payload = {
             "question": question,
@@ -201,7 +310,7 @@ class AnswerWriter:
 
         return AnswerWriter._template(
             intent,
-            _relevant_facts(intent, facts),
+            _selected_answer_facts(intent, facts),
             calculations,
             comparisons,
             events,
@@ -232,16 +341,27 @@ class AnswerWriter:
                     if isinstance(item, dict)
                 )
                 if trend_lines:
-                    sections.append(f"\ucd94\uc774\n{trend_lines}")
-            sections.append(f"결론\n{calculation['result']}{calculation.get('unit', '')}\n\n계산식\n{calculation.get('formula', '')}")
+                    sections.append(f"추이\n{trend_lines}")
+            input_lines = []
+            for item in calculation.get("inputs") or []:
+                if isinstance(item, dict):
+                    input_lines.append(_format_calc_input(item))
+            result_line = f"{calculation['result']}{calculation.get('unit', '')}"
+            if input_lines:
+                sections.append("결론\n" + "\n".join(input_lines) + f"\n증감률 {result_line}\n\n계산식\n{calculation.get('formula', '')}")
+            else:
+                sections.append(f"결론\n{result_line}\n\n계산식\n{calculation.get('formula', '')}")
         else:
             facts_to_render = facts[:8]
             if intent.query_plan:
                 facts_to_render = facts[:8]
             elif str(intent.question_type or intent.intent).lower() in {"lookup", "text", "exists"}:
-                facts_to_render = facts[:1]
+                facts_to_render = _lookup_facts(intent, facts)
             if facts_to_render and not intent.query_plan and str(intent.question_type or intent.intent).lower() in {"lookup", "text", "exists"}:
-                sections.append(_lookup_claim(facts_to_render[0], intent, citations))
+                if len(facts_to_render) > 1:
+                    sections.append(_multi_period_lookup_claim(facts_to_render, intent, citations))
+                else:
+                    sections.append(_lookup_claim(facts_to_render[0], intent, citations))
             else:
                 lines = [f"- {fact.label}: {fact.value} {fact.unit} ({fact.period or '기간 미상'}, {fact.basis or '기준 미상'})" for fact in facts_to_render]
                 sections.append("핵심 근거\n" + "\n".join(lines))
