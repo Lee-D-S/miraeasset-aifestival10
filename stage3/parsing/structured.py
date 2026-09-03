@@ -299,7 +299,7 @@ def _unit_for_column(unit_label: str | None, column_label: str, row_label: str =
     if not unit_label:
         if "원" in row_label or "원" in column_label:
             return "원"
-        if "%" in row_label or "비중" in row_label:
+        if "%" in row_label or "%" in value or "비중" in row_label or "비율" in row_label:
             return "%"
         return ""
     if "%" in column_label or "비중" in column_label or "율" in column_label:
