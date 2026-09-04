@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "description": "Metadata-only gold set for raw-query versus E5 instruct-query retrieval.",
-  "model": "intfloat/multilingual-e5-large-instruct",
+  "description": "Metadata-only gold set for multilingual-e5-large retrieval.",
+  "model": "intfloat/multilingual-e5-large",
   "top_k": 20,
   "queries": [
     {

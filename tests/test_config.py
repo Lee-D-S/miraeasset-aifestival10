@@ -18,6 +18,8 @@ _STAGE2_ENV = (
     "STAGE2_RDB_URL",
     "STAGE2_CHROMA_HOST",
     "CLOVA_LLM_ENABLED",
+    "STAGE1_USE_LLM",
+    "CLOVA_RERANKER_ENABLED",
     "CORPUS_DIR",
 )
 
@@ -73,6 +75,13 @@ def test_validate_environment_requires_key_only_for_live_llm(monkeypatch):
     assert any("CLOVA_API_KEY" in issue for issue in validate_environment("local"))
 
 
+@pytest.mark.parametrize("flag", ["STAGE1_USE_LLM", "CLOVA_RERANKER_ENABLED"])
+def test_validate_environment_requires_key_for_each_clova_capability(monkeypatch, flag):
+    monkeypatch.delenv("CLOVA_API_KEY", raising=False)
+    monkeypatch.setenv(flag, "1" if flag == "STAGE1_USE_LLM" else "true")
+    assert any("CLOVA_API_KEY" in issue for issue in validate_environment("local"))
+
+
 def test_validate_environment_rejects_unknown_embedding_and_table(monkeypatch):
     monkeypatch.setenv("STAGE2_EMBEDDING", "unknown")
     monkeypatch.setenv("STAGE2_SQL_TABLE", "unknown")
@@ -81,15 +90,15 @@ def test_validate_environment_rejects_unknown_embedding_and_table(monkeypatch):
     assert any("STAGE2_SQL_TABLE" in issue for issue in issues)
 
 
-# ``e5`` and ``e5-instruct`` are both valid (see config.VALID_STAGE2_EMBEDDINGS);
-# only genuinely unsupported aliases are rejected.
-@pytest.mark.parametrize("embedding", ["clova", "multilingual-e5-large"])
+# Only the supplied-index embedding alias is valid; model names and legacy
+# instruct aliases must be rejected at the configuration boundary.
+@pytest.mark.parametrize("embedding", ["clova", "multilingual-e5-large", "e5-instruct"])
 def test_validate_environment_rejects_legacy_embedding_aliases(monkeypatch, embedding):
     monkeypatch.setenv("STAGE2_EMBEDDING", embedding)
     assert any("STAGE2_EMBEDDING" in issue for issue in validate_environment("local"))
 
 
-@pytest.mark.parametrize("embedding", ["e5", "e5-instruct"])
+@pytest.mark.parametrize("embedding", ["e5"])
 def test_validate_environment_accepts_supported_embeddings(monkeypatch, embedding):
     monkeypatch.setenv("STAGE2_EMBEDDING", embedding)
     assert not any(

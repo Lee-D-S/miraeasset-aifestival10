@@ -33,10 +33,3 @@ lxml>=5,<7
 pypdf>=5,<7
 pandas>=2.0,<3
 numpy>=1.26,<3
-
-# --- 선택: STAGE2_EMBEDDING=e5-instruct 경로에서만 필요 ---
-# 기본(e5) 배포에서는 설치 불필요. instruction-prefix A/B를 돌릴 때만 주석 해제.
-# langchain-huggingface==1.2.2
-# sentence-transformers==3.4.1
-# transformers==4.49.0
-# torch==2.1.0

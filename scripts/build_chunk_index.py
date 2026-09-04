@@ -39,11 +39,7 @@ def _embedding_function(name: str):
         from stage2.embedding import E5Embeddings
 
         return E5Embeddings()
-    if name == "e5-instruct":
-        from stage2.embedding import E5InstructEmbeddings
-
-        return E5InstructEmbeddings(query_instruction=None)
-    raise SystemExit(f"unknown --embedding {name!r}; choose e5 or e5-instruct")
+    raise SystemExit(f"unknown --embedding {name!r}; choose e5")
 
 
 def main() -> int:
@@ -69,7 +65,7 @@ def main() -> int:
     )
     parser.add_argument("--chroma-dir", type=Path, default=config.CHROMA_PATH)
     parser.add_argument("--collection-name", default=config.CHROMA_COLLECTION)
-    parser.add_argument("--embedding", choices=("e5", "e5-instruct"), default="e5")
+    parser.add_argument("--embedding", choices=("e5",), default="e5")
     parser.add_argument("--max-chunk-len", type=int, default=1000)
     parser.add_argument(
         "--workers",

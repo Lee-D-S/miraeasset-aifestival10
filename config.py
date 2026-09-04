@@ -83,10 +83,10 @@ except ValueError:
 
 # --- Stage2 mode -------------------------------------------------------------
 VALID_STAGE2_MODES: tuple[str, ...] = ("local", "container")
-# ``e5`` (default, fastembed / non-instruct -- the model the supplied index was
-# built with) and ``e5-instruct`` (sentence-transformers, A/B path) are both
-# kept selectable; do not collapse this to a single value.
-VALID_STAGE2_EMBEDDINGS: tuple[str, ...] = ("e5", "e5-instruct")
+# The supplied SQLite/Chroma index and the active query path share this model.
+# Keep the environment variable for deployment compatibility, but do not allow
+# a second embedding space to be selected accidentally.
+VALID_STAGE2_EMBEDDINGS: tuple[str, ...] = ("e5",)
 VALID_STAGE2_SQL_TABLES: tuple[str, ...] = ("chunk_index", "chunks")
 DEFAULT_STAGE2_MODE = "local"
 
