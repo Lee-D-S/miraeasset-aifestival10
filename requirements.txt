@@ -8,11 +8,9 @@ fastapi>=0.115,<1
 uvicorn[standard]>=0.30,<1
 python-dotenv>=1.0,<2
 
-# --- 데이터 계층 (여러 방향 유지) ---
-# SQLite(local) / Postgres(container) 둘 다 SQLAlchemy 한 경로로 지원.
+# --- 데이터 계층 (local SQLite) ---
+# 제공된 read-only chunk_index와 로컬 임시 인덱스에 공통으로 사용.
 sqlalchemy>=2.0,<3
-psycopg[binary]>=3.2,<4          # container 모드 Postgres RDB
-pgvector>=0.3,<1                 # Postgres 벡터 확장 경로
 
 # --- 벡터 DB (Chroma) ---
 # 공급 인덱스(chunk_vectors, 5.55M rows)는 chromadb 1.5.9로 빌드.
