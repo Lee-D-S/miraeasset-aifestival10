@@ -71,6 +71,51 @@ class FactExtractionTests(unittest.TestCase):
 
         self.assertEqual({item.aggregation_scope for item in facts}, {"total", "segment"})
 
+    def test_total_revenue_ignores_prior_revenue_type_table_cell(self):
+        intent = adapt_stage1_intent({
+            "raw_question": "삼성전자 2024년 연결 매출액은 얼마인가요?",
+            "normalized_question": "삼성전자 2024년 연결 매출액은 얼마인가요?",
+            "route": "ok",
+            "intent": "lookup",
+            "metric": "revenue",
+            "basis": "연결",
+            "time": {"years": [2024], "base_months": [12]},
+        })
+        bundle = adapt_stage2_bundle([
+            {
+                "id": "20250311001085_121",
+                "source": "samsung.xml",
+                "text": "2024년 당사의 매출은 300조 8,709억원으로 전년 대비 증가하였다.",
+                "metadata": {"corp_name": "삼성전자", "base_year": 2024, "base_month": 12},
+            },
+            {
+                "id": "20250311001085_172",
+                "source": "samsung.xml",
+                "text": (
+                    "| 구분 | 제56기 | 제55기 | 제54기 |\n"
+                    "| --- | --- | --- | --- |\n"
+                    "| 용역 및 기타매출 | 75,092 | 127,975 | 118,853 |\n"
+                    "| 계 | 3,008,709 | 2,589,355 | 3,022,314 |"
+                ),
+                "metadata": {"corp_name": "삼성전자", "base_year": 2024, "base_month": 12},
+            },
+        ])
+
+        facts = [item for item in extract_facts(bundle.documents, intent) if item.metric == "revenue"]
+        prior_type = next(item for item in facts if item.value == 127975.0)
+        self.assertEqual(prior_type.period, "2023")
+        self.assertEqual(prior_type.aggregation_scope, "unknown")
+
+        from stage3.agents.answer import _lookup_facts
+        from stage3.grounding import matching_facts
+
+        matched = matching_facts(facts, intent)
+        self.assertEqual([(item.document_id, item.display_value) for item in matched], [
+            ("20250311001085_121", "300조 8,709억원"),
+        ])
+        selected = _lookup_facts(intent, facts)
+        self.assertEqual(selected[0].document_id, "20250311001085_121")
+
     def test_normalization_applies_stage1_period_and_basis(self):
         bundle = adapt_stage2_bundle([{"id": "d1", "text": "매출액 100억원", "metadata": {"corp_name": "기업A"}}])
         facts, warnings = normalize_facts(extract_facts(bundle.documents, self.intent), self.intent)
