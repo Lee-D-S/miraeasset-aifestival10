@@ -153,4 +153,41 @@ def validate_semantics(client: Any, *, question: str, intent: Any, stage3_result
     return normalized
 
 
-__all__ = ["SEMANTIC_SCHEMA", "validate_semantics"]
+def deterministic_semantic_fallback(
+    *,
+    answer: str,
+    numeric_check: Mapping[str, Any],
+    citation_check: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Apply the narrow local gate when CLOVA semantic validation is absent."""
+
+    issues: list[str] = []
+    if not answer.strip():
+        issues.append("answer is empty")
+    if not numeric_check.get("pass"):
+        issues.extend(str(item) for item in numeric_check.get("errors", []))
+        if not numeric_check.get("errors"):
+            issues.append("numeric Fact gate failed")
+    if not citation_check.get("pass"):
+        issues.extend(str(item) for item in citation_check.get("errors", []))
+        if not citation_check.get("errors"):
+            issues.append("citation gate failed")
+    return {
+        "pass": not issues,
+        "issues": issues,
+        "unsupported_claims": [],
+        "missing_aspects": [],
+        "summary": (
+            "Deterministic numeric, citation, and Fact grounding gates passed."
+            if not issues
+            else "Deterministic local grounding gate failed."
+        ),
+        "mode": "deterministic_fallback",
+    }
+
+
+__all__ = [
+    "SEMANTIC_SCHEMA",
+    "deterministic_semantic_fallback",
+    "validate_semantics",
+]

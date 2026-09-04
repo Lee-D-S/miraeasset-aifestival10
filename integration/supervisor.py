@@ -80,9 +80,16 @@ def _calculation_plan_missing(state: Mapping[str, Any]) -> bool:
 class DeterministicSupervisor:
     """Safe default policy used when no LLM adapter is injected."""
 
-    def __init__(self, *, max_search_retries: int = 1, max_planner_retries: int = 1):
+    def __init__(
+        self,
+        *,
+        max_search_retries: int = 1,
+        max_planner_retries: int = 1,
+        allow_regeneration: bool = True,
+    ):
         self.max_search_retries = max_search_retries
         self.max_planner_retries = max_planner_retries
+        self.allow_regeneration = allow_regeneration
 
     def decide(self, *, phase: SupervisorPhase, state: Mapping[str, Any]) -> SupervisorDecision:
         route = str(state.get("route", ""))
@@ -117,8 +124,10 @@ class DeterministicSupervisor:
 
         result = state.get("stage4_result")
         result = result if isinstance(result, Mapping) else {}
-        if result.get("status") == "validation_failed" and int(state.get("regeneration_attempts", 0) or 0) < 1:
-            return SupervisorDecision("regenerate_answer", "검증 실패를 제한된 1회 재생성으로 보완합니다.")
+        if result.get("status") == "validation_failed":
+            if self.allow_regeneration and int(state.get("regeneration_attempts", 0) or 0) < 1:
+                return SupervisorDecision("regenerate_answer", "검증 실패를 제한된 1회 재생성으로 보완합니다.")
+            return SupervisorDecision("fail_closed", "재생성 모델이 없거나 재생성 한도를 초과했습니다.")
         return SupervisorDecision("finish", "Stage4 처리가 완료되었습니다.")
 
 
@@ -139,8 +148,9 @@ def build_supervisor_node(
     client: SupervisorClient | None = None,
     *,
     max_supervisor_steps: int = 12,
+    allow_regeneration: bool = True,
 ) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
-    policy = client or DeterministicSupervisor()
+    policy = client or DeterministicSupervisor(allow_regeneration=allow_regeneration)
 
     def supervisor_node(state: Mapping[str, Any]) -> dict[str, Any]:
         phase = str(state.get("supervisor_phase", "after_stage1"))

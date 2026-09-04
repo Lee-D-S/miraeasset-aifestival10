@@ -107,10 +107,14 @@ def _stage_node(owner: str, phase: str, node: StateNode) -> StateNode:
 def build_graph(nodes: StageNodes):
     """Build the bounded Supervisor-controlled four-stage graph."""
 
-    supervisor = nodes.supervisor or build_supervisor_node()
+    supervisor = nodes.supervisor or build_supervisor_node(
+        allow_regeneration=nodes.answer_regeneration is not None
+    )
     planner = nodes.calculation_planner or build_planner_tool()
     regeneration = nodes.answer_regeneration or (lambda state: {
-        "answer": str(state.get("answer") or ""),
+        # The built-in Supervisor does not route here without a live answer
+        # client. Keep a non-no-op fail-closed update for custom Supervisors.
+        "answer": "",
         "regeneration_attempts": int(state.get("regeneration_attempts", 0) or 0) + 1,
     })
     builder = StateGraph(AgentState)

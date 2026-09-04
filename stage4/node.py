@@ -8,7 +8,7 @@ from integration.rate_limit import is_rate_limit_error, rate_limit_event
 from stage4.citation import validate_citations
 from stage4.contracts import Stage4Result
 from stage4.numeric import validate_numeric_answer
-from stage4.semantic import validate_semantics
+from stage4.semantic import deterministic_semantic_fallback, validate_semantics
 from stage3.adapters.stage1 import adapt_stage1_intent
 from stage3.contracts import Stage3Fact
 from stage3.grounding import matching_facts, strict_grounding_enabled
@@ -48,6 +48,27 @@ def _allow_grounded_semantic_uncertainty(
     # validation confirms the Stage3 evidence chain. Together they provide a
     # bounded grounding fallback when the semantic provider is merely unsure.
     return True
+
+
+def _provider_failure_event(error: BaseException, *, client: Any | None) -> dict[str, Any]:
+    """Return a non-secret provider failure event for the public trace."""
+
+    event: dict[str, Any] = {
+        "status": "provider_error",
+        "operation": "semantic_validation",
+        "source": "provider_boundary",
+        "error_type": type(error).__name__,
+    }
+    provider_status = getattr(client, "last_provider_status", {})
+    if isinstance(provider_status, Mapping):
+        for key in ("status_code", "provider_code", "source"):
+            if key in provider_status:
+                event[key] = provider_status[key]
+    limiter = getattr(client, "rate_limiter", None)
+    snapshot = getattr(limiter, "snapshot", None)
+    if callable(snapshot):
+        event["limiter"] = snapshot()
+    return event
 
 
 def _exact_multi_query_facts(
@@ -120,7 +141,7 @@ def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any
         semantic: dict[str, Any] = {}
         provider_status: dict[str, Any] = {}
         trace = ["stage4_start"]
-        regenerated = False
+        regenerated = int(state.get("regeneration_attempts", 0) or 0) > 0
 
         try:
             stage2_result = state.get("stage2_result") if isinstance(state.get("stage2_result"), Mapping) else None
@@ -156,8 +177,27 @@ def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any
                 (
                     fact for fact in grounded_facts
                     if fact.kind not in {"date", "text", "field"}
-                    and (fact_digits := re.sub(r"\D", "", str(fact.value)))
-                    and fact_digits in answer_digits
+                    and any(
+                        fact_digits
+                        and fact_digits in answer_digits
+                        for fact_value in (
+                            getattr(fact, "raw_value", ""),
+                            fact.value,
+                            fact.normalized_value,
+                        )
+                        for fact_digits in {
+                            re.sub(
+                                r"\D",
+                                "",
+                                str(
+                                    int(fact_value)
+                                    if isinstance(fact_value, float)
+                                    and fact_value.is_integer()
+                                    else fact_value
+                                ),
+                            )
+                        }
+                    )
                 ),
                 None,
             )
@@ -186,10 +226,51 @@ def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any
             if not citation.get("answer_has_source_marker"):
                 citation["pass"] = False
                 citation.setdefault("errors", []).append("answer source marker is missing")
-            if True:  # Numeric, citation, and semantic checks are independent.
-                semantic = validate_semantics(client, question=question, intent=intent, stage3_result=stage3_result, answer=answer)
+            if client is None:
+                semantic = deterministic_semantic_fallback(
+                    answer=answer,
+                    numeric_check=numeric,
+                    citation_check=citation,
+                )
+                warnings.append(
+                    "semantic_validation_provider_unavailable: deterministic_fallback"
+                )
+                trace.append("semantic_deterministic_fallback")
             else:
-                semantic = {"pass": False, "issues": [*numeric.get("errors", []), *citation.get("errors", [])], "unsupported_claims": [], "missing_aspects": [], "summary": "결정론적 검증 실패"}
+                try:
+                    semantic = validate_semantics(
+                        client,
+                        question=question,
+                        intent=intent,
+                        stage3_result=stage3_result,
+                        answer=answer,
+                    )
+                except Exception as error:
+                    if numeric.get("pass") and citation.get("pass") and answer.strip():
+                        provider_status = (
+                            rate_limit_event(
+                                error,
+                                operation="semantic_validation",
+                                client=client,
+                            )
+                            if is_rate_limit_error(error)
+                            else _provider_failure_event(error, client=client)
+                        )
+                        semantic = deterministic_semantic_fallback(
+                            answer=answer,
+                            numeric_check=numeric,
+                            citation_check=citation,
+                        )
+                        warnings.append(
+                            "semantic_provider_fallback: " + type(error).__name__
+                        )
+                        trace.append(
+                            "provider_rate_limited_deterministic_grounding"
+                            if is_rate_limit_error(error)
+                            else "semantic_provider_deterministic_fallback"
+                        )
+                    else:
+                        raise
             if (
                 not semantic.get("pass")
                 and numeric.get("pass")

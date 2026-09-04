@@ -95,6 +95,7 @@ class Stage2Result(TypedDict, total=False):
     subresults: list[dict[str, Any]]
     warnings: list[str]
     search_queries: dict[str, str]
+    provider_status: dict[str, Any]
 
 
 class Stage3Result(TypedDict, total=False):
@@ -123,6 +124,7 @@ class Stage4Result(TypedDict, total=False):
     regenerated: bool
     warnings: list[str]
     trace: list[str]
+    provider_status: dict[str, Any]
 
 
 class AgentState(MessagesState):
