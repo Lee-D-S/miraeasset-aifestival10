@@ -174,14 +174,11 @@ PY
   `readiness_issues()`에 "Chroma is missing SQLite chunk IDs" 경고가 항상 뜬다.
   `build_pipeline()` 은 이 경고를 치명으로 취급하므로 `STAGE2_ALLOW_PARTIAL_INDEX=true`
   로 강등해야 기동된다(2-1 참고). 2-3 처럼 retriever 를 직접 쓰면 해당되지 않는다.
-- **임베딩 모델 불일치** — 이 벡터는 `intfloat/multilingual-e5-large-instruct`로
-  만들어졌고, team-feature2의 `e5` 옵션은 `multilingual-e5-large`다. 엄밀히는 다른
-  공간이지만 base 표현을 많이 공유해서, 실제로 돌려 보면 순위 품질이 조금 떨어지는
-  정도이지 무의미하지는 않다(예: "삼성전자 매출액" → 매출 청크 반환, cosine ≈ 0.81).
-  키워드·메타데이터 필터(`corp_name`, `section_name`, `rcept_dt` 등)는 정확하다.
-- 정밀한 검색 품질까지 봐야 한다면 `multilingual-e5-large-instruct` 질의 임베더를
-  붙이거나 80만 청크를 team-feature2의 `e5`로 다시 임베딩해야 한다. 지금 인덱스는
-  "파이프라인이 실데이터 규모로 끝까지 도는지" 확인하는 용도다.
+- **임베딩 모델 계약** — 공급 Chroma 벡터와 team-feature2의 운영 경로는
+  모두 `intfloat/multilingual-e5-large` 1024차원 공간을 사용한다.
+  검색 후보도 동일한 모델과 query adapter를 사용해야 하며, 별도 instruct 모델로
+  query를 임베딩하면 벡터 공간 계약이 깨진다. 키워드·메타데이터 필터
+  (`corp_name`, `section_name`, `rcept_dt` 등)는 별도 SQLite 경로에서 정확하게 적용된다.
 
 ---
 
