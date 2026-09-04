@@ -57,6 +57,20 @@ print(compiled_graph.get_graph().draw_mermaid())
 
 ## 로컬 무비용 E2E
 
+## Process-local cache
+
+`build_pipeline()`은 `DIS164_CACHE_*` 설정으로 하나의 pipeline-scoped
+`CacheRegistry`를 만들고 E5 embedding adapter, local hybrid retriever, Stage3 node에
+주입한다. 기본값은 TTL 600초, query embedding 256개, 구조화 문서 512개, Fact 1,024개,
+SQL 후보 목록 16개다. `DIS164_CACHE_ENABLED=false` 또는 개별 max 값 `0`으로 우회할 수
+있다.
+
+cache 대상은 최종 search query의 E5 embedding, 동일 manifest filter의 SQL 후보 문서,
+structured parsing, intent별 raw Fact extraction이다. 최종 ranking·CLOVA Reranker·Chat
+응답은 cache하지 않는다. index signature와 코드 version이 key에 포함되고, 값은 호출자
+변이를 막기 위해 복사된다. cache 장애는 원래 계산으로 우회하며 운영 통계는 public answer나
+think trace에 넣지 않는다. worker별 메모리는 독립적이고 외부 Redis는 필요하지 않다.
+
 외부 provider 없이 검증할 때는 `integration.testing.build_deterministic_pipeline()`에
 Intent, InMemory 문서, deterministic vector score를 주입한다. 이 factory는 테스트 전용이며
 production의 semantic fallback으로 사용하지 않는다.

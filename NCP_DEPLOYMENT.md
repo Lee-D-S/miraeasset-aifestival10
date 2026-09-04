@@ -48,6 +48,25 @@ Git, README, 응답에 기록하지 않는다.
 
 ### 임베딩
 
+### Process-local cache
+
+앱은 pipeline 생성마다 독립적인 bounded TTL/LRU cache를 만든다. 기본 설정은 다음과 같다.
+
+```env
+DIS164_CACHE_ENABLED=true
+DIS164_CACHE_TTL_SECONDS=600
+DIS164_CACHE_INDEX_VERSION=1
+DIS164_CACHE_QUERY_EMBEDDING_MAX=256
+DIS164_CACHE_STRUCTURED_DOC_MAX=512
+DIS164_CACHE_FACT_MAX=1024
+DIS164_CACHE_CANDIDATE_MAX=16
+```
+
+E5 질의 임베딩, manifest filter SQL 후보, structured parsing, intent별 Fact extraction만
+재사용하고 CLOVA Chat/Reranker 응답은 재사용하지 않는다. cache는 SQLite·Chroma를 변경하지
+않으며, signature·version·TTL로 무효화된다. cache 내부 오류는 원래 계산으로 우회한다.
+worker는 독립 cache를 가지므로 현재 권장하는 one-worker 운용과 호환된다.
+
 기본값은 **`STAGE2_EMBEDDING=e5`** — 인덱스를 만든 모델과 동일한
 `intfloat/multilingual-e5-large` (1024-dim, **non-instruct**)를 **fastembed / ONNX**로 로드한다.
 가중치는 **컨테이너 이미지에 빌드 시 내장**되므로 기동 시 외부 다운로드가 없다

@@ -136,6 +136,22 @@ GET /answer?question_id=Q-001&question=질문내용
 
 ## 검색과 안전 제어
 
+## Stage2·Stage3 process-local cache
+
+canonical `integration.composition.build_pipeline()`은 pipeline마다 독립적인
+`CacheRegistry`를 만들고 Stage2·Stage3에 주입한다. 캐시는 원본 인덱스를 대체하지
+않는 bounded TTL/LRU 메모리 최적화 계층이다.
+
+- E5 질의 임베딩은 `build_search_query()` 이후 최종 검색 질의를 key로 재사용한다.
+- 동일 `manifest_filter`의 SQL 후보 문서는 본문을 포함해 재사용하지만, keyword/vector/hybrid
+  정렬과 최종 Reranker 결과는 매 실행 계산한다.
+- 구조화 본문 parsing은 chunk ID·본문 SHA-256·parser version으로, Fact는 문서·metric·계산·basis
+  등 추출 profile로 구분해 재사용한다.
+- 기본 TTL은 600초이며 `DIS164_CACHE_*` 환경변수로 전체·개별 cache를 조정할 수 있다.
+- cache hit/miss는 사용자 답변·`think_trace`에 노출하지 않는다. cache 오류는 원래 계산으로
+  우회하며, CLOVA Chat/Reranker 응답은 cache하지 않는다.
+- worker 간 cache 공유나 Redis는 추가하지 않으며, SQLite·Chroma 인덱스는 계속 read-only다.
+
 ```text
 Stage1 manifest_filter
 → query embedding

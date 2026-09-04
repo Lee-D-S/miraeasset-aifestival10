@@ -222,3 +222,24 @@ NCP Server (RAM 32GB+) + Block Storage 150GB (/data)
 - [`docs/sync-chunk-index.md`](./sync-chunk-index.md) — Colab→로컬 인덱스 동기화 런북
 - 대회 자료: `dart_agent_info.pdf`
 - 메모리: `chunk-index-sync`
+## Stage2·Stage3 process-local cache [결정]
+
+현재 canonical `integration.composition.build_pipeline()`은 pipeline마다 독립적인
+`CacheRegistry`를 생성한다. 이 cache는 인덱스나 정답의 source of truth가 아니라,
+one-worker 프로세스 안에서만 유효한 bounded TTL/LRU 최적화 계층이다.
+
+```env
+DIS164_CACHE_ENABLED=true
+DIS164_CACHE_TTL_SECONDS=600
+DIS164_CACHE_INDEX_VERSION=1
+DIS164_CACHE_QUERY_EMBEDDING_MAX=256
+DIS164_CACHE_STRUCTURED_DOC_MAX=512
+DIS164_CACHE_FACT_MAX=1024
+DIS164_CACHE_CANDIDATE_MAX=16
+```
+
+최종 search query의 E5 embedding, 동일 manifest filter의 SQL 후보 문서, 문서별
+structured parsing, intent별 Fact extraction만 재사용한다. 최종 ranking·CLOVA Chat·CLOVA
+Reranker 응답은 cache하지 않는다. index path metadata와 명시적 version·TTL로 무효화하고,
+cache 오류는 기존 계산으로 우회한다. SQLite·Chroma는 read-only로 유지하며 worker 간
+Redis 공유 cache는 도입하지 않는다.

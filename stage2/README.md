@@ -81,6 +81,28 @@ HNSW 대체 후보(FTS5, Exact, FAISS IVFFlat/SQ8/PQ)는 production 설정과 �
 
 ## 안전 경계
 
+## Process-local cache
+
+canonical pipeline은 pipeline 생성 시 `integration.cache.CacheRegistry`를 하나 만들고
+Stage2·Stage3에 공유한다. 기존 SQLite·Chroma 인덱스와 E5 모델 cache는 source of truth이며,
+새 cache는 메모리에서만 동작하는 bounded TTL/LRU 최적화 계층이다.
+
+```env
+DIS164_CACHE_ENABLED=true
+DIS164_CACHE_TTL_SECONDS=600
+DIS164_CACHE_INDEX_VERSION=1
+DIS164_CACHE_QUERY_EMBEDDING_MAX=256
+DIS164_CACHE_STRUCTURED_DOC_MAX=512
+DIS164_CACHE_FACT_MAX=1024
+DIS164_CACHE_CANDIDATE_MAX=16
+```
+
+최종 검색 질의의 E5 query embedding, 동일 `manifest_filter`의 SQL 후보 본문, 문서별
+structured parsing, intent profile별 Fact extraction만 cache한다. keyword/vector/hybrid
+재정렬과 CLOVA Reranker·Chat 응답은 cache하지 않는다. index metadata·명시적 version·TTL로
+무효화하며, cache 오류는 원래 계산으로 우회한다. cache 정보는 answer나 trace에 기록하지
+않고, worker마다 독립적으로 유지한다.
+
 - 제공 SQLite·Chroma 인덱스는 read-only로 연다.
 - 제공 Chroma가 legacy persistent HNSW 형식이므로 local 실행은 Chroma writer/migration을
   열지 않고 SQLite `mode=ro`와 direct HNSW query adapter를 사용한다.
