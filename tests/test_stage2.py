@@ -196,6 +196,57 @@ def test_stage2_injects_reranker_and_records_query():
     assert len(update["stage2_result"]["cited_documents"]) <= 2
 
 
+def test_stage2_limits_clova_candidates_and_records_suggestions():
+    class RecordingReranker:
+        def __init__(self):
+            self.calls = []
+            self.suggested_queries = ["대체 검색어"]
+            self.last_provider_status = {"status": "observed", "operation": "reranker"}
+
+        def rerank(self, query, documents, limit):
+            self.calls.append((query, list(documents), limit))
+            return list(documents)[:limit]
+
+    reranker = RecordingReranker()
+    state = _state()
+    state["intent"]["manifest_filter"] = {}
+    update = build_stage2_node(
+        retriever=InMemoryRetriever(DOCUMENTS, vector_scores={
+            "samsung-2025-revenue": 1.0,
+            "samsung-2024-revenue": 0.9,
+            "other-company": 0.8,
+        }),
+        config=RetrievalConfig(
+            branch_limit=2,
+            final_limit=2,
+            reranker=reranker,
+            reranker_candidate_limit=2,
+        ),
+    )(state)
+
+    assert len(reranker.calls[0][1]) == 2
+    assert reranker.calls[0][2] == 2
+    assert "reranker_suggested_queries_count=1" in update["stage2_result"]["retrieval_trace"]
+
+
+def test_stage2_reranker_failure_falls_back_to_deterministic_results():
+    class FailingReranker:
+        def rerank(self, *_args, **_kwargs):
+            raise RuntimeError("provider unavailable")
+
+    state = _state()
+    update = build_stage2_node(
+        retriever=InMemoryRetriever(DOCUMENTS, vector_scores={"samsung-2025-revenue": 1.0}),
+        config=RetrievalConfig(final_limit=1, reranker=FailingReranker()),
+    )(state)
+    result = update["stage2_result"]
+
+    assert result["status"] == "ok"
+    assert result["cited_documents"]
+    assert result["warnings"] == ["reranker_fallback: RuntimeError"]
+    assert result["provider_status"]["status"] == "provider_error"
+
+
 def test_retry_search_changes_query_and_preserves_original_question():
     state = _state(original_question="original question", search_query="first search", retry_num=0)
     update = retry_search_tool(state)

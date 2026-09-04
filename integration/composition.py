@@ -9,6 +9,7 @@ import config
 from integration.graph import StageNodes
 from integration.clova import ClovaChatClient
 from integration.rate_limit import ClovaRateLimiter
+from integration.reranker import ClovaRerankerClient
 from integration.readiness import (
     PARTIAL_INDEX_ISSUES,
     raise_if_invalid,
@@ -21,7 +22,6 @@ from integration.service import StagePipeline
 from stage1 import build_stage1_node
 from stage2 import (
     E5Embeddings,
-    E5InstructEmbeddings,
     LocalHybridRetriever,
     RetrievalConfig,
     build_stage2_node,
@@ -32,6 +32,7 @@ from stage2 import (
 )
 from stage3 import build_stage3_node
 from stage4 import build_stage4_node
+from stage4.node import build_answer_regeneration_node
 from stage3.agents.answer import AnswerWriter
 
 
@@ -49,6 +50,11 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name, "true" if default else "false").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
 def _shared_clova_rate_limiter() -> ClovaRateLimiter:
     """Share one conservative process-local budget across all CLOVA APIs."""
 
@@ -62,20 +68,13 @@ def _shared_clova_rate_limiter() -> ClovaRateLimiter:
 def _embedding_function(settings: config.Stage2Settings):
     """Dispatch to the configured embedding adapter.
 
-    ``e5`` (default) is the model the supplied index was built with. ``e5-instruct``
-    stays wired for the instruction-prefix A/B path -- both directions are kept
-    open rather than hard-locking to one. The supplied-index A/B run improved
-    retrieval but failed the information-limit safety gate, so even the instruct
-    adapter runs with ``query_instruction=None`` (raw query) until that
-    fail-closed issue is fixed; the prefixed candidate stays available to the
-    explicit A/B runner.
+    ``e5`` is the only accepted value because it is the model used to build the
+    supplied vector index. This prevents a query/index embedding-space split.
     """
 
     embedding = settings.embedding
     if embedding == "e5":
         return E5Embeddings()
-    if embedding == "e5-instruct":
-        return E5InstructEmbeddings(query_instruction=None)
     raise RuntimeError(
         "unsupported Stage2 embedding: "
         f"{embedding}; choose one of {', '.join(config.VALID_STAGE2_EMBEDDINGS)}"
@@ -152,12 +151,45 @@ def build_pipeline() -> StagePipeline:
     if corpus is not None:
         raise_if_invalid(validate_corpus_directory(corpus))
 
-    stage1 = build_stage1_node(corpus_dir=corpus)
-    live_llm = os.getenv("CLOVA_LLM_ENABLED", "false").strip().lower() == "true"
+    live_llm = _env_bool("CLOVA_LLM_ENABLED")
+    stage1_use_llm = _env_bool("STAGE1_USE_LLM")
+    reranker_enabled = _env_bool("CLOVA_RERANKER_ENABLED")
     clova_rate_limiter = _shared_clova_rate_limiter()
-    answer_client = ClovaChatClient(rate_limiter=clova_rate_limiter) if live_llm else None
+    chat_client = (
+        ClovaChatClient(rate_limiter=clova_rate_limiter)
+        if live_llm or stage1_use_llm
+        else None
+    )
+    reranker_client = (
+        ClovaRerankerClient(rate_limiter=clova_rate_limiter)
+        if reranker_enabled
+        else None
+    )
+
+    stage1 = build_stage1_node(
+        corpus_dir=corpus,
+        llm_client=chat_client if stage1_use_llm else None,
+        use_llm=stage1_use_llm,
+    )
 
     retriever = _build_retriever(settings, corpus=corpus)
+    reranker_candidate_limit = max(
+        _env_int("CLOVA_RERANKER_CANDIDATE_LIMIT", 100), 1
+    )
+    reranker_config = RetrievalConfig(
+        candidate_limit=1000,
+        branch_limit=100,
+        final_limit=100 if reranker_enabled else 200,
+        reranker=reranker_client,
+        reranker_candidate_limit=(
+            reranker_candidate_limit if reranker_enabled else None
+        ),
+    )
+    regeneration = (
+        build_answer_regeneration_node(answer_client=chat_client)
+        if live_llm and chat_client is not None
+        else None
+    )
 
     return StagePipeline(StageNodes(
         stage1=stage1,
@@ -167,14 +199,15 @@ def build_pipeline() -> StagePipeline:
         # to external LLMs.
         stage2=build_stage2_node(
             retriever=retriever,
-            config=RetrievalConfig(
-                candidate_limit=1000,
-                branch_limit=100,
-                final_limit=200,
-            ),
+            config=reranker_config,
         ),
-        stage3=build_stage3_node(answer_writer=AnswerWriter(answer_client)),
-        stage4=build_stage4_node(validator_client=answer_client),
+        stage3=build_stage3_node(
+            answer_writer=AnswerWriter(chat_client if live_llm else None)
+        ),
+        stage4=build_stage4_node(
+            validator_client=chat_client if live_llm else None
+        ),
+        answer_regeneration=regeneration,
     ))
 
 

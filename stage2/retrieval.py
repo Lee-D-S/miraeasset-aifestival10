@@ -252,6 +252,7 @@ class RetrievalConfig:
     keyword_weight: float = 0.5
     vector_weight: float = 0.5
     reranker: Reranker | None = None
+    reranker_candidate_limit: int | None = None
 
 
 class InMemoryRetriever:
@@ -410,26 +411,79 @@ def retrieve(
         document = _normalize_document(item["raw"], hybrid_score, sorted(item["sources"]))
         document["hybrid_score"] = hybrid_score
         merged_documents.append(document)
-    reranker = config.reranker or DeterministicReranker()
     pool_limit = max(config.final_limit, config.branch_limit)
-    ranked = reranker.rerank(query, merged_documents, pool_limit)
+    warnings: list[str] = []
+    provider_status: dict[str, Any] = {}
+    retrieval_trace = [
+        f"query={query}",
+        f"candidate_count={len(candidates)}",
+        f"keyword_count={len(keyword_results)}",
+        f"vector_count={len(vector_results)}",
+    ]
+    deterministic_reranker = DeterministicReranker()
+    if config.reranker is None:
+        ranked = deterministic_reranker.rerank(query, merged_documents, pool_limit)
+    else:
+        # Send only the deterministic top-N candidates to the provider. If the
+        # provider fails, rerank the complete merged set locally and then apply
+        # the configured final limit.
+        deterministic_candidates = deterministic_reranker.rerank(
+            query, merged_documents, len(merged_documents)
+        )
+        candidate_limit = max(
+            int(config.reranker_candidate_limit or pool_limit), 1
+        )
+        reranker_documents = deterministic_candidates[:candidate_limit]
+        try:
+            ranked = list(
+                config.reranker.rerank(query, reranker_documents, pool_limit)
+            )
+            if merged_documents and not ranked:
+                raise ValueError("reranker returned no documents")
+            provider_status = dict(
+                getattr(config.reranker, "last_provider_status", {}) or {}
+            )
+        except Exception as error:  # provider boundary: deterministic fallback
+            ranked = deterministic_reranker.rerank(
+                query, merged_documents, pool_limit
+            )
+            warnings.append(f"reranker_fallback: {type(error).__name__}")
+            if is_rate_limit_error(error):
+                provider_status = rate_limit_event(
+                    error,
+                    operation="reranker",
+                    client=config.reranker,
+                )
+            else:
+                provider_status = dict(
+                    getattr(config.reranker, "last_provider_status", {}) or {}
+                )
+                provider_status.setdefault("status", "provider_error")
+                provider_status.setdefault("operation", "reranker")
+                provider_status.setdefault("error_type", type(error).__name__)
+        suggested_queries = getattr(config.reranker, "suggested_queries", [])
+        if isinstance(suggested_queries, list) and suggested_queries:
+            retrieval_trace.append(
+                f"reranker_suggested_queries_count={len(suggested_queries)}"
+            )
     documents = _diversify_by_year(ranked, _requested_years(intent), config.final_limit)
     cited = documents
     status = "ok" if cited else "not_found"
+    retrieval_trace.extend(
+        [
+            f"reranker={'clova' if config.reranker is not None else 'deterministic'}",
+            f"merged_count={len(merged_documents)}",
+            f"cited_count={len(cited)}",
+        ]
+    )
     return {
         "query_id": _text(question_id),
         "status": status,
         "documents": documents,
         "cited_documents": cited,
-        "retrieval_trace": [
-            f"query={query}",
-            f"candidate_count={len(candidates)}",
-            f"keyword_count={len(keyword_results)}",
-            f"vector_count={len(vector_results)}",
-            f"merged_count={len(documents)}",
-            f"cited_count={len(cited)}",
-        ],
-        "warnings": [],
+        "retrieval_trace": retrieval_trace,
+        "warnings": warnings,
+        "provider_status": provider_status,
     }
 
 
