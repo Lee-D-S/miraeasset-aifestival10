@@ -13,7 +13,6 @@ stage1/                 # 질의 정규화·Intent·manifest filter
 stage2/                 # local SQLite / Chroma hybrid retrieval·embedding·rerank
 stage3/                 # Fact·event·계산·답변 초안
 stage4/                 # 수치·출처·의미 검증
-legacy/                 # 현재 실행 경로가 아닌 과거 구현 보관
 tests/                  # 현재 통합 계약 테스트
 ```
 
@@ -179,7 +178,7 @@ python -m compileall -q integration shared_state.py stage1 stage2 stage3 stage4
 pytest
 ```
 
-`legacy/` 문서는 과거 backend의 설계·검증 기록이며, 현재 실행 경로의 기준은 `integration/composition.py`와 `integration/graph.py`다.
+현재 실행 경로의 기준은 integration/composition.py와 integration/graph.py다.
 
 ## 로컬 무비용 E2E
 

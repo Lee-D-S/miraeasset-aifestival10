@@ -81,7 +81,7 @@ STAGE2_CHROMA_COLLECTION=chunk_vectors     # 빌드 시 COLLECTION 과 일치
 
 현재 active 경로는 local SQLite·Chroma만 사용한다. PostgreSQL·원격 Chroma로의
 replay 또는 이관은 지원하지 않는다.
-(`scripts/migrate_legacy_sqlite.py` 패턴). `readiness_issues()` /
+`readiness_issues()` /
 `manifest_consistency_issues()`가 SQL `chunk_id` == Chroma id, manifest doc 집합
 일치를 오프라인 검증.
 

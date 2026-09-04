@@ -20,7 +20,6 @@ venv/
 
 # 런타임에 불필요 (tests/ 는 남긴다 -- scripts/check_real_index.py 가
 # tests/fixtures/real_index_corpus 를 쓰고, 용량도 무시할 수준)
-legacy/
 docs/
 CLAUDE.md
 .github/

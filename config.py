@@ -65,7 +65,7 @@ CHROMA_PATH = resolve_path(
 CHROMA_COLLECTION = os.getenv("STAGE2_CHROMA_COLLECTION", "").strip() or "chunk_vectors"
 SQLITE_TABLE = os.getenv("STAGE2_SQL_TABLE", "").strip() or "chunk_index"
 # Canonical default for unset ``STAGE2_EMBEDDING``. Keep this a module constant
-# rather than reading ``os.getenv`` at import time so CI legacy ``e5`` env vars
+# rather than reading os.getenv at import time so CI pre-existing e5 env vars
 # do not freeze ``config.EMBEDDING`` before tests clear the environment.
 DEFAULT_STAGE2_EMBEDDING = "e5"
 EMBEDDING = DEFAULT_STAGE2_EMBEDDING
