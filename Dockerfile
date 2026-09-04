@@ -56,6 +56,7 @@ ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     FASTEMBED_CACHE_DIR=/opt/models/fastembed \
+    HF_HUB_OFFLINE=1 \
     STAGE2_MODE=local \
     STAGE2_EMBEDDING=e5 \
     STAGE2_INDEX_PATH=/app/data/local_db/chunk_index.db \

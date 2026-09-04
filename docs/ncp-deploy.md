@@ -165,6 +165,9 @@ CLOVA_API_KEY=<실제 키>
 CLOVA_API_HOST=clovastudio.stream.ntruss.com
 CLOVA_LLM_ENABLED=true
 CLOVA_CHAT_MODEL=HCX-DASH-002
+STAGE1_USE_LLM=0
+CLOVA_RERANKER_ENABLED=false
+CLOVA_RERANKER_CANDIDATE_LIMIT=100
 
 STAGE2_MODE=local
 STAGE2_EMBEDDING=e5
@@ -209,6 +212,8 @@ docker compose logs -f
 - `/data/local_db` → 컨테이너 `/app/data/local_db` **읽기 전용** 마운트
 - `STAGE2_MODE=local`, `STAGE2_EMBEDDING=e5`, `STAGE2_CHROMA_COLLECTION=chunk_vectors`, `STAGE2_SQL_TABLE=chunk_index` 주입
 - `.env` 의 `CLOVA_*` 를 그대로 전달
+- `CLOVA_RERANKER_ENABLED=true`일 때만 production Reranker를 활성화하며, 실패 시 deterministic 검색 결과로 fallback
+- Docker runtime의 `HF_HUB_OFFLINE=1`로 E5 모델의 런타임 다운로드를 차단
 - `restart: unless-stopped` — 컨테이너가 죽거나 서버가 재부팅돼도 자동 재기동
 
 ---

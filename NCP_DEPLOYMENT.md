@@ -27,6 +27,9 @@ CLOVA_API_KEY=<secret>
 CLOVA_API_HOST=clovastudio.stream.ntruss.com
 CLOVA_LLM_ENABLED=true
 CLOVA_CHAT_MODEL=HCX-DASH-002
+STAGE1_USE_LLM=0
+CLOVA_RERANKER_ENABLED=false
+CLOVA_RERANKER_CANDIDATE_LIMIT=100
 
 # compose 가 아래를 이미 넣지만, 직접 uvicorn 실행 시엔 명시한다
 STAGE2_MODE=local
@@ -58,15 +61,12 @@ torch / transformers / sentence-transformers 는 필요 없다.
 `backends.local_chroma(create_directory=True)` 로 도달 가능하며, HNSW 리더에 문제가
 생기면 그쪽으로 전환한다.
 
-`e5-instruct`(sentence-transformers, `intfloat/multilingual-e5-large-instruct`)는
-instruction-prefix A/B 경로로 **선택 가능한 상태로 남겨둔다** — `STAGE2_EMBEDDING=e5-instruct`
-+ `requirements.txt` 의 optional 섹션 설치. A/B 에서 검색은 개선됐으나 정보 한계 안전성
-gate 가 실패했으므로 운영 기본값은 raw query 이며, 별도 승인 없이 prefix 를 적용하지 않는다.
+`e5-instruct`는 active 경로에서 제거했다. 기존 공급 인덱스와 같은
+`intfloat/multilingual-e5-large`를 문서·질의에 공통으로 사용하며, Docker runtime은
+사전 캐시된 모델만 사용한다.
 
-```text
-Instruct: Retrieve relevant passages from Korean corporate disclosure filings that directly answer the financial question.
-Query: {question}
-```
+Reranker는 `CLOVA_RERANKER_ENABLED=true`일 때만 production pipeline에 연결한다.
+상위 100개 후보를 전송하고 장애 시 deterministic hybrid 결과로 fallback한다.
 
 ## 실행과 확인
 
@@ -103,13 +103,10 @@ container 모드는 Postgres와 Chroma 서버가 실제로 준비된 별도 환�
 ```powershell
 pytest -m real_index
 python scripts/check_real_index.py --allow-partial-index
-python scripts/compare_query_instruction.py
 ```
 
-`compare_query_instruction.py`는 사전 탑재된 실제 DB와 E5 cache에서만 실행하는 수동
-A/B 검증이다. 검색 가능 20개는 유형별 Recall@20 무회귀와 전체 5%p 이상 개선을 동시에
-요구하고, 정보 한계 5개는 근거 없는 답변·숫자 생성을 검사한다. 조건을 충족하지 않으면
-운영 prefix를 자동으로 바꾸지 않고 `KEEP_RAW` 결과를 기록한다.
+검색 backend 대체 실험은 production과 분리된 `docs/retrieval-experiments.md` sidecar에서
+수행한다. Production Reranker의 ON/OFF 비교는 별도 smoke에서 확인한다.
 
 NCP live smoke는 별도 터미널에서 worker 1개로 서버를 실행한 뒤
 `python scripts/smoke_api.py --base-url http://127.0.0.1:8000`을 사용한다. 이 CLI는

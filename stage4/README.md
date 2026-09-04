@@ -15,7 +15,9 @@ Stage3 result + answer
 → success 또는 validation_failed
 ```
 
-semantic validator가 없으면 검증 불가로 종료한다. 빈 답변과 출처 표기가 없는 답변도 성공으로 처리하지 않는다.
+semantic validator가 없거나 provider 호출이 실패하면 numeric·citation·Fact grounding
+local gate로 fallback한다. 이 gate를 통과하지 못하면 fail-closed하며, 빈 답변과 출처
+표기가 없는 답변도 성공으로 처리하지 않는다.
 
 semantic prompt는 Stage3 답변에 실제로 포함된 수치와 일치하는 Fact 및 citation을
 우선 전달한다. 한 공시에서 연결·부문·종속기업 Fact가 함께 추출될 수 있으므로 단순히

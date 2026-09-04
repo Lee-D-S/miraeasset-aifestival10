@@ -10,7 +10,7 @@
 
 **완료:**
 - `origin/lds`(친구, 35커밋) ↔ `refactor/centralized-db-config`(우리) **선별 병합** → `main` 에 반영 (PR #4). 상세: `merge-plan-lds.md`.
-  - 임베딩 = `e5` (fastembed / non-instruct) 기본, `e5-instruct` 는 선택지로 유지. 디스패치는 `integration/composition._embedding_function`.
+  - 임베딩 = `e5` (fastembed / non-instruct) 단일 운영값. `e5-instruct`는 active 경로에서 제거하고 디스패치는 `integration/composition._embedding_function`이 담당.
   - write 경로는 `stage2/ingestion/writer.py` 로 분리 (엔진 무관 — SQLite/Postgres). 서빙 retriever 는 read-only 유지.
   - `chromadb==1.5.9` 고정, `fastembed`/`hnswlib` 추가. postgres 경로(psycopg/pgvector) 유지.
 - `chunk_index.db` 스키마 확인 — 서빙 코드 기대치와 일치 (`chunk_index` 테이블, 필수 6컬럼 + 스칼라 메타 + `raw_json_content`).
@@ -103,7 +103,7 @@ GET /answer?question_id={id}&question={평가 질의}
 
 | 변수 | 값 | 주의 |
 |---|---|---|
-| `STAGE2_EMBEDDING` | **`e5`** | `config.py` 기본값은 `clova`. **e5로 오버라이드 안 하면 질의 벡터가 인덱스(e5 빌드)와 다른 공간 → 검색 실패** |
+| `STAGE2_EMBEDDING` | **`e5`** | `config.py`에서 `e5`만 허용한다. 인덱스와 질의가 다른 공간을 사용하지 않도록 `e5-instruct`는 거부한다. |
 | `STAGE2_MODE` | fixture 아님 (실서빙) | `e5` + `fixture` 조합은 readiness에서 거부됨 (`integration/readiness.py`) |
 | `CLOVA_API_HOST` | `clovastudio.stream.ntruss.com` | |
 | `CLOVA_CHAT_MODEL` | 예 `HCX-DASH-002` | 대회 허용 HyperCLOVA X 모델로 확정 |
@@ -179,7 +179,7 @@ NCP Server (RAM 32GB+) + Block Storage 150GB (/data)
 
 ## 8. 리스크 / 게이차
 
-- **임베딩 provider 불일치:** 기본 `clova`로 뜨면 e5 인덱스와 벡터 공간 불일치 → 검색 전멸. `STAGE2_EMBEDDING=e5` 강제.
+- **임베딩 provider 불일치:** `STAGE2_EMBEDDING`을 `e5` 외 값으로 설정하면 readiness에서 거부한다. 인덱스와 질의 모두 `intfloat/multilingual-e5-large`를 사용한다.
 - **`chunk_index.db` 미완성:** 다운로드 중. 완료 후 무결성/스키마 확인 전엔 서빙 불가.
 - **fastembed 런타임 모델 다운로드:** 오프라인 평가 환경이면 기동 실패. 5.4 대비.
 - **langchain-chroma 1.0 ↔ chromadb 1.5.9 호환:** 실제로 `list_collections`/쿼리 되는지 배포 전 확인.

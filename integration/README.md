@@ -25,15 +25,15 @@ pipeline = build_pipeline()
 state = pipeline.invoke(question_id="Q-001", question="질문")
 ```
 
-기본 factory는 Stage1, Stage2(`STAGE2_MODE` 기본 `local`), Stage3, Stage4를 연결한다. `app.py`는 factory를 import 시 실행하지 않고 `/ready` 또는 `/answer` 요청 시 지연 초기화한다. Stage2는 `intfloat/multilingual-e5-large-instruct`를 사용하며 모델 cache가 없으면 명확히 실패한다. local·container 모두 같은 E5 adapter를 주입하고 문서 text는 raw로 유지한다. 현재 production composition은 실제 A/B의 정보 한계 안전성 gate 실패에 따라 raw query를 사용하며, instruction candidate는 명시적 A/B runner에서만 사용한다. `container` 모드는 `STAGE2_RDB_URL`과 `STAGE2_CHROMA_HOST`가 모두 있어야 하며, 없으면 기동 전에 명확히 실패한다.
+기본 factory는 Stage1, Stage2(`STAGE2_MODE` 기본 `local`), Stage3, Stage4를 연결한다. `app.py`는 factory를 import 시 실행하지 않고 `/ready` 또는 `/answer` 요청 시 지연 초기화한다. Stage2는 `intfloat/multilingual-e5-large`만 사용하며 모델 cache가 없으면 명확히 실패한다. local·container 모두 같은 E5 adapter를 주입하고 문서 text는 raw로 유지한다. `e5-instruct`는 active 설정에서 거부한다. `CLOVA_RERANKER_ENABLED`는 답변용 `CLOVA_LLM_ENABLED`와 독립적으로 동작하며, `STAGE1_USE_LLM=1`일 때만 unresolved 슬롯에 Chat JSON 보완을 호출한다. `container` 모드는 `STAGE2_RDB_URL`과 `STAGE2_CHROMA_HOST`가 모두 있어야 하며, 없으면 기동 전에 명확히 실패한다.
 
 `/health`는 프로세스 생존만 확인하고, `/ready`는 pipeline 생성 가능 여부를 확인한다. corpus·DB·provider가 준비되지 않은 경우 `/ready`와 `/answer`는 503을 반환하지만 앱 import와 `/health`는 실패하지 않는다.
 
 NCP 배포 전에는 `python scripts/check_deployment.py`로 네트워크 요청 없이 corpus, CLOVA 설정, SQLite schema·chunk, Chroma collection·ID, manifest와 Stage2 index 범위 일치를 확인한다. 제공 인덱스는 `python scripts/check_real_index.py --allow-partial-index`와 `pytest -m real_index`로 HNSW 차원·대표 검색·read-only 불변성·mock 전체 pipeline을 추가 확인한다.
-질의 prefix 채택 여부는 실제 인덱스와 E5 cache가 있는 수동 runner에서
-`python scripts/compare_query_instruction.py`로 A/B 검증한다. 이 실행기는 raw baseline과
-instruction 후보를 같은 필터·top-k로 비교하고, Recall@20·MRR·정보 한계 fail-closed gate를
-기록하며 인덱스를 수정하거나 모델을 다운로드하지 않는다.
+검색 backend 후보 비교는 `docs/retrieval-experiments.md`의 별도 실험 pipeline에서 수행한다.
+Production Reranker는 deterministic 검색 결과를 기본으로 하고, 명시적으로 켠 경우에만
+상위 100개를 CLOVA adapter에 보낸다. provider 오류·429·빈 결과는 deterministic 결과로
+fallback하며 `suggestedQueries`는 trace에만 남긴다.
 
 공용 State는 `shared_state.py`의 `AgentState`다. `question_id`, `question`, `original_question`은 불변이며 Stage node는 `STAGE_WRITE_FIELDS`에 정의된 partial update만 반환한다. Supervisor는 action과 reason만 결정한다.
 

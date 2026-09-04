@@ -32,23 +32,22 @@ STAGE2_INDEX_PATH=data/team-feature2-local-db/local_db/chunk_index.db
 STAGE2_CHROMA_PATH=data/team-feature2-local-db/local_db/chunk_index_chroma
 STAGE2_CHROMA_COLLECTION=chunk_vectors
 STAGE2_SQL_TABLE=chunk_index
-STAGE2_EMBEDDING=e5-instruct
+STAGE2_EMBEDDING=e5
 STAGE2_ALLOW_PARTIAL_INDEX=true
 ```
 
-`e5-instruct`는 `intfloat/multilingual-e5-large-instruct` 하나만 허용한다. 저장 인덱스와
-동일한 문서 raw text와 정규화 설정을 유지한다. A/B candidate 질의에는 다음 instruction을
-`embed_query()`에서만 적용한다.
+`e5`는 `intfloat/multilingual-e5-large` 하나만 허용한다. 문서와 질의는 저장 인덱스와
+동일한 1024차원 E5 공간을 사용하며 `e5-instruct` 입력은 설정 validation 오류로 거부한다.
+모델은 서버에 미리 캐시되어 있어야 하고 Docker runtime은 `HF_HUB_OFFLINE=1`로 외부
+다운로드를 차단한다.
 
-```text
-Instruct: Retrieve relevant passages from Korean corporate disclosure filings that directly answer the financial question.
-Query: {question}
+Production Reranker는 다음 독립 설정으로만 켠다.
+
+```env
+CLOVA_RERANKER_ENABLED=false
+CLOVA_RERANKER_CANDIDATE_LIMIT=100
+STAGE1_USE_LLM=0
 ```
-
-`sentence-transformers`가 필요하다. A/B candidate는 instruction 질의를 사용하고 raw
-baseline은 `query_instruction=None`으로 명시한다. 실제 A/B 결과에서 검색 성능은 개선됐지만
-정보 한계 안전성 gate가 실패했으므로 현재 production composition은 raw baseline이다.
-모델은 서버에 미리 캐시되어 있어야 하고 서버 시작 시 외부 다운로드는 하지 않는다.
 
 Stage1은 별도의 `CORPUS_DIR`에서 `universe.csv`와 `manifest.jsonl`을 읽는다. 제공 인덱스는
 벡터·문서 집합이 코퍼스와 완전히 일치하지 않을 수 있으므로 `STAGE2_ALLOW_PARTIAL_INDEX`
@@ -64,7 +63,6 @@ python -m pip install -r requirements-dev.txt
 python scripts/check_deployment.py
 python scripts/check_real_index.py --allow-partial-index
 pytest -m real_index
-python scripts/compare_query_instruction.py
 uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1
 ```
 
@@ -75,11 +73,6 @@ uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1
 일반 CI에서는 InMemoryRetriever 기반 결정론적 회귀와 임시 SQLite/Chroma 계약 테스트를
 사용한다. 실제 제공 DB 검증은 `real_index` marker와 별도 CLI로만 실행하며, DB와 E5 cache가
 없는 환경에서 `pytest -m real_index`를 실행하면 실패한다.
-`compare_query_instruction.py`도 실제 DB와 로컬 E5 cache가 준비된 runner에서만 실행한다.
-raw baseline은 A/B 실행기 내부에서만 명시적으로 주입하며 운영 설정으로 prefix를 끄지 않는다.
-검색 가능 20개는 유형별 Recall@20 무회귀와 전체 5%p 이상 개선을 요구하고, 정보 한계
-5개는 fail-closed 안전성 gate로 분리 평가한다.
-
 HNSW 대체 후보(FTS5, Exact, FAISS IVFFlat/SQ8/PQ)는 production 설정과 분리된
 실험용 sidecar·서비스로 제공한다. 생성과 실행 방법은
 [docs/retrieval-experiments.md](../docs/retrieval-experiments.md)를 참고한다.
@@ -93,5 +86,7 @@ HNSW 대체 후보(FTS5, Exact, FAISS IVFFlat/SQ8/PQ)는 production 설정과 �
   열지 않고 SQLite `mode=ro`와 direct HNSW query adapter를 사용한다.
 - `chunk_id`가 SQLite와 Chroma에서 일치하는지 readiness에서 확인한다.
 - 부분 인덱스 경고는 명시적 플래그가 있을 때만 허용한다.
+- Reranker는 기본 OFF이며 켜면 상위 100개만 전송하고 실패 시 deterministic rank로
+  fallback한다. `suggestedQueries`는 자동 재검색하지 않고 trace에만 기록한다.
 - OpenDART·뉴스·리포트 등 외부 데이터는 Stage2에서 사용하지 않는다.
 - API key와 요청 원문은 로그·응답의 trace에 기록하지 않는다.
