@@ -5,8 +5,7 @@
 # INDEX_DIR 는 호스트의 chunk_index.db + chunk_index_chroma/ 가 있는 디렉터리.
 # 없으면 ./data/local_db 를 쓴다. 컨테이너 안에서는 항상 /app/data/local_db (read-only).
 #
-# 확장(app -> chroma server + postgres) 구성은 docker-compose.scale.yml 참고:
-#   docker compose -f docker-compose.yml -f docker-compose.scale.yml --profile scale up -d
+# Stage2는 제공된 로컬 SQLite·Chroma 인덱스를 read-only로 사용한다.
 
 name: dis164
 

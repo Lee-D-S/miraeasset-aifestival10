@@ -4,7 +4,7 @@ import copy
 
 from stage2 import InMemoryRetriever, RetrievalConfig, build_stage2_node
 from integration.supervisor import retry_search_tool
-from stage2.retrieval import matches_manifest_filter
+from stage2.retrieval import matches_manifest_filter, build_search_query
 
 
 DOCUMENTS = [
@@ -128,6 +128,45 @@ def test_empty_search_returns_not_found():
     assert result["cited_documents"] == []
 
 
+def test_stage2_search_query_uses_korean_metric_labels():
+    query = build_search_query(
+        "삼성전자의 2025년 부채비율은?",
+        {
+            "normalized_question": "삼성전자의 2025년 부채비율은?",
+            "metric": "total_assets",
+            "basis": "연결",
+            "time": {"years": [2025]},
+        },
+    )
+    assert "부채비율" in query
+    assert "total_assets" not in query
+
+
+def test_stage2_search_query_includes_requested_years():
+    query = build_search_query(
+        "삼성전자의 최근 3년 매출액을 알려줘",
+        {
+            "normalized_question": "삼성전자의 최근 3년 매출액을 알려줘",
+            "metric": "revenue",
+            "time": {"years": [2023, 2024, 2025]},
+        },
+    )
+    assert "2023" in query and "2025" in query
+
+
+def test_stage2_diversify_by_year_keeps_each_requested_year():
+    from stage2.retrieval import _diversify_by_year
+
+    docs = [
+        {"id": "y25", "metadata": {"base_year": 2025}, "hybrid_score": 0.2},
+        {"id": "y24a", "metadata": {"base_year": 2024}, "hybrid_score": 0.9},
+        {"id": "y24b", "metadata": {"base_year": 2024}, "hybrid_score": 0.8},
+        {"id": "y23", "metadata": {"base_year": 2023}, "hybrid_score": 0.1},
+    ]
+    picked = _diversify_by_year(docs, ["2023", "2024", "2025"], 3)
+    assert {item["id"] for item in picked} == {"y25", "y24a", "y23"}
+
+
 def test_stage3_consumes_cited_documents_from_stage2_result():
     from stage3.adapters.stage2 import adapt_stage2_bundle
 
@@ -155,6 +194,57 @@ def test_stage2_injects_reranker_and_records_query():
     assert reranker.calls
     assert update["search_query"] == reranker.calls[0][0]
     assert len(update["stage2_result"]["cited_documents"]) <= 2
+
+
+def test_stage2_limits_clova_candidates_and_records_suggestions():
+    class RecordingReranker:
+        def __init__(self):
+            self.calls = []
+            self.suggested_queries = ["대체 검색어"]
+            self.last_provider_status = {"status": "observed", "operation": "reranker"}
+
+        def rerank(self, query, documents, limit):
+            self.calls.append((query, list(documents), limit))
+            return list(documents)[:limit]
+
+    reranker = RecordingReranker()
+    state = _state()
+    state["intent"]["manifest_filter"] = {}
+    update = build_stage2_node(
+        retriever=InMemoryRetriever(DOCUMENTS, vector_scores={
+            "samsung-2025-revenue": 1.0,
+            "samsung-2024-revenue": 0.9,
+            "other-company": 0.8,
+        }),
+        config=RetrievalConfig(
+            branch_limit=2,
+            final_limit=2,
+            reranker=reranker,
+            reranker_candidate_limit=2,
+        ),
+    )(state)
+
+    assert len(reranker.calls[0][1]) == 2
+    assert reranker.calls[0][2] == 2
+    assert "reranker_suggested_queries_count=1" in update["stage2_result"]["retrieval_trace"]
+
+
+def test_stage2_reranker_failure_falls_back_to_deterministic_results():
+    class FailingReranker:
+        def rerank(self, *_args, **_kwargs):
+            raise RuntimeError("provider unavailable")
+
+    state = _state()
+    update = build_stage2_node(
+        retriever=InMemoryRetriever(DOCUMENTS, vector_scores={"samsung-2025-revenue": 1.0}),
+        config=RetrievalConfig(final_limit=1, reranker=FailingReranker()),
+    )(state)
+    result = update["stage2_result"]
+
+    assert result["status"] == "ok"
+    assert result["cited_documents"]
+    assert result["warnings"] == ["reranker_fallback: RuntimeError"]
+    assert result["provider_status"]["status"] == "provider_error"
 
 
 def test_retry_search_changes_query_and_preserves_original_question():

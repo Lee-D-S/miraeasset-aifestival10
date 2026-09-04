@@ -78,6 +78,19 @@ update = stage3_node(state)
 subquery만 근거를 확보한 경우 상태는 `partial_success`이며, 답변에는 확보된
 항목과 확인되지 않은 항목을 함께 남긴다.
 
+### Canonical analysis plan
+
+복합 계산에서는 `AgentState.analysis_plan`이 검색 요구사항과 계산 단계의
+단일 원본이다. `query_plan`은 독립 검색 projection이므로 계산 DAG로 재해석하지
+않는다. `analysis_plan`이 있으면 Stage3는 requirement별 Fact를 모은 뒤 step을
+위상순으로 실행하고, 각 중간 결과를 `kind=derived` Fact로 저장한다. derived
+Fact에는 원본 `document_id`와 `input_fact_ids`가 남아 Stage4와 citation 생성이
+같은 근거 사슬을 사용할 수 있다.
+
+지원되는 plan operation은 기존 whitelist에 `percentage_point_change`를 추가한
+범위이며, plan 자체는 등록 metric/operation과 참조·node/depth/map/reduce 한도를
+검증한다. 유효하지 않은 plan은 계산하지 않고 근거 부족으로 종료한다.
+
 ### 출력 state
 
 process 가능한 요청은 다음 값을 partial update한다.
@@ -205,6 +218,21 @@ python -m compileall -q stage3
 관계없이 event linker가 실행된다.
 
 ## Multi-period trend calculations
+
+## Process-local parsing·Fact cache
+
+canonical Stage3는 `build_stage3_node(cache=...)`로 pipeline-scoped
+`CacheRegistry`를 선택적으로 받는다. Stage2가 전달한 문서는 기존처럼 한 실행 안에서
+재사용되고, 반복 실행·multi-query에서는 다음 결정론적 중간 결과를 재사용한다.
+
+- structured evidence: chunk ID + 본문 SHA-256 + parser version
+- raw Fact extraction: 문서 hash + extractor version + metric·계산 operation·분모·basis 및
+  필요한 company fallback profile
+
+`normalize_facts()`와 계산·비교·citation·AnswerWriter는 매번 현재 intent에 맞게 실행한다.
+따라서 cache hit가 답변 계약을 바꾸지 않으며, cache가 없거나 오류가 나면 기존 parser·Fact
+추출 경로로 우회한다. Stage3 답변 생성이나 Stage4 검증이 Stage2를 다시 호출하는 구조는
+아니며, CLOVA Chat 응답은 cache하지 않는다.
 
 When Stage1 requests more than two periods for `percentage_change` or `cagr`,
 Stage3 uses the first and last requested periods for the headline result. The

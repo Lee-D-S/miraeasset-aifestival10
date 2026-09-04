@@ -56,7 +56,7 @@ def _think_trace(state: dict[str, Any]) -> str:
         if isinstance(value, dict):
             trace[key] = {
                 field: value.get(field)
-                for field in ("status", "warnings", "trace", "provider_status")
+                for field in ("status", "warnings", "trace", "provider_status", "failure_reason_code")
                 if field in value
             }
             subresults = value.get("subresults")
@@ -72,6 +72,15 @@ def _think_trace(state: dict[str, Any]) -> str:
     intent = state.get("intent")
     if isinstance(intent, dict) and intent.get("think_trace"):
         trace["stage1_think_trace"] = str(intent["think_trace"])
+    plan = state.get("analysis_plan")
+    if isinstance(plan, dict):
+        trace["analysis_plan"] = {
+            "status": state.get("plan_status") or plan.get("status"),
+            "failure_reason": state.get("plan_failure_reason"),
+            "trace": state.get("plan_trace", []),
+            "requirements": len(plan.get("requirements", [])) if isinstance(plan.get("requirements"), list) else 0,
+            "steps": len(plan.get("steps", [])) if isinstance(plan.get("steps"), list) else 0,
+        }
     trace["supervisor"] = {
         "phase": state.get("phase"),
         "action": state.get("supervisor_action"),

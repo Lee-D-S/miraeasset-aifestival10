@@ -104,13 +104,26 @@ def _stage_node(owner: str, phase: str, node: StateNode) -> StateNode:
     return wrapped
 
 
+def _planner_node(node: StateNode) -> StateNode:
+    """Apply planner ownership validation without changing the Supervisor phase."""
+
+    def wrapped(state: Mapping[str, Any]) -> dict[str, Any]:
+        return validate_node_update("planner", state, node(state))
+
+    return wrapped
+
+
 def build_graph(nodes: StageNodes):
     """Build the bounded Supervisor-controlled four-stage graph."""
 
-    supervisor = nodes.supervisor or build_supervisor_node()
+    supervisor = nodes.supervisor or build_supervisor_node(
+        allow_regeneration=nodes.answer_regeneration is not None
+    )
     planner = nodes.calculation_planner or build_planner_tool()
     regeneration = nodes.answer_regeneration or (lambda state: {
-        "answer": str(state.get("answer") or ""),
+        # The built-in Supervisor does not route here without a live answer
+        # client. Keep a non-no-op fail-closed update for custom Supervisors.
+        "answer": "",
         "regeneration_attempts": int(state.get("regeneration_attempts", 0) or 0) + 1,
     })
     builder = StateGraph(AgentState)
@@ -118,7 +131,7 @@ def build_graph(nodes: StageNodes):
     builder.add_node("stage2", _stage_node("stage2", "after_stage2", nodes.stage2))
     builder.add_node("stage3", _stage_node("stage3", "after_stage3", nodes.stage3))
     builder.add_node("stage4", _stage_node("stage4", "after_stage4", nodes.stage4))
-    builder.add_node("calculation_planner", planner)
+    builder.add_node("calculation_planner", _planner_node(planner))
     builder.add_node("retry_search", retry_search_tool)
     builder.add_node("supervisor", supervisor)
     builder.add_node("answer_regeneration", regeneration)

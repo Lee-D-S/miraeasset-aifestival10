@@ -165,6 +165,10 @@ CLOVA_API_KEY=<실제 키>
 CLOVA_API_HOST=clovastudio.stream.ntruss.com
 CLOVA_LLM_ENABLED=true
 CLOVA_CHAT_MODEL=HCX-DASH-002
+STAGE1_USE_LLM=0
+QUERY_PLANNER_LLM_ENABLED=false
+CLOVA_RERANKER_ENABLED=false
+CLOVA_RERANKER_CANDIDATE_LIMIT=100
 
 STAGE2_MODE=local
 STAGE2_EMBEDDING=e5
@@ -209,6 +213,8 @@ docker compose logs -f
 - `/data/local_db` → 컨테이너 `/app/data/local_db` **읽기 전용** 마운트
 - `STAGE2_MODE=local`, `STAGE2_EMBEDDING=e5`, `STAGE2_CHROMA_COLLECTION=chunk_vectors`, `STAGE2_SQL_TABLE=chunk_index` 주입
 - `.env` 의 `CLOVA_*` 를 그대로 전달
+- `CLOVA_RERANKER_ENABLED=true`일 때만 production Reranker를 활성화하며, 실패 시 deterministic 검색 결과로 fallback
+- Docker runtime의 `HF_HUB_OFFLINE=1`로 E5 모델의 런타임 다운로드를 차단
 - `restart: unless-stopped` — 컨테이너가 죽거나 서버가 재부팅돼도 자동 재기동
 
 ---
@@ -286,20 +292,7 @@ python -c "from fastembed import TextEmbedding; TextEmbedding('intfloat/multilin
 
 ---
 
-## 10. (참고) 확장 모드 — app + Chroma server + Postgres
-
-기술제안서의 "확장성" 그림용 구성입니다. **대회 라이브 엔드포인트는 위 9단계(local)로 충분합니다.**
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.scale.yml --profile scale up -d
-```
-
-`docker-compose.scale.yml` 상단 주석 참고 — Postgres로 `chunk_index` 메타를 적재하는
-ETL과 Chroma 서버 이미지의 인덱스 포맷 검증이 선행돼야 합니다.
-
----
-
-## 11. 최종 체크리스트
+## 10. 최종 체크리스트
 
 - [ ] NCP 서버 생성, 공인 IP, ACG 인바운드 `TCP 8000`
 - [ ] Block Storage 150GB `/data` 마운트, `/etc/fstab` 등록

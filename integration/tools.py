@@ -7,6 +7,8 @@ from typing import Any
 from langchain_core.tools import tool
 from langgraph.prebuilt import ToolNode
 
+from stage3.deterministic.calculation_planner import build_simple_analysis_plan
+
 
 @tool("calculation_planner")
 def calculation_planner_tool(
@@ -17,11 +19,10 @@ def calculation_planner_tool(
     """Return a bounded, structured calculation plan."""
 
     return {
-        "calculation": {
-            "operation": operation.strip(),
-            "metric": metric.strip(),
-            "denominator_metric": denominator_metric.strip(),
-        }
+        "analysis_plan": build_simple_analysis_plan(
+            operation.strip(), metric.strip(), denominator_metric.strip()
+        ),
+        "plan_status": "ready",
     }
 
 

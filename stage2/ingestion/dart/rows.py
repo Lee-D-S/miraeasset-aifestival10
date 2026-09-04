@@ -4,8 +4,8 @@ This is the single entry point for the disclosure-aware ingestion path.  It
 ports ``dart_preprocessing/preprocesser.py``'s document loop -- join
 ``universe.csv`` + ``manifest.jsonl``, locate each document's source file,
 parse, chunk -- but stops at the chunk-row contract instead of writing to a
-DB.  Persistence is entirely :class:`stage2.local_store.LocalHybridRetriever`'s
-job, so ``local`` and ``container`` modes get the same rows.
+DB.  Persistence is handled by the local SQLite/Chroma index builder after
+this function returns the chunk-row contract.
 
 The master-data join uses the standard library (``csv`` + ``json``); only
 :mod:`stage2.ingestion.dart.parsers` pulls the heavy parsing dependencies.

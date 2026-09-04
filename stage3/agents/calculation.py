@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from stage3.contracts import AgentResult, Stage3Fact
 from stage3.deterministic.calculation_planner import SUPPORTED_OPERATIONS, build_calculation_plan
-from stage3.deterministic.calculations import calculate_facts
+from stage3.deterministic.calculations import calculate_facts, execute_analysis_plan
 from stage3.state import Stage3GraphState
 
 
@@ -12,6 +12,27 @@ def calculation_agent(state: Stage3GraphState) -> AgentResult:
         fact if isinstance(fact, Stage3Fact) else Stage3Fact.from_dict(fact)
         for fact in state.get("facts", [])
     ]
+    if intent.analysis_plan.get("status") == "ready":
+        execution = execute_analysis_plan(intent.analysis_plan, facts)
+        calculations = tuple(dict(item) for item in execution["calculations"])
+        comparisons = tuple(dict(item) for item in execution["comparisons"])
+        evidence_ids = tuple(
+            str(evidence_id)
+            for item in (*calculations, *comparisons)
+            for evidence_id in item.get("evidence_ids", [])
+            if evidence_id
+        )
+        status = "success" if execution["success"] else "insufficient_evidence"
+        return AgentResult(
+            agent="calculation",
+            status=status,
+            calculations=calculations,
+            comparison_results=comparisons,
+            evidence_ids=tuple(dict.fromkeys(evidence_ids)),
+            confidence=1.0 if status == "success" else 0.0,
+            warnings=tuple(str(item) for item in execution["warnings"]),
+            trace=("plan=analysis_plan", f"status={status}"),
+        )
     plan = build_calculation_plan(intent)
     if not plan:
         return AgentResult(

@@ -1,8 +1,8 @@
 # chunk_index — Stage2 로컬/컨테이너 인덱스
 
-`STAGE2_MODE=local` / `container`가 서빙하는 하이브리드 인덱스. SQLite 한 테이블
+`STAGE2_MODE=local`이 서빙하는 하이브리드 인덱스. SQLite 한 테이블
 (`chunk_index`)로 메타데이터 필터 → `chunk_id` 집합 → 그 집합 안에서 Chroma 벡터
-검색. `local`↔`container`는 `LocalHybridRetriever` 같은 코드, 연결만 다름
+검색. `LocalHybridRetriever`가 SQLite와 Chroma를 read-only로 함께 사용한다
 (`stage2/backends.py`).
 
 ## 데이터 계약 — `stage2.contracts.ChunkRow`
@@ -79,8 +79,9 @@ STAGE2_CHROMA_PATH=<unzip>/chunk_index_chroma
 STAGE2_CHROMA_COLLECTION=chunk_vectors     # 빌드 시 COLLECTION 과 일치
 ```
 
-`local → container`: `postgres_engine` / `chroma_server`로 같은 행 replay
-(`scripts/migrate_legacy_sqlite.py` 패턴). `readiness_issues()` /
+현재 active 경로는 local SQLite·Chroma만 사용한다. PostgreSQL·원격 Chroma로의
+replay 또는 이관은 지원하지 않는다.
+`readiness_issues()` /
 `manifest_consistency_issues()`가 SQL `chunk_id` == Chroma id, manifest doc 집합
 일치를 오프라인 검증.
 

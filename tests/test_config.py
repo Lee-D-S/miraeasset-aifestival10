@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 import config
-from integration.readiness import validate_container_settings, validate_environment
+from integration.readiness import validate_environment
 
 _STAGE2_ENV = (
     "STAGE2_MODE",
@@ -15,9 +15,10 @@ _STAGE2_ENV = (
     "STAGE2_SQL_TABLE",
     "STAGE2_EMBEDDING",
     "STAGE2_ALLOW_PARTIAL_INDEX",
-    "STAGE2_RDB_URL",
-    "STAGE2_CHROMA_HOST",
     "CLOVA_LLM_ENABLED",
+    "STAGE1_USE_LLM",
+    "QUERY_PLANNER_LLM_ENABLED",
+    "CLOVA_RERANKER_ENABLED",
     "CORPUS_DIR",
 )
 
@@ -44,9 +45,10 @@ def test_mode_defaults_to_local():
     assert config.resolve_stage2_mode() == "local"
 
 
-def test_stage2_mode_env_is_authoritative(monkeypatch):
+def test_stage2_mode_container_is_rejected(monkeypatch):
     monkeypatch.setenv("STAGE2_MODE", "container")
     assert config.resolve_stage2_mode() == "container"
+    assert any("STAGE2_MODE" in issue for issue in validate_environment("container"))
 
 
 def test_settings_resolve_paths_and_sqlite_url(monkeypatch):
@@ -58,7 +60,7 @@ def test_settings_resolve_paths_and_sqlite_url(monkeypatch):
     assert settings.sqlite_url == f"sqlite:///{settings.sqlite_path}"
     assert settings.chroma_collection == "chunk_vectors"
     assert settings.sqlite_table == "chunk_index"
-    assert settings.embedding == "e5-instruct"
+    assert settings.embedding == config.DEFAULT_STAGE2_EMBEDDING
 
 
 def test_validate_environment_flags_unknown_mode(monkeypatch):
@@ -73,6 +75,13 @@ def test_validate_environment_requires_key_only_for_live_llm(monkeypatch):
     assert any("CLOVA_API_KEY" in issue for issue in validate_environment("local"))
 
 
+@pytest.mark.parametrize("flag", ["STAGE1_USE_LLM", "QUERY_PLANNER_LLM_ENABLED", "CLOVA_RERANKER_ENABLED"])
+def test_validate_environment_requires_key_for_each_clova_capability(monkeypatch, flag):
+    monkeypatch.delenv("CLOVA_API_KEY", raising=False)
+    monkeypatch.setenv(flag, "1" if flag in {"STAGE1_USE_LLM", "QUERY_PLANNER_LLM_ENABLED"} else "true")
+    assert any("CLOVA_API_KEY" in issue for issue in validate_environment("local"))
+
+
 def test_validate_environment_rejects_unknown_embedding_and_table(monkeypatch):
     monkeypatch.setenv("STAGE2_EMBEDDING", "unknown")
     monkeypatch.setenv("STAGE2_SQL_TABLE", "unknown")
@@ -81,15 +90,15 @@ def test_validate_environment_rejects_unknown_embedding_and_table(monkeypatch):
     assert any("STAGE2_SQL_TABLE" in issue for issue in issues)
 
 
-# ``e5`` and ``e5-instruct`` are both valid (see config.VALID_STAGE2_EMBEDDINGS);
-# only genuinely unsupported aliases are rejected.
-@pytest.mark.parametrize("embedding", ["clova", "multilingual-e5-large"])
+# Only the supplied-index embedding alias is valid; model names and legacy
+# instruct aliases must be rejected at the configuration boundary.
+@pytest.mark.parametrize("embedding", ["clova", "multilingual-e5-large", "e5-instruct"])
 def test_validate_environment_rejects_legacy_embedding_aliases(monkeypatch, embedding):
     monkeypatch.setenv("STAGE2_EMBEDDING", embedding)
     assert any("STAGE2_EMBEDDING" in issue for issue in validate_environment("local"))
 
 
-@pytest.mark.parametrize("embedding", ["e5", "e5-instruct"])
+@pytest.mark.parametrize("embedding", ["e5"])
 def test_validate_environment_accepts_supported_embeddings(monkeypatch, embedding):
     monkeypatch.setenv("STAGE2_EMBEDDING", embedding)
     assert not any(
@@ -100,17 +109,3 @@ def test_validate_environment_accepts_supported_embeddings(monkeypatch, embeddin
 def test_validate_environment_rejects_fixture_mode(monkeypatch):
     monkeypatch.setenv("STAGE2_MODE", "fixture")
     assert any("STAGE2_MODE" in issue for issue in validate_environment("fixture"))
-
-
-def test_validate_container_settings_requires_both_endpoints():
-    incomplete = config.Stage2Settings.from_env()
-    issues = validate_container_settings(incomplete)
-    assert any("STAGE2_RDB_URL" in issue for issue in issues)
-    assert any("STAGE2_CHROMA_HOST" in issue for issue in issues)
-
-
-def test_validate_container_settings_passes_when_both_present(monkeypatch):
-    monkeypatch.setenv("STAGE2_MODE", "container")
-    monkeypatch.setenv("STAGE2_RDB_URL", "postgresql+psycopg://u:p@h:5432/db")
-    monkeypatch.setenv("STAGE2_CHROMA_HOST", "chroma")
-    assert validate_container_settings(config.Stage2Settings.from_env()) == []

@@ -122,18 +122,95 @@ def matches_manifest_filter(document: Mapping[str, Any], manifest_filter: Mappin
     return True
 
 
+_STAGE1_METRIC_LABELS = {
+    "revenue": ("매출액", "매출"),
+    "operating_profit": ("영업이익",),
+    "net_income": ("당기순이익", "순이익"),
+    "total_assets": ("자산총계", "부채비율", "자기자본비율"),
+}
+
+
+def _metric_query_terms(question: str, metric: str) -> list[str]:
+    """Map Stage1 English metric keys to DART labels used in the index."""
+
+    compact = question.replace(" ", "")
+    if metric == "total_assets":
+        if "자기자본비율" in compact:
+            return ["자기자본비율"]
+        if "부채비율" in compact:
+            return ["부채비율"]
+        return ["자산총계"]
+    return [label for label in _STAGE1_METRIC_LABELS.get(metric, ()) if label not in compact]
+
+
+def _requested_years(intent: Mapping[str, Any]) -> list[str]:
+    time = intent.get("time") if isinstance(intent.get("time"), Mapping) else {}
+    years = [str(year) for year in _as_list(time.get("years")) if str(year).strip()]
+    if years:
+        return list(dict.fromkeys(years))
+    manifest = intent.get("manifest_filter") if isinstance(intent.get("manifest_filter"), Mapping) else {}
+    return list(dict.fromkeys(str(year) for year in _as_list(manifest.get("base_years")) if str(year).strip()))
+
+
+def _document_year(document: Mapping[str, Any]) -> str:
+    metadata = _metadata(document)
+    year = _text(metadata.get("base_year"))
+    if len(year) >= 4 and year[:4].isdigit():
+        return year[:4]
+    period = _text(metadata.get("report_period"))
+    return period[:4] if len(period) >= 4 and period[:4].isdigit() else ""
+
+
 def build_search_query(question: str, intent: Mapping[str, Any]) -> str:
     """Build a deterministic search query without reinterpreting the question."""
 
     normalized = _text(intent.get("normalized_question")) or _text(question)
-    metric = _text(intent.get("metric"))
-    basis = _text(intent.get("basis"))
     parts = [normalized]
-    if metric and metric not in normalized:
-        parts.append(metric)
+    metric = _text(intent.get("metric"))
+    compact = normalized.replace(" ", "")
+    for term in _metric_query_terms(normalized, metric):
+        if term and term not in compact and term not in " ".join(parts):
+            parts.append(term)
+    basis = _text(intent.get("basis"))
     if basis and basis not in normalized:
         parts.append(basis)
+    for year in _requested_years(intent):
+        if year not in " ".join(parts):
+            parts.append(year)
     return " ".join(part for part in parts if part)
+
+
+def _diversify_by_year(
+    documents: Sequence[Mapping[str, Any]],
+    years: Sequence[str],
+    limit: int,
+) -> list[Mapping[str, Any]]:
+    """Keep top hits while guaranteeing one document per requested year when possible."""
+
+    ranked = [dict(document) for document in documents]
+    if limit <= 0:
+        return []
+    if len(years) <= 1 or len(ranked) <= limit:
+        return ranked[:limit]
+    picked: list[Mapping[str, Any]] = []
+    used: set[str] = set()
+    for year in years:
+        for document in ranked:
+            identifier = _document_id(document)
+            if identifier in used:
+                continue
+            if _document_year(document) == str(year):
+                picked.append(document)
+                used.add(identifier)
+                break
+    for document in ranked:
+        if len(picked) >= limit:
+            break
+        identifier = _document_id(document)
+        if identifier not in used:
+            picked.append(document)
+            used.add(identifier)
+    return picked[:limit]
 
 
 class Stage2Retriever(Protocol):
@@ -175,6 +252,7 @@ class RetrievalConfig:
     keyword_weight: float = 0.5
     vector_weight: float = 0.5
     reranker: Reranker | None = None
+    reranker_candidate_limit: int | None = None
 
 
 class InMemoryRetriever:
@@ -193,6 +271,24 @@ class InMemoryRetriever:
         return _text(document.get("text") or document.get("page_content") or document.get("text_content"))
 
     def filter_candidates(self, manifest_filter: Mapping[str, Any], limit: int) -> list[Mapping[str, Any]]:
+        years = [str(year) for year in _as_list(manifest_filter.get("base_years")) if str(year).strip()]
+        if len(years) > 1 and limit > 0:
+            per_year = max(limit // len(years), 1)
+            seen: set[str] = set()
+            merged: list[Mapping[str, Any]] = []
+            for year in years:
+                year_filter = {**manifest_filter, "base_years": [year]}
+                matched = [
+                    document
+                    for document in self.documents
+                    if matches_manifest_filter(document, year_filter)
+                ]
+                for document in matched[:per_year]:
+                    identifier = self._id(document)
+                    if identifier and identifier not in seen:
+                        seen.add(identifier)
+                        merged.append(document)
+            return merged[:limit]
         matched = [document for document in self.documents if matches_manifest_filter(document, manifest_filter)]
         return matched[:limit]
 
@@ -315,24 +411,79 @@ def retrieve(
         document = _normalize_document(item["raw"], hybrid_score, sorted(item["sources"]))
         document["hybrid_score"] = hybrid_score
         merged_documents.append(document)
-    reranker = config.reranker or DeterministicReranker()
-    documents = reranker.rerank(query, merged_documents, config.final_limit)
+    pool_limit = max(config.final_limit, config.branch_limit)
+    warnings: list[str] = []
+    provider_status: dict[str, Any] = {}
+    retrieval_trace = [
+        f"query={query}",
+        f"candidate_count={len(candidates)}",
+        f"keyword_count={len(keyword_results)}",
+        f"vector_count={len(vector_results)}",
+    ]
+    deterministic_reranker = DeterministicReranker()
+    if config.reranker is None:
+        ranked = deterministic_reranker.rerank(query, merged_documents, pool_limit)
+    else:
+        # Send only the deterministic top-N candidates to the provider. If the
+        # provider fails, rerank the complete merged set locally and then apply
+        # the configured final limit.
+        deterministic_candidates = deterministic_reranker.rerank(
+            query, merged_documents, len(merged_documents)
+        )
+        candidate_limit = max(
+            int(config.reranker_candidate_limit or pool_limit), 1
+        )
+        reranker_documents = deterministic_candidates[:candidate_limit]
+        try:
+            ranked = list(
+                config.reranker.rerank(query, reranker_documents, pool_limit)
+            )
+            if merged_documents and not ranked:
+                raise ValueError("reranker returned no documents")
+            provider_status = dict(
+                getattr(config.reranker, "last_provider_status", {}) or {}
+            )
+        except Exception as error:  # provider boundary: deterministic fallback
+            ranked = deterministic_reranker.rerank(
+                query, merged_documents, pool_limit
+            )
+            warnings.append(f"reranker_fallback: {type(error).__name__}")
+            if is_rate_limit_error(error):
+                provider_status = rate_limit_event(
+                    error,
+                    operation="reranker",
+                    client=config.reranker,
+                )
+            else:
+                provider_status = dict(
+                    getattr(config.reranker, "last_provider_status", {}) or {}
+                )
+                provider_status.setdefault("status", "provider_error")
+                provider_status.setdefault("operation", "reranker")
+                provider_status.setdefault("error_type", type(error).__name__)
+        suggested_queries = getattr(config.reranker, "suggested_queries", [])
+        if isinstance(suggested_queries, list) and suggested_queries:
+            retrieval_trace.append(
+                f"reranker_suggested_queries_count={len(suggested_queries)}"
+            )
+    documents = _diversify_by_year(ranked, _requested_years(intent), config.final_limit)
     cited = documents
     status = "ok" if cited else "not_found"
+    retrieval_trace.extend(
+        [
+            f"reranker={'clova' if config.reranker is not None else 'deterministic'}",
+            f"merged_count={len(merged_documents)}",
+            f"cited_count={len(cited)}",
+        ]
+    )
     return {
         "query_id": _text(question_id),
         "status": status,
         "documents": documents,
         "cited_documents": cited,
-        "retrieval_trace": [
-            f"query={query}",
-            f"candidate_count={len(candidates)}",
-            f"keyword_count={len(keyword_results)}",
-            f"vector_count={len(vector_results)}",
-            f"merged_count={len(documents)}",
-            f"cited_count={len(cited)}",
-        ],
-        "warnings": [],
+        "retrieval_trace": retrieval_trace,
+        "warnings": warnings,
+        "provider_status": provider_status,
     }
 
 

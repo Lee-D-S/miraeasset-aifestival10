@@ -69,20 +69,44 @@ def _intent(state: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def _calculation_plan_missing(state: Mapping[str, Any]) -> bool:
+    """Backward-compatible name for the canonical-plan requirement check."""
+
+    return _analysis_plan_required(state)
+
+
+def _analysis_plan_required(state: Mapping[str, Any]) -> bool:
     intent = _intent(state)
     question_type = str(intent.get("question_type", intent.get("intent", ""))).lower()
-    calculation = intent.get("calculation")
-    return question_type in {"calculation", "calc"} and not (
-        isinstance(calculation, Mapping) and str(calculation.get("operation", "")).strip()
+    plan = state.get("analysis_plan")
+    if isinstance(plan, Mapping) and plan.get("status") == "ready":
+        return False
+    if question_type in {"calculation", "calc"}:
+        return True
+    question = str(state.get("question", intent.get("normalized_question", ""))).replace(" ", "")
+    query_plan = intent.get("query_plan")
+    has_multiple_requirements = isinstance(query_plan, list) and len(query_plan) > 1
+    has_derived_comparison = (
+        has_multiple_requirements
+        and any(term in question for term in ("비중", "비율"))
+        and any(term in question for term in ("전년", "증가", "감소", "변화", "증감"))
+        and any(term in question for term in ("중", "가장", "최대", "최소"))
     )
+    return has_derived_comparison
 
 
 class DeterministicSupervisor:
     """Safe default policy used when no LLM adapter is injected."""
 
-    def __init__(self, *, max_search_retries: int = 1, max_planner_retries: int = 1):
+    def __init__(
+        self,
+        *,
+        max_search_retries: int = 1,
+        max_planner_retries: int = 1,
+        allow_regeneration: bool = True,
+    ):
         self.max_search_retries = max_search_retries
         self.max_planner_retries = max_planner_retries
+        self.allow_regeneration = allow_regeneration
 
     def decide(self, *, phase: SupervisorPhase, state: Mapping[str, Any]) -> SupervisorDecision:
         route = str(state.get("route", ""))
@@ -93,7 +117,10 @@ class DeterministicSupervisor:
                 return SupervisorDecision("request_clarification", "Stage1에 필수 질의 슬롯이 없습니다.")
             if route == "unanswerable":
                 return SupervisorDecision("unanswerable", "Stage1에서 처리 불가로 분류했습니다.")
-            if _calculation_plan_missing(state):
+            if _analysis_plan_required(state):
+                attempts = int(state.get("planner_attempts", 0) or 0)
+                if attempts >= self.max_planner_retries:
+                    return SupervisorDecision("fail_closed", "계산 계획을 제한된 횟수 안에 만들지 못했습니다.")
                 return SupervisorDecision("run_calculation_planner", "계산 계획이 없습니다.")
             return SupervisorDecision("run_stage2", "정상 검색을 시작합니다.")
 
@@ -109,7 +136,7 @@ class DeterministicSupervisor:
         if phase == "after_stage3":
             result = state.get("stage3_result")
             result = result if isinstance(result, Mapping) else {}
-            if _calculation_plan_missing(state) and int(state.get("planner_retry_num", 0) or 0) < self.max_planner_retries:
+            if _analysis_plan_required(state) and int(state.get("planner_attempts", 0) or 0) < self.max_planner_retries:
                 return SupervisorDecision("run_calculation_planner", "Stage3에 계산 계획이 필요합니다.")
             if result.get("status") in {"success", "partial_success"}:
                 return SupervisorDecision("run_stage4", "분석 결과가 생성되었습니다.")
@@ -117,8 +144,10 @@ class DeterministicSupervisor:
 
         result = state.get("stage4_result")
         result = result if isinstance(result, Mapping) else {}
-        if result.get("status") == "validation_failed" and int(state.get("regeneration_attempts", 0) or 0) < 1:
-            return SupervisorDecision("regenerate_answer", "검증 실패를 제한된 1회 재생성으로 보완합니다.")
+        if result.get("status") == "validation_failed":
+            if self.allow_regeneration and int(state.get("regeneration_attempts", 0) or 0) < 1:
+                return SupervisorDecision("regenerate_answer", "검증 실패를 제한된 1회 재생성으로 보완합니다.")
+            return SupervisorDecision("fail_closed", "재생성 모델이 없거나 재생성 한도를 초과했습니다.")
         return SupervisorDecision("finish", "Stage4 처리가 완료되었습니다.")
 
 
@@ -139,8 +168,13 @@ def build_supervisor_node(
     client: SupervisorClient | None = None,
     *,
     max_supervisor_steps: int = 12,
+    max_planner_retries: int = 1,
+    allow_regeneration: bool = True,
 ) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
-    policy = client or DeterministicSupervisor()
+    policy = client or DeterministicSupervisor(
+        max_planner_retries=max_planner_retries,
+        allow_regeneration=allow_regeneration,
+    )
 
     def supervisor_node(state: Mapping[str, Any]) -> dict[str, Any]:
         phase = str(state.get("supervisor_phase", "after_stage1"))
@@ -166,10 +200,15 @@ def build_supervisor_node(
 
 
 def build_planner_tool(planner: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None):
-    """Return a state-in/state-update-out calculation planner tool."""
+    """Return the single canonical calculation planner graph adapter."""
+
+    if planner is None:
+        from stage3.deterministic.calculation_planner import build_state_analysis_plan
+
+        planner = build_state_analysis_plan
 
     def calculation_planner(state: Mapping[str, Any]) -> dict[str, Any]:
-        update = dict(planner(state)) if planner else {}
+        update = dict(planner(state))
         return {
             **update,
             "planner_retry_num": int(state.get("planner_retry_num", 0) or 0) + 1,

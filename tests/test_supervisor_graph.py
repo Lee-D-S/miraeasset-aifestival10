@@ -87,6 +87,48 @@ class SupervisorGraphTests(unittest.TestCase):
         invalid = node({"supervisor_phase": "invalid", "route": "ok", "supervisor_steps": 0})
         self.assertEqual(invalid["supervisor_action"], "fail_closed")
 
+    def test_supervisor_without_regeneration_capability_fails_closed(self) -> None:
+        node = build_supervisor_node(allow_regeneration=False)
+        update = node({
+            "supervisor_phase": "after_stage4",
+            "stage4_result": {"status": "validation_failed"},
+            "regeneration_attempts": 0,
+            "supervisor_steps": 0,
+        })
+        self.assertEqual(update["supervisor_action"], "fail_closed")
+
+    def test_injected_regeneration_runs_once_after_stage4_failure(self) -> None:
+        calls: list[str] = []
+
+        def stage1(_state):
+            return {"route": "ok", "intent": {"intent": "lookup", "route": "ok"}}
+
+        def stage2(_state):
+            return {"stage2_result": {"status": "ok", "cited_documents": [{"id": "d1"}]}}
+
+        def stage3(_state):
+            return {"stage3_result": {"status": "success"}, "answer": "첫 답"}
+
+        def stage4(state):
+            calls.append(str(state.get("answer")))
+            if len(calls) == 1:
+                return {"stage4_result": {"status": "validation_failed"}, "answer": "실패 답"}
+            return {"stage4_result": {"status": "success"}, "answer": "재생성 답"}
+
+        def regeneration(state):
+            return {
+                "answer": "재생성 답",
+                "regeneration_attempts": int(state.get("regeneration_attempts", 0) or 0) + 1,
+            }
+
+        state = StagePipeline(
+            StageNodes(stage1, stage2, stage3, stage4, answer_regeneration=regeneration)
+        ).invoke(question_id="Q-005", question="질문")
+
+        self.assertEqual(calls, ["첫 답", "재생성 답"])
+        self.assertEqual(state["answer"], "재생성 답")
+        self.assertEqual(state["regeneration_attempts"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

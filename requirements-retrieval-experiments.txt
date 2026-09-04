@@ -1,0 +1,5 @@
+# Dependencies for HNSW replacement experiments.
+faiss-cpu>=1.8,<2
+psutil>=5.9,<7
+
+# The base requirements.txt supplies fastembed for multilingual-e5-large.

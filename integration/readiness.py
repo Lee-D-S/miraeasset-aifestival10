@@ -38,9 +38,13 @@ def validate_environment(mode: str) -> list[str]:
             "STAGE2_MODE must be one of " + ", ".join(config.VALID_STAGE2_MODES)
         )
     live_llm = os.getenv("CLOVA_LLM_ENABLED", "false").strip().lower() == "true"
-    if live_llm and not _api_key():
+    stage1_llm = os.getenv("STAGE1_USE_LLM", "0").strip().lower() in {"1", "true", "yes", "on"}
+    query_planner_llm = os.getenv("QUERY_PLANNER_LLM_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+    reranker = os.getenv("CLOVA_RERANKER_ENABLED", "false").strip().lower() == "true"
+    provider_enabled = live_llm or stage1_llm or query_planner_llm or reranker
+    if provider_enabled and not _api_key():
         issues.append("CLOVA_API_KEY is not configured")
-    if live_llm and not os.getenv("CLOVA_API_HOST", "clovastudio.stream.ntruss.com").strip():
+    if provider_enabled and not os.getenv("CLOVA_API_HOST", "clovastudio.stream.ntruss.com").strip():
         issues.append("CLOVA_API_HOST is empty")
     embedding = os.getenv("STAGE2_EMBEDDING", config.EMBEDDING).strip().lower()
     if embedding not in config.VALID_STAGE2_EMBEDDINGS:
@@ -54,17 +58,6 @@ def validate_environment(mode: str) -> list[str]:
             "STAGE2_SQL_TABLE must be one of "
             + ", ".join(config.VALID_STAGE2_SQL_TABLES)
         )
-    return issues
-
-
-def validate_container_settings(settings: "config.Stage2Settings") -> list[str]:
-    """Container mode needs both a Postgres DSN and a Chroma server host."""
-
-    issues: list[str] = []
-    if not settings.rdb_url:
-        issues.append("STAGE2_RDB_URL is required for STAGE2_MODE=container")
-    if not settings.chroma_host:
-        issues.append("STAGE2_CHROMA_HOST is required for STAGE2_MODE=container")
     return issues
 
 

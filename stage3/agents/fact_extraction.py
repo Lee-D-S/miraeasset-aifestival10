@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import re
-from typing import Iterable
+from collections.abc import Iterable, Mapping
+from typing import Any
 
+from integration.cache import canonical_json, safe_cache_get, safe_cache_put, sha256_text
 from stage3.contracts import AgentResult, Stage3Document, Stage3Fact, Stage3Intent
 from stage3.deterministic.normalization import UNIT_MULTIPLIERS, normalize_facts, normalize_number
 from stage3.metric_registry import (
@@ -48,6 +50,8 @@ def _period_from_table_context(context: dict, metadata: dict) -> str | None:
         year_value = int(float(year))
     except (TypeError, ValueError):
         return None
+    if "전전" in column_label:
+        return str(year_value - 2)
     if "전" in column_label:
         return str(year_value - 1)
     if "당" in column_label:
@@ -100,6 +104,66 @@ def _parse_numeric(value: str) -> float:
     cleaned = cleaned.lstrip("△▲-")
     number = float(cleaned)
     return -number if negative else number
+
+
+_GROUPED_NUMBER = re.compile(r"(?:△|▲|-)?\s*\d{1,3}(?:,\d{3})+(?:\.\d+)?")
+
+
+def _plausible_numeric_literal(value: str) -> bool:
+    """Reject glued table cells such as ``1,852,115579,183`` as one number."""
+
+    cleaned = value.replace(" ", "").lstrip("△▲-")
+    if not cleaned or cleaned.count(".") > 1:
+        return False
+    integer, _, fraction = cleaned.partition(".")
+    groups = integer.split(",")
+    digits = integer.replace(",", "")
+    if not digits.isdigit() or (fraction and not fraction.isdigit()):
+        return False
+    if len(digits) > 15:
+        return False
+    if "," in integer:
+        if not (1 <= len(groups[0]) <= 3):
+            return False
+        if any(len(part) != 3 for part in groups[1:]):
+            return False
+    return True
+
+
+def _numeric_literals(value: str) -> list[str]:
+    """Return plausible numbers, splitting DART cells that were concatenated."""
+
+    cleaned = value.replace(" ", "")
+    if _plausible_numeric_literal(cleaned):
+        return [cleaned]
+    grouped = [match.group(0) for match in _GROUPED_NUMBER.finditer(cleaned) if _plausible_numeric_literal(match.group(0))]
+    return grouped
+
+
+def _default_statement_unit(label: str, metric: str, unit: str, raw_literal: str, raw_value: float) -> str:
+    """Fill DART statement units when the unit row was dropped from a chunk."""
+
+    if unit:
+        return unit
+    if metric == "ratio" or "비율" in label or "율" in label or "%" in label:
+        return "%"
+    if "," in raw_literal and 1e5 <= abs(raw_value) < 1e12:
+        return "백만원"
+    return unit
+
+
+def _pick_operating_profit_literal(literals: list[str]) -> list[str]:
+    """Prefer a quarterly/annual 영업이익 amount over glued table fragments."""
+
+    plausible: list[tuple[float, str]] = []
+    for raw_literal in literals:
+        value = abs(_parse_numeric(raw_literal))
+        if 1e3 <= value <= 30_000_000:
+            plausible.append((value, raw_literal))
+    if plausible:
+        plausible.sort()
+        return [plausible[len(plausible) // 2][1]]
+    return literals[:1]
 
 
 _COMPOUND_TAIL = re.compile(rf"\s*(?P<minor>{NUMBER_PATTERN})\s*억\s*(?:원)?")
@@ -188,7 +252,15 @@ def _text_fact(
     )
 
 
-def extract_facts(documents: Iterable[Stage3Document], intent: Stage3Intent) -> list[Stage3Fact]:
+FACT_EXTRACTOR_VERSION = "fact-extractor-v1"
+
+
+def _extract_facts_uncached(
+    documents: Iterable[Stage3Document],
+    intent: Stage3Intent,
+    *,
+    structured_cache: Any | None = None,
+) -> list[Stage3Fact]:
     """Extract grounded numeric and date facts from Stage2 evidence text."""
 
     facts: list[Stage3Fact] = []
@@ -209,7 +281,11 @@ def extract_facts(documents: Iterable[Stage3Document], intent: Stage3Intent) -> 
         rf"(?P<value>{NUMBER_PATTERN})\s*(?P<unit>{UNIT_PATTERN}|단위)?"
     )
     for document in documents:
-        structured = parse_structured_evidence(document.text or "")
+        structured = parse_structured_evidence(
+            document.text or "",
+            cache=structured_cache,
+            document_id=document.id,
+        )
         text = _normalize_disclosure_spacing(structured.text)
         metadata = document.metadata
         company = metadata.get("corp_name") or (intent.companies[0] if len(intent.companies) == 1 else None)
@@ -233,61 +309,75 @@ def extract_facts(documents: Iterable[Stage3Document], intent: Stage3Intent) -> 
         numeric_index: dict[tuple[str, str, str, str | None, str], int] = {}
         for source_text, context in numeric_sources:
             for match in numeric_pattern.finditer(source_text):
-                raw_literal = match.group("value").strip()
-                raw_value = _parse_numeric(raw_literal)
-                unit = match.group("unit") or str(context.get("unit") or "")
-                compound = _compound_amount(source_text, match)
-                display_value = None
-                if compound is not None:
-                    raw_value, display_value, compound_end = compound
-                    unit = "원"
-                fact_raw_value = display_value or raw_literal
-                if not unit and "원" in match.group("label"):
-                    unit = "원"
-                if not unit and ("%" in match.group("label") or "비율" in match.group("label") or "율" in match.group("label")):
-                    unit = "%"
-                metric = fact_metric_for_label(match.group("label"), intent.metric)
-                evidence = source_text.strip() if context else _evidence(text, match.start(), match.end())
-                period = (
-                    context.get("period_label")
-                    or _period_from_table_context(context, metadata)
-                    or _period(evidence, metadata)
-                    or _period(text, metadata)
-                )
-                basis = context.get("basis") or _basis(evidence, metadata, intent)
-                scope_context = {**context, "basis": basis}
-                fact = Stage3Fact(
-                    metric=metric,
-                    label=match.group("label"),
-                    value=raw_value,
-                    raw_value=fact_raw_value,
-                    unit=unit,
-                    normalized_value=normalize_number(raw_value, unit),
-                    period=period,
-                    basis=basis,
-                    company=str(company) if company else None,
-                    document_id=document.id,
-                    source=document.source,
-                    evidence=evidence,
-                    span_start=None if context else match.start(),
-                    span_end=None if context else (compound_end if compound is not None else match.end()),
-                    confidence=0.95 if context else (0.9 if unit else 0.7),
-                    currency=_fact_currency(unit, context, metadata),
-                    table_context=dict(context),
-                    aggregation_scope=aggregation_scope_for_context(
+                label = match.group("label")
+                raw_literals = _numeric_literals(match.group("value").strip())
+                if intent.metric == "operating_profit" and "영업이익" in label and "률" not in label and len(raw_literals) > 1:
+                    raw_literals = _pick_operating_profit_literal(raw_literals)
+                elif len(raw_literals) > 1:
+                    raw_literals = raw_literals[:1]
+                for raw_literal in raw_literals:
+                    raw_value = _parse_numeric(raw_literal)
+                    unit = match.group("unit") or str(context.get("unit") or "")
+                    compound = _compound_amount(source_text, match)
+                    display_value = None
+                    if compound is not None:
+                        raw_value, display_value, compound_end = compound
+                        unit = "원"
+                    fact_raw_value = display_value or raw_literal
+                    if not unit and "원" in match.group("label"):
+                        unit = "원"
+                    if not unit and ("%" in match.group("label") or "비율" in match.group("label") or "율" in match.group("label")):
+                        unit = "%"
+                    metric = fact_metric_for_label(label, intent.metric)
+                    unit = _default_statement_unit(label, metric, unit, raw_literal, raw_value)
+                    if (
+                        intent.metric == "operating_profit"
+                        and metric == "operating_profit"
+                        and unit == "백만원"
+                        and abs(raw_value) > 30_000_000
+                    ):
+                        continue
+                    evidence = source_text.strip() if context else _evidence(text, match.start(), match.end())
+                    period = (
+                        context.get("period_label")
+                        or _period_from_table_context(context, metadata)
+                        or _period(evidence, metadata)
+                        or _period(text, metadata)
+                    )
+                    basis = context.get("basis") or _basis(evidence, metadata, intent)
+                    scope_context = {**context, "basis": basis}
+                    fact = Stage3Fact(
+                        metric=metric,
                         label=match.group("label"),
+                        value=raw_value,
+                        raw_value=fact_raw_value,
+                        unit=unit,
+                        normalized_value=normalize_number(raw_value, unit),
+                        period=period,
+                        basis=basis,
+                        company=str(company) if company else None,
+                        document_id=document.id,
+                        source=document.source,
                         evidence=evidence,
-                        table_context=scope_context,
-                    ),
-                    display_value=display_value,
-                )
-                key = (document.id, metric, match.group("label"), period, raw_literal)
-                existing_index = numeric_index.get(key)
-                if existing_index is None:
-                    numeric_index[key] = len(numeric_facts)
-                    numeric_facts.append(fact)
-                elif fact.confidence > numeric_facts[existing_index].confidence:
-                    numeric_facts[existing_index] = fact
+                        span_start=None if context else match.start(),
+                        span_end=None if context else (compound_end if compound is not None else match.end()),
+                        confidence=0.95 if context else (0.9 if unit else 0.7),
+                        currency=_fact_currency(unit, context, metadata),
+                        table_context=dict(context),
+                        aggregation_scope=aggregation_scope_for_context(
+                            label=match.group("label"),
+                            evidence=evidence,
+                            table_context=scope_context,
+                        ),
+                        display_value=display_value,
+                    )
+                    key = (document.id, metric, match.group("label"), period, raw_literal)
+                    existing_index = numeric_index.get(key)
+                    if existing_index is None:
+                        numeric_index[key] = len(numeric_facts)
+                        numeric_facts.append(fact)
+                    elif fact.confidence > numeric_facts[existing_index].confidence:
+                        numeric_facts[existing_index] = fact
         facts.extend(numeric_facts)
         field_specs = field_labels_for(intent.metric)
         field_sources = [text]
@@ -351,6 +441,53 @@ def extract_facts(documents: Iterable[Stage3Document], intent: Stage3Intent) -> 
                 confidence=0.85,
                 kind="date",
             ))
+    return facts
+
+
+def _fact_cache_profile(document: Stage3Document, intent: Stage3Intent) -> dict[str, Any]:
+    calculation = intent.calculation if isinstance(intent.calculation, Mapping) else {}
+    companies = tuple(getattr(intent, "companies", ()) or ())
+    metadata_company = str(document.metadata.get("corp_name") or "").strip()
+    return {
+        "document_id": document.id,
+        "text_sha256": sha256_text(document.text or ""),
+        "extractor_version": FACT_EXTRACTOR_VERSION,
+        "metric": str(intent.metric or ""),
+        "operation": str(calculation.get("operation") or ""),
+        "denominator_metric": str(calculation.get("denominator_metric") or ""),
+        "basis": str(intent.basis or ""),
+        # The fallback is only relevant when document metadata has no company.
+        "company_fallback": (
+            str(companies[0]) if len(companies) == 1 and not metadata_company else ""
+        ),
+    }
+
+
+def extract_facts(
+    documents: Iterable[Stage3Document],
+    intent: Stage3Intent,
+    *,
+    cache: Any | None = None,
+) -> list[Stage3Fact]:
+    """Extract facts, reusing only compatible document/profile results."""
+
+    document_list = list(documents)
+    if cache is None:
+        return _extract_facts_uncached(document_list, intent)
+
+    facts: list[Stage3Fact] = []
+    fact_cache = getattr(cache, "fact_results", None)
+    for document in document_list:
+        cache_key = "fact-results:" + canonical_json(_fact_cache_profile(document, intent))
+        cached = safe_cache_get(fact_cache, cache_key)
+        if cached is None:
+            cached = _extract_facts_uncached(
+                [document],
+                intent,
+                structured_cache=cache,
+            )
+            safe_cache_put(fact_cache, cache_key, cached)
+        facts.extend(cached)
     return facts
 
 

@@ -81,11 +81,24 @@ def requested_periods(intent: Stage3Intent) -> list[str]:
     return years
 
 
-def _period_matches(fact_period: str | None, requested: str) -> bool:
-    period = _text(fact_period)
-    if not period:
+def period_matches(fact_period: str | None, requested: str) -> bool:
+    """Match a Fact period to a Stage1 requested period.
+
+    Annual lookups often emit ``2025-12`` while a table cell only carries
+    ``2025``. Treat same-year year vs year-month as a match, but keep
+    distinct months (``2025-03`` vs ``2025-12``) distinct.
+    """
+
+    period = str(fact_period or "").strip()
+    wanted = str(requested or "").strip()
+    if not period or not wanted:
         return False
-    return period == requested or (len(requested) == 4 and period.startswith(requested))
+    if period == wanted:
+        return True
+    period_year, wanted_year = period[:4], wanted[:4]
+    if period_year != wanted_year or not period_year.isdigit():
+        return False
+    return len(period) == 4 or len(wanted) == 4
 
 
 def _requested_companies(intent: Stage3Intent) -> set[str]:
@@ -127,18 +140,27 @@ def fact_matches_intent(
     if not _metric_matches(fact, intent):
         return False
     periods = requested_periods(intent)
-    if periods and not any(_period_matches(fact.period, period) for period in periods):
+    if periods and not any(period_matches(fact.period, period) for period in periods):
         return False
     requested_basis = _text(intent.basis)
     if requested_basis and _text(fact.basis) != requested_basis:
         return False
     if require_scope and fact.kind == "numeric":
-        return fact.aggregation_scope == requested_aggregation_scope(intent)
+        requested_scope = requested_aggregation_scope(intent)
+        if fact.aggregation_scope == requested_scope:
+            return True
+        # Ratio/amount cells often omit "연결" in the row, so scope stays unknown.
+        return fact.aggregation_scope == "unknown" and requested_scope == "total"
     return True
 
 
-def matching_facts(facts: Iterable[Stage3Fact], intent: Stage3Intent) -> list[Stage3Fact]:
-    return [fact for fact in facts if fact_matches_intent(fact, intent)]
+def matching_facts(
+    facts: Iterable[Stage3Fact],
+    intent: Stage3Intent,
+    *,
+    require_scope: bool = True,
+) -> list[Stage3Fact]:
+    return [fact for fact in facts if fact_matches_intent(fact, intent, require_scope=require_scope)]
 
 
 def strict_grounding_enabled() -> bool:
@@ -151,6 +173,7 @@ __all__ = [
     "aggregation_scope_for_context",
     "fact_matches_intent",
     "matching_facts",
+    "period_matches",
     "requested_aggregation_scope",
     "requested_periods",
     "strict_grounding_enabled",

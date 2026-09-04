@@ -42,6 +42,8 @@ def _calculation_value(calculation: dict[str, Any]) -> float | None:
     try:
         if operation == "percentage_change":
             return execute_operation(operation, parsed)
+        if operation == "percentage_point_change":
+            return execute_operation("subtract", parsed)
         if operation == "cagr":
             years = abs(int(periods[1][:4]) - int(periods[0][:4])) if len(periods) >= 2 else None
             return execute_operation(operation, parsed, periods=years)

@@ -10,10 +10,9 @@ config.py               # 프로젝트 루트 기준 경로·Stage2 모드 단�
 integration/            # LangGraph 조립, Supervisor, API adapter
 shared_state.py         # 공용 AgentState와 Stage write contract
 stage1/                 # 질의 정규화·Intent·manifest filter
-stage2/                 # local / container hybrid retrieval·embedding·rerank
+stage2/                 # local SQLite / Chroma hybrid retrieval·embedding·rerank
 stage3/                 # Fact·event·계산·답변 초안
 stage4/                 # 수치·출처·의미 검증
-legacy/                 # 현재 실행 경로가 아닌 과거 구현 보관
 tests/                  # 현재 통합 계약 테스트
 ```
 
@@ -55,31 +54,19 @@ uvicorn app:app --reload
 선택은 모두 프로젝트 루트의 **`config.py`** 한 곳에서 관리한다. 환경변수의 상대경로는
 실행 CWD가 아니라 프로젝트 루트를 기준으로 해석된다.
 
-Stage2는 `STAGE2_MODE`로 두 모드 중 하나를 연다(기본값 `local`).
+Stage2는 제공된 인덱스를 사용하는 `local` 모드만 지원한다.
 
 - `local`: 제공된 로컬 SQLite(`STAGE2_INDEX_PATH`)의 `chunk_index`로
   `manifest_filter`를 SQL `WHERE`절로 필터링하고, 기존 Chroma persistent HNSW 파일을
   query-only로 읽는다. 현재 제공 인덱스는 최신 Chroma writer와 호환되지 않는 legacy
   HNSW pickle 형식이므로 애플리케이션은 Chroma migration/client를 열지 않고
   `chroma.sqlite3`를 SQLite `mode=ro`로 읽으며 HNSW 파일을 직접 검색한다. 질의 임베딩은
-  `STAGE2_EMBEDDING=e5-instruct`, 즉 `intfloat/multilingual-e5-large-instruct` 하나로
-  고정한다. 문서 임베딩은 저장 인덱스와 동일한 raw text를 사용한다. E5 adapter와
-  A/B 실행기는 다음 instruction 질의를 지원한다.
-
-  Instruct: Retrieve relevant passages from Korean corporate disclosure filings that directly answer the financial question.
-  Query: {question}
-
-  instruction은 embed_query()에만 적용하며 문서 텍스트에는 적용하지 않는다. 실제 제공
-  인덱스 A/B에서는 검색 성능이 개선됐지만 정보 한계 안전성 gate를 통과하지 못했으므로,
-  현재 production composition은 raw query를 유지한다. 운영 prefix를 끄는 환경변수는
-  제공하지 않으며, 채택 여부는 명시적 A/B 결과로만 바꾼다.
-- `container`: Dockerized Postgres(`STAGE2_RDB_URL`)와 Chroma 서버
-  (`STAGE2_CHROMA_HOST`/`STAGE2_CHROMA_PORT`)를 사용한다. 두 값 모두 필수이며, 없으면
-  기동 전에 명확한 오류로 실패한다. `LocalHybridRetriever`의 SQL·벡터 검색 코드는
-  `local`과 동일하고 연결만 바뀐다(`stage2/backends.py`).
-
-`local`·`container`는 `STAGE2_CHROMA_COLLECTION`(기본 `chunk_vectors`)으로 하나의 벡터
-컬렉션을 가리킨다. 인덱스를 만든 시점의 컬렉션 이름과 서빙 시점 값이 반드시 일치해야 한다.
+  `STAGE2_EMBEDDING=e5`, 즉 `intfloat/multilingual-e5-large` 하나로 고정한다.
+  문서와 질의는 저장 인덱스와 같은 1024차원 E5 공간을 사용하며, `e5-instruct`는
+  active 경로에서 허용하지 않는다.
+`STAGE2_CHROMA_COLLECTION`(기본 `chunk_vectors`)은 제공 인덱스를 만든 시점의 컬렉션
+이름과 일치해야 한다. `STAGE2_MODE=container`를 포함해 `local` 외의 값은 readiness에서
+허용되지 않으며, 자동으로 local 모드로 전환하지 않는다.
 
 제공된 local 인덱스는 SQLite `chunk_index` 약 1,155,170행과 Chroma `chunk_vectors`
 약 800,460개 벡터로 구성되어 있다. 벡터 커버리지와 Stage1 manifest 문서 집합이 완전히
@@ -91,9 +78,9 @@ Stage2는 `STAGE2_MODE`로 두 모드 중 하나를 연다(기본값 `local`).
 Stage1 corpus 자동 탐색이 실패하는 실행 환경에서는 `CORPUS_DIR`에 `universe.csv`와
 `manifest.jsonl`이 있는 corpus 디렉터리를 명시한다(상대경로는 루트 기준).
 
-E5 모델 cache가 없으면 Stage2 초기화가 명확히 실패한다. CLOVA API key는 답변 생성과
-semantic validation을 활성화할 때만 필요하며, 의미 검증 provider가 없으면 최종 답변을
-성공으로 가장하지 않는다.
+E5 모델 cache가 없으면 Stage2 초기화가 명확히 실패한다. CLOVA API key는 답변 생성,
+Stage1 슬롯 보완 또는 Reranker 중 하나를 활성화할 때만 필요하다. 의미 검증 provider가
+없거나 실패하면 숫자·출처·Fact grounding local gate만 통과한 답변을 제한적으로 허용한다.
 
 제공된 local 인덱스를 테스트하려면 다음처럼 설정한다. 압축본을 다시 풀거나 인덱스를
 재생성하지 않으며, 실행 중 SQLite·Chroma에 쓰지 않는다.
@@ -104,9 +91,13 @@ $env:STAGE2_INDEX_PATH = "data/team-feature2-local-db/local_db/chunk_index.db"
 $env:STAGE2_CHROMA_PATH = "data/team-feature2-local-db/local_db/chunk_index_chroma"
 $env:STAGE2_CHROMA_COLLECTION = "chunk_vectors"
 $env:STAGE2_SQL_TABLE = "chunk_index"
-$env:STAGE2_EMBEDDING = "e5-instruct"
+$env:STAGE2_EMBEDDING = "e5"
 $env:STAGE2_ALLOW_PARTIAL_INDEX = "true"
-$env:CLOVA_LLM_ENABLED = "true"  # 답변 생성·semantic validation을 CLOVA로 활성화
+$env:CLOVA_LLM_ENABLED = "true"       # 답변 생성·semantic validation
+$env:STAGE1_USE_LLM = "0"              # unresolved 슬롯 보완
+$env:QUERY_PLANNER_LLM_ENABLED = "false" # unresolved 복합 계산 plan 보완
+$env:CLOVA_RERANKER_ENABLED = "false" # production Reranker 기본 OFF
+$env:CLOVA_RERANKER_CANDIDATE_LIMIT = "100"
 python scripts/check_deployment.py
 uvicorn app:app --reload
 ```
@@ -117,16 +108,11 @@ uvicorn app:app --reload
 ```powershell
 python scripts/check_real_index.py --allow-partial-index
 pytest -m real_index
-python scripts/compare_query_instruction.py
 ```
 
 일반 `pytest`는 대용량 인덱스에 의존하지 않으며 `real_index` marker를 자동 제외한다.
-실제 통합 job은 사전 탑재된 DB와 E5 모델 cache가 있는 runner에서 수동 dispatch한다.
-compare_query_instruction.py는 같은 실제 DB·필터·top-k로 raw 질의와 instruction 질의를
-A/B 비교한다. 검색 가능 질의 20개는 Recall@20과 MRR을 계산하고, 정보 한계 질의 5개는
-근거 없는 답변·숫자 생성을 막는 fail-closed gate로 평가한다. 모든 유형 무회귀와 전체
-Recall@20 5%p 이상 개선을 동시에 만족할 때만 prefix 적용을 채택한다. 조건을 만족하지
-않으면 운영 결정은 KEEP_RAW로 남긴다.
+검색 백엔드 실험은 `docs/retrieval-experiments.md`의 별도 sidecar에서 실행하고,
+production Reranker 외부 변동은 섞지 않는다.
 
 `CORPUS_DIR`는 Stage1의 `universe.csv`·`manifest.jsonl` 경로로 유지한다. E5 모델은
 서버의 Hugging Face 캐시에 미리 준비되어 있어야 하며, 기동 시 외부 다운로드는 하지 않는다.
@@ -140,18 +126,35 @@ GET /ready
 GET /answer?question_id=Q-001&question=질문내용
 ```
 
-응답은 `question_id`, `question`, `retrieved_context`, `think_trace`, `answer`의 다섯 문자열 필드를 유지한다. `think_trace`에는 Supervisor action과 주요 시도 횟수가 포함된다. Stage1이 생성한 `intent.think_trace`도 `stage1_think_trace`로 함께 기록된다.
+응답은 `question_id`, `question`, `retrieved_context`, `think_trace`, `answer`의 다섯 문자열 필드를 유지한다. `think_trace`에는 Supervisor action과 주요 시도 횟수가 포함된다. Stage1이 생성한 `intent.think_trace`도 `stage1_think_trace`로 함께 기록된다. 답변 불가·근거 부족 시 `answer`는 기존 결론 문장 뒤에 결정론적인 이유와 필요한 경우 재질문 안내를 덧붙이며, 내부 `failure_reason_code`는 trace에만 기록한다. 공개 문장은 약 300자로 제한하고 API key·원시 provider 오류·검색 점수는 포함하지 않는다.
 
 `/health`는 FastAPI 프로세스의 liveness만 확인하므로 corpus나 DB가 아직 마운트되지 않아도 응답한다. `/ready`는 pipeline을 지연 초기화하여 Stage1 corpus, Stage2 저장소, provider 설정을 포함한 실행 준비 상태를 확인한다. `/answer`도 pipeline이 준비되지 않은 경우 안전하게 503을 반환한다.
 
 ## 검색과 안전 제어
+
+## Stage2·Stage3 process-local cache
+
+canonical `integration.composition.build_pipeline()`은 pipeline마다 독립적인
+`CacheRegistry`를 만들고 Stage2·Stage3에 주입한다. 캐시는 원본 인덱스를 대체하지
+않는 bounded TTL/LRU 메모리 최적화 계층이다.
+
+- E5 질의 임베딩은 `build_search_query()` 이후 최종 검색 질의를 key로 재사용한다.
+- 동일 `manifest_filter`의 SQL 후보 문서는 본문을 포함해 재사용하지만, keyword/vector/hybrid
+  정렬과 최종 Reranker 결과는 매 실행 계산한다.
+- 구조화 본문 parsing은 chunk ID·본문 SHA-256·parser version으로, Fact는 문서·metric·계산·basis
+  등 추출 profile로 구분해 재사용한다.
+- 기본 TTL은 600초이며 `DIS164_CACHE_*` 환경변수로 전체·개별 cache를 조정할 수 있다.
+- cache hit/miss는 사용자 답변·`think_trace`에 노출하지 않는다. cache 오류는 원래 계산으로
+  우회하며, CLOVA Chat/Reranker 응답은 cache하지 않는다.
+- worker 간 cache 공유나 Redis는 추가하지 않으며, SQLite·Chroma 인덱스는 계속 read-only다.
 
 ```text
 Stage1 manifest_filter
 → query embedding
 → keyword search + vector search
 → ID 기준 merge
-→ Reranker
+→ deterministic hybrid rank
+→ (선택) CLOVA Reranker
 → cited_documents
 ```
 
@@ -159,6 +162,10 @@ Stage1 manifest_filter
 - Stage별 partial update는 `STAGE_WRITE_FIELDS`로 검증한다.
 - Supervisor 전체 단계는 기본 12회, 검색·planner 재시도는 기본 1회다.
 - 답변 재생성은 최대 1회다.
+- `CLOVA_RERANKER_ENABLED=true`일 때만 상위 100개 후보를 CLOVA Reranker에 보내며,
+  실패하면 전체 merged 후보의 deterministic 순위로 fallback한다. `suggestedQueries`는
+  trace에만 기록한다.
+- `STAGE1_USE_LLM=1`일 때만 규칙으로 unresolved 상태인 Stage1 슬롯에 CLOVA Chat을 호출한다.
 - 잘못된 action, provider 오류, 근거 부족은 fail-closed 처리한다.
 
 ## 검증
@@ -171,7 +178,7 @@ python -m compileall -q integration shared_state.py stage1 stage2 stage3 stage4
 pytest
 ```
 
-`legacy/` 문서는 과거 backend의 설계·검증 기록이며, 현재 실행 경로의 기준은 `integration/composition.py`와 `integration/graph.py`다.
+현재 실행 경로의 기준은 integration/composition.py와 integration/graph.py다.
 
 ## 로컬 무비용 E2E
 
@@ -191,8 +198,8 @@ pipeline 검증은 deterministic Stage3·Stage4 provider를 사용한다.
 `CLOVA_RATE_LIMIT_MAX_WAIT`로 조정한다.
 실행 중 adapter의 `last_rate_limit`에서 API가 반환한 `x-ratelimit-*` 헤더를 확인할 수
 있으며, API key와 요청 본문은 기록하지 않는다.
-호출 전에는 Chat·Embedding이 공유하는 process-local QPM·TPM limiter가 예상
-입력·출력 토큰 예산과 provider 잔여량을 확인해 한도 부족 요청을 차단한다.
+호출 전에는 Chat·Reranker·Stage1 슬롯 호출이 하나의 process-local QPM·TPM limiter를
+공유해 예상 입력·출력 토큰 예산과 provider 잔여량을 확인한다.
 `CLOVA_RATE_LIMIT_QPM`, `CLOVA_RATE_LIMIT_TPM`, `CLOVA_CHAT_MIN_INTERVAL`로
 보수적인 로컬 한도를 조정할 수 있다. provider가 보낸 rate-limit header와 로컬 차단
 상태는 Stage trace의 `provider_status`에 구조화해 남긴다.
@@ -206,7 +213,8 @@ pipeline 검증은 deterministic Stage3·Stage4 provider를 사용한다.
 prompt 환경변수로 조정할 수 있다.
 
 기본 factory는 metadata-filtered 후보 최대 1,000개에서 keyword·vector branch를 각각
-최대 100개까지 합치고, hybrid 결과 최대 200개를 Stage3에 전달한다. 제공 인덱스에서
+최대 100개까지 합치고, hybrid 결과 최대 200개를 Stage3에 전달한다. Reranker를 켜면
+상위 100개를 전송하고 최종 후보도 최대 100개로 제한한다. 제공 인덱스에서
 집계표가 자회사·부문 chunk보다 낮게 검색되더라도 Stage3가 현재기 표를 회수할 수 있게
 하기 위한 설정이며, 외부 LLM prompt는 별도로 축약된다.
 

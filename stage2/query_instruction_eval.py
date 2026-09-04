@@ -1,4 +1,4 @@
-"""Pure helpers for comparing raw and instructed E5 retrieval results."""
+"""Pure helpers for evaluating retrieval results against a gold set."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from typing import Any
 
 @dataclass(frozen=True)
 class GoldQuery:
-    """Metadata-only retrieval case used by the supplied-index A/B check."""
+    """Metadata-only retrieval case used by retrieval backend experiments."""
 
     id: str
     category: str

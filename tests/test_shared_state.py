@@ -49,7 +49,7 @@ class SharedStateTests(unittest.TestCase):
         self.assertEqual(STAGE_WRITE_FIELDS["stage1"], {"intent", "route", "search_query"})
         self.assertEqual(
             STAGE_WRITE_FIELDS["stage2"],
-            {"stage2_result", "retry_num", "search_attempts", "documents", "search_query"},
+            {"stage2_result", "retry_num", "search_attempts", "documents", "search_query", "search_queries"},
         )
         self.assertEqual(
             STAGE_WRITE_FIELDS["stage3"],
@@ -58,6 +58,10 @@ class SharedStateTests(unittest.TestCase):
         self.assertEqual(
             STAGE_WRITE_FIELDS["stage4"],
             {"stage4_result", "answer", "messages", "validation_attempts"},
+        )
+        self.assertEqual(
+            STAGE_WRITE_FIELDS["planner"],
+            {"analysis_plan", "plan_status", "plan_failure_reason", "plan_trace", "planner_retry_num", "planner_attempts"},
         )
 
     def test_initial_state_has_all_defaults_and_fresh_messages(self) -> None:

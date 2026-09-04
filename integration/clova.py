@@ -50,7 +50,11 @@ class ClovaChatClient:
 
     def __init__(self, *, host: str | None = None, api_key: str | None = None, model: str | None = None, timeout: float | None = None, max_retries: int | None = None, rate_limiter: ClovaRateLimiter | None = None):
         self.host = (host or os.getenv("CLOVA_API_HOST", "clovastudio.stream.ntruss.com")).strip()
-        self.api_key = (api_key or os.getenv("CLOVA_API_KEY", "")).strip()
+        self.api_key = (
+            api_key
+            or os.getenv("CLOVA_API_KEY", "")
+            or os.getenv("CLOVASTUDIO_API_KEY", "")
+        ).strip()
         self.model = model or os.getenv("CLOVA_CHAT_MODEL", "HCX-DASH-002")
         self.timeout = timeout if timeout is not None else _env_float("CLOVA_CHAT_TIMEOUT", 60.0)
         self.max_retries = max_retries if max_retries is not None else _env_int("CLOVA_CHAT_MAX_RETRIES", 1)
@@ -159,7 +163,7 @@ class ClovaChatClient:
             operation="answer_generation",
         )
 
-    def generate_json(self, messages: list[dict[str, Any]], *, schema: Mapping[str, Any], **_: Any) -> dict[str, Any]:
+    def generate_json(self, messages: list[dict[str, Any]], *, schema: Mapping[str, Any], operation: str = "semantic_validation", **_: Any) -> dict[str, Any]:
         prompt = list(messages) + [{
             "role": "user",
             "content": "Return one JSON object only. Follow this schema exactly:\n" + json.dumps(schema, ensure_ascii=False),
@@ -170,7 +174,7 @@ class ClovaChatClient:
             self._request(
                 prompt,
                 max_tokens=_env_int("CLOVA_SEMANTIC_MAX_TOKENS", 128),
-                operation="semantic_validation",
+                operation=operation,
             ),
             flags=re.IGNORECASE | re.DOTALL,
         ).strip()

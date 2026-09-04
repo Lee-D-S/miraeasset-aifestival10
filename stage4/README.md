@@ -15,7 +15,9 @@ Stage3 result + answer
 → success 또는 validation_failed
 ```
 
-semantic validator가 없으면 검증 불가로 종료한다. 빈 답변과 출처 표기가 없는 답변도 성공으로 처리하지 않는다.
+semantic validator가 없거나 provider 호출이 실패하면 numeric·citation·Fact grounding
+local gate로 fallback한다. 이 gate를 통과하지 못하면 fail-closed하며, 빈 답변과 출처
+표기가 없는 답변도 성공으로 처리하지 않는다.
 
 semantic prompt는 Stage3 답변에 실제로 포함된 수치와 일치하는 Fact 및 citation을
 우선 전달한다. 한 공시에서 연결·부문·종속기업 Fact가 함께 추출될 수 있으므로 단순히
@@ -33,6 +35,12 @@ numeric check 오류에 기록한다. 모든 subquery에 근거가 없으면 fai
 Stage4는 provider의 generic한 불확실성만 있고 unsupported claim·missing aspect가 없을
 때에 한해, 결정론적 numeric·citation 검증 결과를 최종 grounding 근거로 사용한다.
 
+검증·근거 부족으로 답변을 차단할 때는 `integration.failure_response`가 기존의 안전한
+결론 문장을 첫 문장으로 유지하고, 사용자 조치가 가능한 이유와 필요한 경우 재질문
+안내를 결정론적으로 덧붙인다. 공개 답변은 약 300자 이내로 제한하며, 내부
+`failure_reason_code`는 `stage4_result`와 `think_trace`에만 기록한다. API key, 원시
+provider 오류, 검색 점수와 같은 내부 정보는 답변에 포함하지 않는다.
+
 검증 실패 시 Supervisor가 `regenerate_answer`를 선택할 수 있다. 별도 regeneration node가 최대 한 번 답변을 재작성하고 Stage4가 다시 검증한다. 재생성은 검증 판정을 담당하지 않는다.
 
 ```python
@@ -40,4 +48,4 @@ from stage4 import build_stage4_node
 stage4_node = build_stage4_node(validator_client=semantic_client)
 ```
 
-Stage4는 `stage4_result`, `answer`, `messages`, `validation_attempts`를 반환한다. 최종 API 변환은 `integration.api.to_submission_response()`가 담당한다.
+Stage4는 `stage4_result`, `answer`, `messages`, `validation_attempts`를 반환한다. 최종 API 변환은 `integration.api.to_submission_response()`가 담당하며, 상위 응답 필드는 기존 다섯 문자열을 유지한다.

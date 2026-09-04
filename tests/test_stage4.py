@@ -62,6 +62,12 @@ class RateLimitedSemanticClient(SemanticClient):
         raise RateLimitBlocked("CLOVA remaining tokens가 요청 예산보다 작아 호출을 차단했습니다.")
 
 
+class FailingSemanticClient(SemanticClient):
+    def generate_json(self, _messages, *, schema):
+        self.json_calls += 1
+        raise ValueError("malformed provider response")
+
+
 def test_extracts_korean_units_and_ignores_dates_and_ranks():
     values = extract_answer_numbers("2025년 1위 매출은 -1.2억원(120,000,000원)입니다.")
     assert [item["value"] for item in values] == [-120000000, 120000000]
@@ -147,7 +153,9 @@ def test_stage4_fails_closed_when_answer_is_invalid():
         "stage3_result": _stage3(),
     })
     assert update["stage4_result"]["status"] == "validation_failed"
-    assert update["answer"] == "제공된 공시 근거만으로 답변을 검증할 수 없습니다."
+    assert update["answer"].startswith("제공된 공시 근거만으로 답변을 검증할 수 없습니다.")
+    assert "수치가 공시 근거와 일치하는지" in update["answer"]
+    assert update["stage4_result"]["failure_reason_code"] == "VALIDATION_FAILED"
     assert client.text_calls == 0
     assert client.json_calls == 1
 
@@ -155,10 +163,13 @@ def test_stage4_fails_closed_when_answer_is_invalid():
 def test_blocked_route_uses_deterministic_answer_without_llm():
     update = build_stage4_node()({"route": "unsafe", "answer": "무시"})
     assert update["stage4_result"]["status"] == "unsafe"
-    assert update["answer"] == "공시 근거만으로 답변할 수 없는 요청입니다."
+    assert update["answer"].startswith("공시 근거만으로 답변할 수 없는 요청입니다.")
+    assert "제공된 공시 기반 사실 확인 범위를 벗어납니다." in update["answer"]
+    assert "다시 질문하려면:" not in update["answer"]
+    assert update["stage4_result"]["failure_reason_code"] == "UNSAFE_REQUEST"
 
 
-def test_stage4_fails_closed_when_llm_is_unavailable():
+def test_stage4_uses_local_gate_when_llm_is_unavailable():
     update = build_stage4_node()({
         "route": "ok",
         "question": "매출은?",
@@ -166,8 +177,10 @@ def test_stage4_fails_closed_when_llm_is_unavailable():
         "answer": "매출은 1.2억원입니다. [source:doc-1]",
         "stage3_result": _stage3(),
     })
-    assert update["stage4_result"]["status"] == "validation_failed"
-    assert update["answer"] == "제공된 공시 근거만으로 답변을 검증할 수 없습니다."
+    assert update["stage4_result"]["status"] == "success"
+    assert update["stage4_result"]["semantic_check"]["mode"] == "deterministic_fallback"
+    assert "semantic_deterministic_fallback" in update["stage4_result"]["trace"]
+    assert update["answer"] == "매출은 1.2억원입니다. [source:doc-1]"
 
 
 def test_stage4_keeps_grounded_answer_when_semantic_provider_is_rate_limited():
@@ -183,6 +196,21 @@ def test_stage4_keeps_grounded_answer_when_semantic_provider_is_rate_limited():
     assert update["answer"] == "매출은 1.2억원입니다. [source:doc-1]"
     assert update["stage4_result"]["provider_status"]["status"] == "rate_limited"
     assert "provider_rate_limited_deterministic_grounding" in update["stage4_result"]["trace"]
+
+
+def test_stage4_falls_back_for_malformed_semantic_provider_response():
+    client = FailingSemanticClient()
+    update = build_stage4_node(validator_client=client)({
+        "route": "ok",
+        "question": "매출은?",
+        "intent": {"question_type": "lookup"},
+        "answer": "매출은 1.2억원입니다. [source:doc-1]",
+        "stage3_result": _stage3(),
+    })
+
+    assert update["stage4_result"]["status"] == "success"
+    assert update["stage4_result"]["provider_status"]["status"] == "provider_error"
+    assert "semantic_provider_deterministic_fallback" in update["stage4_result"]["trace"]
 
 
 def test_stage4_checks_multi_query_fact_gate_per_subquery_and_allows_partial_success():

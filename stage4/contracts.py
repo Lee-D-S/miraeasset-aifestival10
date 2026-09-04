@@ -15,6 +15,7 @@ class Stage4Result:
     warnings: list[str] = field(default_factory=list)
     trace: list[str] = field(default_factory=list)
     provider_status: dict[str, Any] = field(default_factory=dict)
+    failure_reason_code: str | None = None
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "Stage4Result":
@@ -28,6 +29,11 @@ class Stage4Result:
             warnings=[str(item) for item in value.get("warnings", [])],
             trace=[str(item) for item in value.get("trace", [])],
             provider_status=dict(value.get("provider_status", {})),
+            failure_reason_code=(
+                str(value["failure_reason_code"])
+                if value.get("failure_reason_code") is not None
+                else None
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -41,6 +47,7 @@ class Stage4Result:
             "warnings": list(self.warnings),
             "trace": list(self.trace),
             "provider_status": dict(self.provider_status),
+            "failure_reason_code": self.failure_reason_code,
         }
 
 

@@ -7,10 +7,8 @@ table and, optionally, a Chroma collection.  Used by
 ``scripts/build_chunk_index.py`` and the Colab builder; never imported by the
 serving path.
 
-Engine-agnostic on purpose -- pass a SQLite :class:`~sqlalchemy.Engine` or a
-Postgres one (:func:`stage2.backends.postgres_engine`) and the same DDL +
-DELETE/INSERT upsert runs against either, so "local SQLite file" and
-"containerized Postgres RDB" both stay open as index targets.
+The writer accepts a SQLAlchemy SQLite :class:`~sqlalchemy.Engine`. Serving
+uses the resulting index read-only.
 """
 
 from __future__ import annotations
@@ -23,8 +21,7 @@ from sqlalchemy import Engine, text
 
 from stage2.contracts import PROMOTED_COLUMNS
 
-# The metadata index table. Same name on a local SQLite file and a Dockerized
-# Postgres RDB.
+# The metadata index table in the local SQLite index.
 CHUNK_TABLE = "chunk_index"
 
 EMBEDDING_DIM = 1024
@@ -53,9 +50,8 @@ _TABLE_DDL = f"""CREATE TABLE IF NOT EXISTS {CHUNK_TABLE} (
 
 _DELETE_SQL = f"DELETE FROM {CHUNK_TABLE} WHERE id = :id"
 
-# Deliberately DELETE+INSERT rather than "INSERT OR REPLACE" (SQLite-only) or
-# "ON CONFLICT DO UPDATE" (Postgres-only): plain ANSI SQL that upserts
-# identically against a local SQLite file or a Dockerized Postgres RDB.
+# Deliberately use DELETE+INSERT so the local SQLite writer has deterministic
+# replacement semantics without relying on database-specific upsert syntax.
 _INSERT_SQL = f"""INSERT INTO {CHUNK_TABLE} (
     id, doc_id, chunk_id, text, source_path, corp_name, sector, doc_group,
     doc_subtype, base_year, base_month, rcept_dt, rcept_no, is_correction,

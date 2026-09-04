@@ -1,14 +1,12 @@
 # Stage2 로컬 DB — 받아서 테스트하기
 
-Stage2 검색 백엔드는 환경변수 `STAGE2_MODE` 하나로 고른다. 경로와 접속 문자열은
-모두 루트의 `config.py`가 관리하고, 상대경로는 실행 위치가 아니라 저장소 루트를
-기준으로 풀린다.
+Stage2 검색 백엔드는 제공된 인덱스를 사용하는 `local` 모드만 지원한다. 경로와
+접속 설정은 모두 루트의 `config.py`가 관리하고, 상대경로는 실행 위치가 아니라
+저장소 루트를 기준으로 풀린다.
 
 | 모드 | 저장소 | 필요한 것 | 쓰는 곳 |
 |---|---|---|---|
-| `fixture` (기본) | CLOVA 사전계산 임베딩 JSON | CLOVA 키 (질의 임베딩용) | 스모크·CI. DB 서비스 불필요 |
 | `local` | SQLite `chunk_index` + 로컬 Chroma 디렉터리 | 빌드된 인덱스 + 질의 임베더 | 실데이터를 단일 노드에서 돌려볼 때 |
-| `container` | Postgres + Chroma **서버** | `STAGE2_RDB_URL` + `STAGE2_CHROMA_HOST` | 배포 |
 
 아래 1~2절은 팀에서 공유한 `local` 인덱스를 받아서 전체 파이프라인(Stage1~4)에
 물려 돌리는 방법이다.
@@ -174,51 +172,23 @@ PY
   `readiness_issues()`에 "Chroma is missing SQLite chunk IDs" 경고가 항상 뜬다.
   `build_pipeline()` 은 이 경고를 치명으로 취급하므로 `STAGE2_ALLOW_PARTIAL_INDEX=true`
   로 강등해야 기동된다(2-1 참고). 2-3 처럼 retriever 를 직접 쓰면 해당되지 않는다.
-- **임베딩 모델 불일치** — 이 벡터는 `intfloat/multilingual-e5-large-instruct`로
-  만들어졌고, team-feature2의 `e5` 옵션은 `multilingual-e5-large`다. 엄밀히는 다른
-  공간이지만 base 표현을 많이 공유해서, 실제로 돌려 보면 순위 품질이 조금 떨어지는
-  정도이지 무의미하지는 않다(예: "삼성전자 매출액" → 매출 청크 반환, cosine ≈ 0.81).
-  키워드·메타데이터 필터(`corp_name`, `section_name`, `rcept_dt` 등)는 정확하다.
-- 정밀한 검색 품질까지 봐야 한다면 `multilingual-e5-large-instruct` 질의 임베더를
-  붙이거나 80만 청크를 team-feature2의 `e5`로 다시 임베딩해야 한다. 지금 인덱스는
-  "파이프라인이 실데이터 규모로 끝까지 도는지" 확인하는 용도다.
+- **임베딩 모델 계약** — 공급 Chroma 벡터와 team-feature2의 운영 경로는
+  모두 `intfloat/multilingual-e5-large` 1024차원 공간을 사용한다.
+  검색 후보도 동일한 모델과 query adapter를 사용해야 하며, 별도 instruct 모델로
+  query를 임베딩하면 벡터 공간 계약이 깨진다. 키워드·메타데이터 필터
+  (`corp_name`, `section_name`, `rcept_dt` 등)는 별도 SQLite 경로에서 정확하게 적용된다.
 
 ---
 
-## 3. `fixture` 모드 (기본값, 참고)
+## 3. 지원하지 않는 모드
 
-```bash
-# .env
-STAGE2_MODE=fixture
-STAGE2_FIXTURE_PATH=legacy/test_data/disclosure_clova_local.json
-CLOVA_API_KEY=...
-```
-
-DB가 필요 없다. 문서 벡터는 JSON에 미리 계산돼 있고 질의만 CLOVA로 임베딩한다.
-`pytest`와 CI가 이 모드를 쓴다.
+과거 `fixture`와 `container` 경로는 현재 active 실행 경로에서 제거했다. 해당 값을
+`STAGE2_MODE`에 지정하면 자동 전환 없이 readiness 오류가 발생한다. 기존 SQLite·Chroma
+인덱스는 서버에서 read-only로 사용하며, PostgreSQL이나 원격 Chroma로 이관하지 않는다.
 
 ---
 
-## 4. `container` 모드 (배포, 참고)
-
-```bash
-# .env
-STAGE2_MODE=container
-STAGE2_RDB_URL=postgresql+psycopg://user:pw@postgres:5432/dis
-STAGE2_CHROMA_HOST=chroma
-STAGE2_CHROMA_PORT=8000
-STAGE2_CHROMA_COLLECTION=chunk_vectors
-STAGE2_EMBEDDING=e5
-```
-
-`STAGE2_RDB_URL`이나 `STAGE2_CHROMA_HOST`가 없으면 기동 시 바로 실패한다.
-검색 코드는 `local`과 같고 접속만 다르다. `local` 인덱스를 서버로 옮길 때는
-`scripts/migrate_legacy_sqlite.py` 패턴으로 같은 `chunk_index` 행과 같은 정렬의
-벡터를 적재한다.
-
----
-
-## 5. 다시 만들거나 새로 공유할 때
+## 4. 다시 만들거나 새로 공유할 때
 
 - **인덱스를 직접 빌드**: `scripts/build_chunk_index.py`
   (`--corpus-dir`, `--embedding e5|clova`, `--workers`), 또는 Colab

@@ -21,7 +21,7 @@ from integration.readiness import PARTIAL_INDEX_ISSUES, raise_if_invalid
 from integration.service import StagePipeline
 from integration.testing import DeterministicAnswerWriter, DeterministicSemanticValidator
 from stage1 import build_stage1_node
-from stage2 import E5InstructEmbeddings, LocalHybridRetriever, RetrievalConfig, build_stage2_node
+from stage2 import E5Embeddings, LocalHybridRetriever, RetrievalConfig, build_stage2_node
 from stage2.backends import local_chroma, readonly_sqlite_engine
 from stage3 import build_stage3_node
 from stage4 import build_stage4_node
@@ -106,7 +106,7 @@ def _build_retriever(db_path: Path, chroma_path: Path) -> LocalHybridRetriever:
         raise RuntimeError(f"SQLite index is missing: {db_path}")
     if not chroma_path.is_dir():
         raise RuntimeError(f"Chroma directory is missing: {chroma_path}")
-    embedder = E5InstructEmbeddings(device="cpu", local_files_only=True)
+    embedder = E5Embeddings()
     return LocalHybridRetriever(
         engine=readonly_sqlite_engine(db_path),
         vectorstore=local_chroma(
@@ -226,7 +226,7 @@ def run_checks(
     report: dict[str, Any] = {
         "sqlite_path": str(db_path),
         "chroma_path": str(chroma_path),
-        "embedding_model": E5InstructEmbeddings.MODEL_NAME,
+        "embedding_model": E5Embeddings.MODEL_NAME,
         "sqlite_row_count": sqlite_row_count,
         "chroma_collection_count": collection_count,
         "hnsw_index_count": hnsw_count,

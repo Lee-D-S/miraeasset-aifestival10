@@ -1,9 +1,8 @@
-"""Factory helpers for Stage2's SQL RDB and vector DB connections.
+"""Factory helpers for Stage2's local SQLite and Chroma connections.
 
-Local SQLite + a local Chroma persist directory is the default today. These
-factories keep the transport separate from ``LocalHybridRetriever``'s
-read-only SQL-building and vector-search code. The supplied local index is
-opened without creating or modifying database files.
+These factories keep the local transport separate from
+``LocalHybridRetriever``'s read-only SQL-building and vector-search code. The
+supplied index is opened without creating or modifying database files.
 """
 
 from __future__ import annotations
@@ -249,18 +248,6 @@ def readonly_sqlite_engine(path: str | Path) -> Engine:
     return create_engine("sqlite://", creator=connect)
 
 
-def postgres_engine(dsn: str) -> Engine:
-    """RDB connection for a (typically Dockerized) Postgres instance.
-
-    ``LocalHybridRetriever`` only emits portable ANSI SQL for read-only
-    WHERE clauses, so it runs unchanged against this
-    engine -- only the connection changes. Requires ``psycopg[binary]``
-    (already a project dependency) to be installed.
-    """
-
-    return create_engine(dsn)
-
-
 def local_chroma(
     persist_directory: str | Path,
     *,
@@ -299,39 +286,9 @@ def local_chroma(
     )
 
 
-def chroma_server(
-    host: str,
-    port: int,
-    *,
-    embedding_function: Any,
-    collection_name: str = "chunk_vectors",
-    **client_kwargs: Any,
-) -> Chroma:
-    """Vector DB connection for a networked/Dockerized Chroma server.
-
-    Same ``LocalHybridRetriever.vector_search`` call
-    (``similarity_search_with_relevance_scores`` with a ``chunk_id`` filter)
-    works against this ``Chroma`` instance unchanged -- only the transport
-    (embedded persist directory vs. HTTP client) differs.
-    """
-
-    import chromadb
-
-    client = chromadb.HttpClient(host=host, port=port, **client_kwargs)
-    return Chroma(
-        client=client,
-        embedding_function=embedding_function,
-        collection_name=collection_name,
-        collection_metadata=_COLLECTION_METADATA,
-        create_collection_if_not_exists=False,
-    )
-
-
 __all__ = [
-    "chroma_server",
     "local_chroma",
     "local_sqlite_engine",
-    "postgres_engine",
     "ReadOnlyHnswVectorStore",
     "readonly_sqlite_engine",
 ]

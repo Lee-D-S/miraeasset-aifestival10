@@ -6,12 +6,15 @@ import re
 from typing import Any, Iterable
 import xml.etree.ElementTree as ET
 
+from integration.cache import canonical_json, safe_cache_get, safe_cache_put, sha256_text
+
 
 _CELL_TAGS = {"td", "th", "tu"}
 _UNIT_RE = re.compile(r"단위\s*[:：]\s*([^()\n]+)")
 _PERIOD_RE = re.compile(r"20\d{2}\s*년(?:\s*\d{1,2}\s*월(?:\s*\d{1,2}\s*일?)?|\s*(?:[1-4]\s*분기|상반기|하반기|연간))?")
 _NUMBER_RE = re.compile(r"(?:△|▲|\-)?\s*\d[\d,]*(?:\.\d+)?")
 _CURRENCY_UNITS = ("조원", "십억원", "억원", "백만원", "천만원", "만원", "천원", "원")
+STRUCTURED_PARSER_VERSION = "structured-parser-v1"
 
 
 @dataclass(frozen=True)
@@ -299,7 +302,7 @@ def _unit_for_column(unit_label: str | None, column_label: str, row_label: str =
     if not unit_label:
         if "원" in row_label or "원" in column_label:
             return "원"
-        if "%" in row_label or "비중" in row_label:
+        if "%" in row_label or "%" in value or "비중" in row_label or "비율" in row_label:
             return "%"
         return ""
     if "%" in column_label or "비중" in column_label or "율" in column_label:
@@ -329,15 +332,41 @@ def _looks_like_html(value: str) -> bool:
     return bool(re.search(r"<\s*html(?:\s|>)", value, re.IGNORECASE))
 
 
-def parse_structured_evidence(value: str) -> StructuredEvidence:
+def parse_structured_evidence(
+    value: str,
+    *,
+    cache: Any | None = None,
+    document_id: str = "",
+) -> StructuredEvidence:
     """Parse DART XML or HTML table evidence without third-party packages."""
 
     raw = str(value or "")
+    cache_key = "structured-document:" + canonical_json(
+        {
+            "document_id": str(document_id),
+            "text_sha256": sha256_text(raw),
+            "parser_version": STRUCTURED_PARSER_VERSION,
+        }
+    )
+    cached = safe_cache_get(
+        getattr(cache, "structured_documents", None),
+        cache_key,
+    )
+    if cached is not None:
+        return cached
+
     if not raw.lstrip().startswith("<"):
         markdown_rows = _markdown_rows(raw)
         if markdown_rows:
-            return StructuredEvidence(raw, "markdown", _make_tables((markdown_rows,), "markdown"))
-        return StructuredEvidence(raw, "text")
+            result = StructuredEvidence(raw, "markdown", _make_tables((markdown_rows,), "markdown"))
+        else:
+            result = StructuredEvidence(raw, "text")
+        safe_cache_put(
+            getattr(cache, "structured_documents", None),
+            cache_key,
+            result,
+        )
+        return result
 
     if _looks_like_html(raw):
         parser = _HTMLTableParser()
@@ -345,18 +374,37 @@ def parse_structured_evidence(value: str) -> StructuredEvidence:
             parser.feed(raw)
             parser.close()
         except Exception as error:  # noqa: BLE001 - malformed upstream markup
-            return StructuredEvidence(" ".join(parser.visible_parts), "html", warnings=[f"html_parse_error: {error}"])
-        tables = _make_tables(parser.tables, "html")
-        return StructuredEvidence(" ".join(parser.visible_parts), "html", tables)
+            result = StructuredEvidence(" ".join(parser.visible_parts), "html", warnings=[f"html_parse_error: {error}"])
+        else:
+            tables = _make_tables(parser.tables, "html")
+            result = StructuredEvidence(" ".join(parser.visible_parts), "html", tables)
+        safe_cache_put(
+            getattr(cache, "structured_documents", None),
+            cache_key,
+            result,
+        )
+        return result
 
     try:
         root = ET.fromstring(raw)
     except ET.ParseError as error:
-        return StructuredEvidence(re.sub(r"<[^>]+>", " ", raw), "xml", warnings=[f"xml_parse_error: {error}"])
-    raw_tables = [_xml_rows(table) for table in root.iter() if _local_name(table.tag) == "table"]
-    tables = _make_tables(raw_tables, "xml")
-    visible_text = _clean_text(" ".join(root.itertext()))
-    return StructuredEvidence(visible_text, "xml", tables)
+        result = StructuredEvidence(re.sub(r"<[^>]+>", " ", raw), "xml", warnings=[f"xml_parse_error: {error}"])
+    else:
+        raw_tables = [_xml_rows(table) for table in root.iter() if _local_name(table.tag) == "table"]
+        tables = _make_tables(raw_tables, "xml")
+        visible_text = _clean_text(" ".join(root.itertext()))
+        result = StructuredEvidence(visible_text, "xml", tables)
+    safe_cache_put(
+        getattr(cache, "structured_documents", None),
+        cache_key,
+        result,
+    )
+    return result
 
 
-__all__ = ["StructuredEvidence", "StructuredTable", "parse_structured_evidence"]
+__all__ = [
+    "STRUCTURED_PARSER_VERSION",
+    "StructuredEvidence",
+    "StructuredTable",
+    "parse_structured_evidence",
+]

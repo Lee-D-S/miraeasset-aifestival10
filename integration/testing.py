@@ -14,7 +14,7 @@ from stage4 import build_stage4_node
 
 
 class DeterministicSemanticValidator:
-    """Minimal semantic client used only by local tests."""
+    """Minimal always-pass semantic client used only by local tests."""
 
     def generate_json(self, _messages: Sequence[Mapping[str, Any]], *, schema: Mapping[str, Any]) -> dict[str, Any]:
         del schema
