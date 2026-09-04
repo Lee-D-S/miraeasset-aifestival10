@@ -6,14 +6,13 @@ Stage2는 Stage1 Intent를 받아 공시 근거 문서를 검색하고 Stage3에
 
 ## 백엔드
 
-실행 factory는 `STAGE2_MODE`로 백엔드를 선택한다.
+실행 factory는 제공된 인덱스를 사용하는 local 백엔드만 조립한다.
 
 ```text
 local       read-only SQLite chunk_index + supplied Chroma persistent HNSW files
-container   Postgres + Chroma 서버
 ```
 
-기본 모드는 `local`이다. local 모드의 기본 인덱스는 다음과 같다.
+`STAGE2_MODE`의 허용값은 `local` 하나다. local 모드의 기본 인덱스는 다음과 같다.
 
 ```text
 data/team-feature2-local-db/local_db/chunk_index.db

@@ -228,8 +228,8 @@ def test_vector_search_only_ranks_within_given_candidates(tmp_path):
 
 def test_accepts_an_injected_engine_and_vectorstore(tmp_path):
     """Proves the SQL/vector-search code is agnostic to where engine/vectorstore
-    point -- the seam a later Dockerized Postgres/Chroma server swap would use
-    (see stage2/backends.py's postgres_engine/chroma_server)."""
+    point -- the seam shared by the local SQLite engine and Chroma vector store
+    implementations (see stage2/backends.py's local factories)."""
     repository = _repository(tmp_path)
     candidates = repository.filter_candidates({"corp_names": ["삼성전자"]}, limit=10)
     assert [row["id"] for row in candidates] == ["chunk-a"]

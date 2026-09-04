@@ -11,10 +11,10 @@
 **완료:**
 - `origin/lds`(친구, 35커밋) ↔ `refactor/centralized-db-config`(우리) **선별 병합** → `main` 에 반영 (PR #4). 상세: `merge-plan-lds.md`.
   - 임베딩 = `e5` (fastembed / non-instruct) 단일 운영값. `e5-instruct`는 active 경로에서 제거하고 디스패치는 `integration/composition._embedding_function`이 담당.
-  - write 경로는 `stage2/ingestion/writer.py` 로 분리 (엔진 무관 — SQLite/Postgres). 서빙 retriever 는 read-only 유지.
-  - `chromadb==1.5.9` 고정, `fastembed`/`hnswlib` 추가. postgres 경로(psycopg/pgvector) 유지.
+  - write 경로는 `stage2/ingestion/writer.py` 로 분리해 로컬 SQLite 인덱스를 만든다. 서빙 retriever는 read-only로 유지한다.
+  - `chromadb==1.5.9` 고정, `fastembed`/`hnswlib` 추가. active Stage2는 로컬 SQLite·Chroma만 지원한다.
 - `chunk_index.db` 스키마 확인 — 서빙 코드 기대치와 일치 (`chunk_index` 테이블, 필수 6컬럼 + 스칼라 메타 + `raw_json_content`).
-- **컨테이너화 완료:** `Dockerfile`(멀티스테이지, e5 ONNX 내장, non-root), `.dockerignore`, `docker-compose.yml`(local), `docker-compose.scale.yml`(app+chroma+postgres 오버레이).
+- **컨테이너화 완료:** `Dockerfile`(멀티스테이지, e5 ONNX 내장, non-root), `.dockerignore`, `docker-compose.yml`(local 단일 구성).
 - **CI:** 대회 측 제약(GitHub Actions 사용 금지)에 따라 `.github/workflows/` 워크플로우는 제거함. 로컬 검증 명령은 `pytest.ini` 기준으로 수행.
 - **NCP 배포 가이드:** `docs/ncp-deploy.md` (단계별), `NCP_DEPLOYMENT.md`(환경 레퍼런스, e5 로 갱신).
 - 브랜치 운영: `main` 은 PR 로만 갱신하기로 합의 (충돌 재발 방지). 워크플로 파일은 사용자가 전담.
@@ -106,7 +106,7 @@ GET /answer?question_id={id}&question={평가 질의}
 | 변수 | 값 | 주의 |
 |---|---|---|
 | `STAGE2_EMBEDDING` | **`e5`** | `config.py`에서 `e5`만 허용한다. 인덱스와 질의가 다른 공간을 사용하지 않도록 `e5-instruct`는 거부한다. |
-| `STAGE2_MODE` | fixture 아님 (실서빙) | `e5` + `fixture` 조합은 readiness에서 거부됨 (`integration/readiness.py`) |
+| `STAGE2_MODE` | **`local`** | active 경로는 local SQLite·Chroma만 지원하며 다른 값은 readiness에서 거부 |
 | `CLOVA_API_HOST` | `clovastudio.stream.ntruss.com` | |
 | `CLOVA_CHAT_MODEL` | 예 `HCX-DASH-002` | 대회 허용 HyperCLOVA X 모델로 확정 |
 | `CLOVA_API_KEY` 등 인증 | (NCP CLOVA Studio 키) | git·이미지에 넣지 않음. NCP secret 또는 `.env` |
@@ -120,8 +120,7 @@ GET /answer?question_id={id}&question={평가 질의}
 ### 5.1 컨테이너 전략 [잠정]
 
 - **SQLite(`chunk_index.db`)는 컨테이너 아님.** 앱 컨테이너에 볼륨 마운트(쓰기 안 하면 `:ro`).
-- **Chroma는 임베디드 유지**(앱 컨테이너 안 `PersistentClient`). 95 GB는 이미지에 굽지 않고 마운트 볼륨.
-  - 서버 컨테이너(`chromadb/chroma`) 분리는 (a) 앱 replica 다중화 (b) 잦은 재배포로 로드시간 부담일 때만. 그때 이미지 태그 1.5.9 호환 고정.
+- **Chroma는 임베디드 유지**(앱 컨테이너 안 local read-only adapter). 95 GB는 이미지에 굽지 않고 마운트 볼륨.
 - **Dockerfile 없음 → 새로 작성 필요** (제출 필수 항목). `docker-compose.yml`도.
 
 ### 5.2 컴퓨트 [미정 — 스펙 확정]
@@ -150,9 +149,8 @@ NCP Server (RAM 32GB+) + Block Storage 150GB (/data)
    │   ├─ volume: /data/chunk_index_chroma        # ~95GB
    │   ├─ volume: /data/chunk_index.db:ro         # SQLite
    │   ├─ volume: /data/models (fastembed cache)  # e5 오프라인
-   │   ├─ env: STAGE2_EMBEDDING=e5, STAGE2_MODE=..., CLOVA_*
+   │   ├─ env: STAGE2_EMBEDDING=e5, STAGE2_MODE=local, CLOVA_*
    │   └─ requirements.txt: chromadb==1.5.9 핀
-   └─ (선택) chroma  — 5.1 조건 충족 시
 ```
 
 ---

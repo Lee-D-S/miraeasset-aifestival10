@@ -291,20 +291,7 @@ python -c "from fastembed import TextEmbedding; TextEmbedding('intfloat/multilin
 
 ---
 
-## 10. (참고) 확장 모드 — app + Chroma server + Postgres
-
-기술제안서의 "확장성" 그림용 구성입니다. **대회 라이브 엔드포인트는 위 9단계(local)로 충분합니다.**
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.scale.yml --profile scale up -d
-```
-
-`docker-compose.scale.yml` 상단 주석 참고 — Postgres로 `chunk_index` 메타를 적재하는
-ETL과 Chroma 서버 이미지의 인덱스 포맷 검증이 선행돼야 합니다.
-
----
-
-## 11. 최종 체크리스트
+## 10. 최종 체크리스트
 
 - [ ] NCP 서버 생성, 공인 IP, ACG 인바운드 `TCP 8000`
 - [ ] Block Storage 150GB `/data` 마운트, `/etc/fstab` 등록

@@ -16,7 +16,15 @@ def test_stage1_and_reranker_flags_are_independent(monkeypatch):
         def __init__(self, **kwargs):
             captured["reranker_limiter"] = kwargs["rate_limiter"]
 
-    settings = SimpleNamespace(mode="local", embedding="e5")
+    settings = SimpleNamespace(
+        mode="local",
+        embedding="e5",
+        sqlite_path=None,
+        chroma_path=None,
+        sqlite_table="chunk_index",
+        chroma_collection="chunk_vectors",
+        allow_partial_index=False,
+    )
     monkeypatch.setattr(composition.config.Stage2Settings, "from_env", staticmethod(lambda: settings))
     monkeypatch.setattr(composition, "validate_environment", lambda _mode: [])
     monkeypatch.setattr(composition, "_build_retriever", lambda *_args, **_kwargs: object())
@@ -55,7 +63,15 @@ def test_stage1_and_reranker_flags_are_independent(monkeypatch):
 
 
 def test_clova_capabilities_are_not_constructed_when_flags_are_off(monkeypatch):
-    settings = SimpleNamespace(mode="local", embedding="e5")
+    settings = SimpleNamespace(
+        mode="local",
+        embedding="e5",
+        sqlite_path=None,
+        chroma_path=None,
+        sqlite_table="chunk_index",
+        chroma_collection="chunk_vectors",
+        allow_partial_index=False,
+    )
     monkeypatch.setattr(composition.config.Stage2Settings, "from_env", staticmethod(lambda: settings))
     monkeypatch.setattr(composition, "validate_environment", lambda _mode: [])
     monkeypatch.setattr(composition, "_build_retriever", lambda *_args, **_kwargs: object())

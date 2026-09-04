@@ -10,7 +10,7 @@ config.py               # 프로젝트 루트 기준 경로·Stage2 모드 단�
 integration/            # LangGraph 조립, Supervisor, API adapter
 shared_state.py         # 공용 AgentState와 Stage write contract
 stage1/                 # 질의 정규화·Intent·manifest filter
-stage2/                 # local / container hybrid retrieval·embedding·rerank
+stage2/                 # local SQLite / Chroma hybrid retrieval·embedding·rerank
 stage3/                 # Fact·event·계산·답변 초안
 stage4/                 # 수치·출처·의미 검증
 legacy/                 # 현재 실행 경로가 아닌 과거 구현 보관
@@ -55,7 +55,7 @@ uvicorn app:app --reload
 선택은 모두 프로젝트 루트의 **`config.py`** 한 곳에서 관리한다. 환경변수의 상대경로는
 실행 CWD가 아니라 프로젝트 루트를 기준으로 해석된다.
 
-Stage2는 `STAGE2_MODE`로 두 모드 중 하나를 연다(기본값 `local`).
+Stage2는 제공된 인덱스를 사용하는 `local` 모드만 지원한다.
 
 - `local`: 제공된 로컬 SQLite(`STAGE2_INDEX_PATH`)의 `chunk_index`로
   `manifest_filter`를 SQL `WHERE`절로 필터링하고, 기존 Chroma persistent HNSW 파일을
@@ -65,13 +65,9 @@ Stage2는 `STAGE2_MODE`로 두 모드 중 하나를 연다(기본값 `local`).
   `STAGE2_EMBEDDING=e5`, 즉 `intfloat/multilingual-e5-large` 하나로 고정한다.
   문서와 질의는 저장 인덱스와 같은 1024차원 E5 공간을 사용하며, `e5-instruct`는
   active 경로에서 허용하지 않는다.
-- `container`: Dockerized Postgres(`STAGE2_RDB_URL`)와 Chroma 서버
-  (`STAGE2_CHROMA_HOST`/`STAGE2_CHROMA_PORT`)를 사용한다. 두 값 모두 필수이며, 없으면
-  기동 전에 명확한 오류로 실패한다. `LocalHybridRetriever`의 SQL·벡터 검색 코드는
-  `local`과 동일하고 연결만 바뀐다(`stage2/backends.py`).
-
-`local`·`container`는 `STAGE2_CHROMA_COLLECTION`(기본 `chunk_vectors`)으로 하나의 벡터
-컬렉션을 가리킨다. 인덱스를 만든 시점의 컬렉션 이름과 서빙 시점 값이 반드시 일치해야 한다.
+`STAGE2_CHROMA_COLLECTION`(기본 `chunk_vectors`)은 제공 인덱스를 만든 시점의 컬렉션
+이름과 일치해야 한다. `STAGE2_MODE=container`를 포함해 `local` 외의 값은 readiness에서
+허용되지 않으며, 자동으로 local 모드로 전환하지 않는다.
 
 제공된 local 인덱스는 SQLite `chunk_index` 약 1,155,170행과 Chroma `chunk_vectors`
 약 800,460개 벡터로 구성되어 있다. 벡터 커버리지와 Stage1 manifest 문서 집합이 완전히

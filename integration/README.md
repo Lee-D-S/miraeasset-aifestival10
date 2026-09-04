@@ -4,14 +4,14 @@
 
 ## 구성
 
-- `composition.py`: `config.py`가 결정한 Stage2 모드(`local`/`container`)로 pipeline을 조립하는 실행 factory
+- `composition.py`: `config.py`가 결정한 local Stage2 backend로 pipeline을 조립하는 실행 factory
 - `graph.py`: StateGraph, Supervisor 분기, bounded loop
 - `supervisor.py`: action contract, deterministic policy, structured LLM adapter
 - `tools.py`: allow-listed typed tools와 native `ToolNode` 경계
 - `service.py`: `StagePipeline` invoke API와 recursion limit
 - `api.py`: `/health`·`/ready`·`/answer`, 제출용 5-field response adapter
 - `failure_response.py`: 차단·근거 부족 답변의 결정론적 이유·재질문 안내와 내부 reason code
-- `readiness.py`: `STAGE2_MODE`·container 설정·검색 인덱스의 오프라인 readiness 검사
+- `readiness.py`: `STAGE2_MODE`와 검색 인덱스의 오프라인 readiness 검사
 
 경로와 backend 선택 지점은 프로젝트 루트의 `config.py` 하나다. `composition.py`는
 `config.Stage2Settings.from_env()`가 돌려준 값만 사용하고, 직접 `os.getenv`로 경로를
@@ -26,7 +26,7 @@ pipeline = build_pipeline()
 state = pipeline.invoke(question_id="Q-001", question="질문")
 ```
 
-기본 factory는 Stage1, Stage2(`STAGE2_MODE` 기본 `local`), Stage3, Stage4를 연결한다. `app.py`는 factory를 import 시 실행하지 않고 `/ready` 또는 `/answer` 요청 시 지연 초기화한다. Stage2는 `intfloat/multilingual-e5-large`만 사용하며 모델 cache가 없으면 명확히 실패한다. local·container 모두 같은 E5 adapter를 주입하고 문서 text는 raw로 유지한다. `e5-instruct`는 active 설정에서 거부한다. `CLOVA_RERANKER_ENABLED`는 답변용 `CLOVA_LLM_ENABLED`와 독립적으로 동작하며, `STAGE1_USE_LLM=1`일 때만 unresolved 슬롯에 Chat JSON 보완을 호출한다. `container` 모드는 `STAGE2_RDB_URL`과 `STAGE2_CHROMA_HOST`가 모두 있어야 하며, 없으면 기동 전에 명확히 실패한다.
+기본 factory는 Stage1, Stage2(local), Stage3, Stage4를 연결한다. `app.py`는 factory를 import 시 실행하지 않고 `/ready` 또는 `/answer` 요청 시 지연 초기화한다. Stage2는 `intfloat/multilingual-e5-large`만 사용하며 모델 cache가 없으면 명확히 실패한다. 제공된 SQLite·Chroma 인덱스는 read-only로 열고, `STAGE2_MODE`가 `local` 외의 값이면 readiness에서 명확히 실패한다. `e5-instruct`는 active 설정에서 거부한다. `CLOVA_RERANKER_ENABLED`는 답변용 `CLOVA_LLM_ENABLED`와 독립적으로 동작하며, `STAGE1_USE_LLM=1`일 때만 unresolved 슬롯에 Chat JSON 보완을 호출한다.
 
 `/health`는 프로세스 생존만 확인하고, `/ready`는 pipeline 생성 가능 여부를 확인한다. corpus·DB·provider가 준비되지 않은 경우 `/ready`와 `/answer`는 503을 반환하지만 앱 import와 `/health`는 실패하지 않는다.
 

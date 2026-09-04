@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 import config
-from integration.readiness import validate_container_settings, validate_environment
+from integration.readiness import validate_environment
 
 _STAGE2_ENV = (
     "STAGE2_MODE",
@@ -15,8 +15,6 @@ _STAGE2_ENV = (
     "STAGE2_SQL_TABLE",
     "STAGE2_EMBEDDING",
     "STAGE2_ALLOW_PARTIAL_INDEX",
-    "STAGE2_RDB_URL",
-    "STAGE2_CHROMA_HOST",
     "CLOVA_LLM_ENABLED",
     "STAGE1_USE_LLM",
     "CLOVA_RERANKER_ENABLED",
@@ -46,9 +44,10 @@ def test_mode_defaults_to_local():
     assert config.resolve_stage2_mode() == "local"
 
 
-def test_stage2_mode_env_is_authoritative(monkeypatch):
+def test_stage2_mode_container_is_rejected(monkeypatch):
     monkeypatch.setenv("STAGE2_MODE", "container")
     assert config.resolve_stage2_mode() == "container"
+    assert any("STAGE2_MODE" in issue for issue in validate_environment("container"))
 
 
 def test_settings_resolve_paths_and_sqlite_url(monkeypatch):
@@ -109,17 +108,3 @@ def test_validate_environment_accepts_supported_embeddings(monkeypatch, embeddin
 def test_validate_environment_rejects_fixture_mode(monkeypatch):
     monkeypatch.setenv("STAGE2_MODE", "fixture")
     assert any("STAGE2_MODE" in issue for issue in validate_environment("fixture"))
-
-
-def test_validate_container_settings_requires_both_endpoints():
-    incomplete = config.Stage2Settings.from_env()
-    issues = validate_container_settings(incomplete)
-    assert any("STAGE2_RDB_URL" in issue for issue in issues)
-    assert any("STAGE2_CHROMA_HOST" in issue for issue in issues)
-
-
-def test_validate_container_settings_passes_when_both_present(monkeypatch):
-    monkeypatch.setenv("STAGE2_MODE", "container")
-    monkeypatch.setenv("STAGE2_RDB_URL", "postgresql+psycopg://u:p@h:5432/db")
-    monkeypatch.setenv("STAGE2_CHROMA_HOST", "chroma")
-    assert validate_container_settings(config.Stage2Settings.from_env()) == []

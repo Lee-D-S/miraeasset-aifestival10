@@ -1,14 +1,12 @@
 # Stage2 로컬 DB — 받아서 테스트하기
 
-Stage2 검색 백엔드는 환경변수 `STAGE2_MODE` 하나로 고른다. 경로와 접속 문자열은
-모두 루트의 `config.py`가 관리하고, 상대경로는 실행 위치가 아니라 저장소 루트를
-기준으로 풀린다.
+Stage2 검색 백엔드는 제공된 인덱스를 사용하는 `local` 모드만 지원한다. 경로와
+접속 설정은 모두 루트의 `config.py`가 관리하고, 상대경로는 실행 위치가 아니라
+저장소 루트를 기준으로 풀린다.
 
 | 모드 | 저장소 | 필요한 것 | 쓰는 곳 |
 |---|---|---|---|
-| `fixture` (기본) | CLOVA 사전계산 임베딩 JSON | CLOVA 키 (질의 임베딩용) | 스모크·CI. DB 서비스 불필요 |
 | `local` | SQLite `chunk_index` + 로컬 Chroma 디렉터리 | 빌드된 인덱스 + 질의 임베더 | 실데이터를 단일 노드에서 돌려볼 때 |
-| `container` | Postgres + Chroma **서버** | `STAGE2_RDB_URL` + `STAGE2_CHROMA_HOST` | 배포 |
 
 아래 1~2절은 팀에서 공유한 `local` 인덱스를 받아서 전체 파이프라인(Stage1~4)에
 물려 돌리는 방법이다.
@@ -182,40 +180,15 @@ PY
 
 ---
 
-## 3. `fixture` 모드 (기본값, 참고)
+## 3. 지원하지 않는 모드
 
-```bash
-# .env
-STAGE2_MODE=fixture
-STAGE2_FIXTURE_PATH=legacy/test_data/disclosure_clova_local.json
-CLOVA_API_KEY=...
-```
-
-DB가 필요 없다. 문서 벡터는 JSON에 미리 계산돼 있고 질의만 CLOVA로 임베딩한다.
-`pytest`와 CI가 이 모드를 쓴다.
+과거 `fixture`와 `container` 경로는 현재 active 실행 경로에서 제거했다. 해당 값을
+`STAGE2_MODE`에 지정하면 자동 전환 없이 readiness 오류가 발생한다. 기존 SQLite·Chroma
+인덱스는 서버에서 read-only로 사용하며, PostgreSQL이나 원격 Chroma로 이관하지 않는다.
 
 ---
 
-## 4. `container` 모드 (배포, 참고)
-
-```bash
-# .env
-STAGE2_MODE=container
-STAGE2_RDB_URL=postgresql+psycopg://user:pw@postgres:5432/dis
-STAGE2_CHROMA_HOST=chroma
-STAGE2_CHROMA_PORT=8000
-STAGE2_CHROMA_COLLECTION=chunk_vectors
-STAGE2_EMBEDDING=e5
-```
-
-`STAGE2_RDB_URL`이나 `STAGE2_CHROMA_HOST`가 없으면 기동 시 바로 실패한다.
-검색 코드는 `local`과 같고 접속만 다르다. `local` 인덱스를 서버로 옮길 때는
-`scripts/migrate_legacy_sqlite.py` 패턴으로 같은 `chunk_index` 행과 같은 정렬의
-벡터를 적재한다.
-
----
-
-## 5. 다시 만들거나 새로 공유할 때
+## 4. 다시 만들거나 새로 공유할 때
 
 - **인덱스를 직접 빌드**: `scripts/build_chunk_index.py`
   (`--corpus-dir`, `--embedding e5|clova`, `--workers`), 또는 Colab

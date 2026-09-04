@@ -113,8 +113,9 @@ uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1
 문자열로 반환해야 한다. local Chroma와 process-local rate limiter를 사용하므로 worker는
 1개로 유지한다.
 
-container 모드는 Postgres와 Chroma 서버가 실제로 준비된 별도 환경에서만 사용한다. 현재
-제공 인덱스 검증과 서버 테스트의 기준은 `STAGE2_MODE=local`이다.
+Stage2는 `STAGE2_MODE=local`만 지원한다. PostgreSQL container와 원격 Chroma 경로는
+제거했으며, `STAGE2_MODE=container` 같은 잘못된 설정은 자동 전환 없이 readiness 오류로
+실패한다. 현재 제공 인덱스 검증과 서버 테스트의 기준은 local SQLite·Chroma다.
 
 일반 회귀 테스트는 대용량 인덱스를 필요로 하지 않고 `pytest`에서 `real_index` marker를
 제외한다. 실제 인덱스가 사전 탑재된 runner에서는 수동으로 다음 명령을 실행한다.
