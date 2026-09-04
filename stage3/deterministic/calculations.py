@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
+import re
 from typing import Any
 
 from stage3.contracts import Stage3Fact, Stage3Intent
@@ -297,6 +298,360 @@ def _coalesce_units(facts: list[Stage3Fact]) -> list[Stage3Fact]:
     preferred = "백만원" if "백만원" in units else max(set(units), key=units.count)
     same = [fact for fact in facts if fact.unit == preferred]
     return same or facts
+
+
+def _plan_period_key(value: Any) -> tuple[int, str]:
+    match = re.search(r"20\d{2}", str(value or ""))
+    return (int(match.group(0)) if match else 0, str(value or ""))
+
+
+def _record_key(record: Mapping[str, Any], group_by: list[str]) -> tuple[str, ...]:
+    return tuple(str(record.get(field, "미상")) for field in group_by)
+
+
+def _record_value(record: Mapping[str, Any]) -> float | None:
+    value = record.get("value")
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _derived_record(
+    *,
+    value: float,
+    source_records: list[Mapping[str, Any]],
+    operation: str,
+    company: str | None = None,
+    period: str | None = None,
+    unit: str = "",
+    formula: str = "",
+) -> dict[str, Any]:
+    evidence_ids = list(dict.fromkeys(
+        str(evidence_id)
+        for record in source_records
+        for evidence_id in record.get("evidence_ids", [])
+        if evidence_id
+    ))
+    return {
+        "value": value,
+        "company": company,
+        "period": period,
+        "unit": unit,
+        "basis": next((str(record.get("basis")) for record in source_records if record.get("basis")), None),
+        "evidence_ids": evidence_ids,
+        "inputs": [dict(record.get("input", {})) for record in source_records],
+        "formula": formula or operation,
+        "operation": operation,
+    }
+
+
+def _requirement_records(requirement: Mapping[str, Any], facts: list[Stage3Fact]) -> list[dict[str, Any]]:
+    metric = str(requirement.get("metric", ""))
+    companies = {str(item) for item in requirement.get("companies", []) if str(item).strip()}
+    periods = {str(item) for item in requirement.get("periods", []) if str(item).strip()}
+    records: list[dict[str, Any]] = []
+    for fact in facts:
+        if fact.kind != "numeric" or not isinstance(fact.normalized_value, (int, float)):
+            continue
+        if fact.metric != metric:
+            continue
+        if companies and str(fact.company) not in companies:
+            continue
+        if periods and not any(period_matches(fact.period, period) for period in periods):
+            continue
+        records.append({
+            "value": float(fact.normalized_value),
+            "company": fact.company,
+            "period": fact.period,
+            "unit": fact.unit,
+            "basis": fact.basis,
+            "currency": fact.currency,
+            "evidence_ids": [fact.document_id],
+            "input": {
+                "value": fact.display_value or fact.value,
+                "unit": fact.unit,
+                "period": fact.period,
+                "basis": fact.basis,
+                "document_id": fact.document_id,
+            },
+        })
+    return records
+
+
+def _pair_records(left: list[dict[str, Any]], right: list[dict[str, Any]]) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    index: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for record in right:
+        index[(str(record.get("company")), str(record.get("period")))].append(record)
+    pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for record in left:
+        candidates = index.get((str(record.get("company")), str(record.get("period"))), [])
+        if candidates:
+            compatible = next(
+                (
+                    candidate
+                    for candidate in candidates
+                    if (not record.get("basis") or not candidate.get("basis") or record.get("basis") == candidate.get("basis"))
+                    and (not record.get("currency") or not candidate.get("currency") or record.get("currency") == candidate.get("currency"))
+                ),
+                None,
+            )
+            if compatible is not None:
+                pairs.append((record, compatible))
+    return pairs
+
+
+def _execute_plan_step(operation: str, inputs: list[list[dict[str, Any]]], step: Mapping[str, Any]) -> list[dict[str, Any]]:
+    if not inputs or any(not values for values in inputs):
+        return []
+    group_by = [str(value) for value in step.get("group_by", []) if value in {"company", "period"}]
+    if operation in {"ratio_percent", "margin"}:
+        results: list[dict[str, Any]] = []
+        for numerator, denominator in _pair_records(inputs[0], inputs[1]):
+            left = _record_value(numerator)
+            right = _record_value(denominator)
+            if left is None or right in (None, 0):
+                continue
+            result = execute_operation("margin" if operation == "margin" else "ratio_percent", [left, right])
+            results.append(_derived_record(
+                value=result,
+                source_records=[numerator, denominator],
+                operation=operation,
+                company=str(numerator.get("company")) if numerator.get("company") is not None else None,
+                period=str(numerator.get("period")) if numerator.get("period") is not None else None,
+                unit="%",
+                formula="numerator/denominator*100",
+            ))
+        return results
+    if operation == "percentage_point_change":
+        grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for record in inputs[0]:
+            grouped[str(record.get("company", "미상"))].append(record)
+        results = []
+        for company, records in grouped.items():
+            ordered = sorted(records, key=lambda record: _plan_period_key(record.get("period")))
+            if len(ordered) < 2:
+                continue
+            old, new = ordered[-2], ordered[-1]
+            old_value = _record_value(old)
+            new_value = _record_value(new)
+            if old_value is None or new_value is None:
+                continue
+            results.append(_derived_record(
+                value=execute_operation("subtract", [new_value, old_value]),
+                source_records=[old, new],
+                operation=operation,
+                company=company,
+                period=str(new.get("period")) if new.get("period") is not None else None,
+                unit="percentage_points",
+                formula="current_ratio-previous_ratio",
+            ))
+        return results
+    if operation in {"percentage_change", "cagr"}:
+        grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for record in inputs[0]:
+            grouped[str(record.get("company", "미상"))].append(record)
+        results = []
+        for company, records in grouped.items():
+            ordered = sorted(records, key=lambda record: _plan_period_key(record.get("period")))
+            if len(ordered) < 2:
+                continue
+            old, new = ordered[0], ordered[-1]
+            old_value = _record_value(old)
+            new_value = _record_value(new)
+            if old_value is None or new_value is None:
+                continue
+            if operation == "cagr":
+                old_year = _plan_period_key(old.get("period"))[0]
+                new_year = _plan_period_key(new.get("period"))[0]
+                if old_year <= 0 or new_year <= old_year:
+                    continue
+                value = execute_operation("cagr", [old_value, new_value], periods=new_year - old_year)
+            else:
+                value = execute_operation("percentage_change", [old_value, new_value])
+            results.append(_derived_record(
+                value=value,
+                source_records=[old, new],
+                operation=operation,
+                company=company,
+                period=str(new.get("period")) if new.get("period") is not None else None,
+                unit="%",
+                formula="(new-old)/abs(old)*100" if operation == "percentage_change" else "(new/old)^(1/years)-1*100",
+            ))
+        return results
+    if operation == "rank":
+        records = [record for record in inputs[0] if _record_value(record) is not None]
+        if len({str(record.get("period")) for record in records}) > 1:
+            return []
+        ranked_values = sorted((_record_value(record) for record in records), reverse=True)
+        results = []
+        for record in records:
+            value = _record_value(record)
+            if value is None:
+                continue
+            derived = _derived_record(
+                value=value,
+                source_records=[record],
+                operation=operation,
+                company=str(record.get("company")) if record.get("company") is not None else None,
+                period=str(record.get("period")) if record.get("period") is not None else None,
+                unit=str(record.get("unit", "")),
+                formula="rank(value across companies)",
+            )
+            derived["rank"] = 1 + sum(item > value for item in ranked_values)
+            results.append(derived)
+        return sorted(results, key=lambda record: (int(record["rank"]), str(record.get("company", ""))))
+    if len(inputs) == 1 and operation in {"sum", "average", "min", "max"}:
+        groups: dict[tuple[str, ...], list[dict[str, Any]]] = defaultdict(list)
+        for record in inputs[0]:
+            groups[_record_key(record, group_by)].append(record)
+        if not group_by:
+            groups[()] = list(inputs[0])
+        results = []
+        for records in groups.values():
+            values = [value for record in records if (value := _record_value(record)) is not None]
+            if not values:
+                continue
+            results.append(_derived_record(
+                value=execute_operation(operation, values),
+                source_records=records,
+                operation=operation,
+                company=str(records[0].get("company")) if group_by == ["company"] else None,
+                period=str(records[0].get("period")) if group_by == ["period"] else None,
+                unit=str(records[0].get("unit", "")),
+            ))
+        return results
+    if operation in {"add", "subtract", "multiply", "divide"} and len(inputs) == 2:
+        results = []
+        for left, right in _pair_records(inputs[0], inputs[1]):
+            left_value = _record_value(left)
+            right_value = _record_value(right)
+            if left_value is None or right_value is None:
+                continue
+            try:
+                value = execute_operation(operation, [left_value, right_value])
+            except (TypeError, ValueError, ZeroDivisionError):
+                continue
+            results.append(_derived_record(
+                value=value,
+                source_records=[left, right],
+                operation=operation,
+                company=str(left.get("company")) if left.get("company") is not None else None,
+                period=str(left.get("period")) if left.get("period") is not None else None,
+                unit=str(left.get("unit", "")) if operation in {"add", "subtract"} else "",
+            ))
+        return results
+    return []
+
+
+def execute_analysis_plan(plan: Mapping[str, Any], facts: Iterable[Stage3Fact]) -> dict[str, Any]:
+    """Execute a validated plan over grounded Facts and preserve provenance."""
+
+    fact_list = list(facts)
+    requirements = {
+        str(item.get("id")): item
+        for item in plan.get("requirements", [])
+        if isinstance(item, Mapping) and item.get("id")
+    }
+    records: dict[str, list[dict[str, Any]]] = {
+        identifier: _requirement_records(requirement, fact_list)
+        for identifier, requirement in requirements.items()
+    }
+    calculations: list[dict[str, Any]] = []
+    comparisons: list[dict[str, Any]] = []
+    derived_facts: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    failed = [identifier for identifier, values in records.items() if requirements[identifier].get("required", True) and not values]
+    if failed:
+        warnings.append("필수 계산 입력 근거가 없습니다: " + ", ".join(failed))
+    for step in plan.get("steps", []):
+        if not isinstance(step, Mapping):
+            continue
+        identifier = str(step.get("id", ""))
+        operation = str(step.get("operation", ""))
+        inputs = [records.get(str(value), []) for value in step.get("inputs", [])]
+        values = _execute_plan_step(operation, inputs, step)
+        records[identifier] = values
+        for record in values:
+            source_id = next(iter(record.get("evidence_ids", [])), "")
+            derived_facts.append({
+                "metric": f"derived:{identifier}",
+                "label": identifier,
+                "value": record["value"],
+                "raw_value": record["value"],
+                "unit": record.get("unit", ""),
+                "normalized_value": record["value"],
+                "period": record.get("period"),
+                "basis": record.get("basis"),
+                "company": record.get("company"),
+                "document_id": source_id,
+                "source": "calculation",
+                "evidence": record.get("formula", operation),
+                "confidence": 1.0,
+                "kind": "derived",
+                "currency": None,
+                "table_context": {"step_id": identifier, "input_fact_ids": record.get("evidence_ids", [])},
+            })
+        if not values:
+            warnings.append(f"계산 단계의 입력이 부족합니다: {identifier}")
+        elif operation == "rank" and identifier == str(plan.get("output", {}).get("ref")):
+            results = [
+                {
+                    "rank": record["rank"],
+                    "company": record.get("company") or "미상",
+                    "value": record["value"],
+                    "unit": record.get("unit", ""),
+                    "period": record.get("period"),
+                    "document_id": next(iter(record.get("evidence_ids", [])), ""),
+                    "evidence_ids": list(record.get("evidence_ids", [])),
+                }
+                for record in values
+            ]
+            comparisons.append({
+                "status": "ok",
+                "operation": "rank",
+                "results": results,
+                "top": results[0] if results else {},
+                "evidence_ids": list(dict.fromkeys(
+                    evidence_id
+                    for item in results
+                    for evidence_id in item.get("evidence_ids", [])
+                    if evidence_id
+                )),
+                "plan_step_id": identifier,
+            })
+        elif values:
+            if len(values) == 1:
+                record = values[0]
+                calculations.append({
+                    "status": "ok",
+                    "operation": operation,
+                    "inputs": record.get("inputs", []),
+                    "formula": record.get("formula", operation),
+                    "result": record["value"],
+                    "unit": record.get("unit", ""),
+                    "evidence_ids": record.get("evidence_ids", []),
+                    "plan_step_id": identifier,
+                })
+            else:
+                calculations.append({
+                    "status": "derived",
+                    "operation": operation,
+                    "results": [dict(record) for record in values],
+                    "evidence_ids": list(dict.fromkeys(
+                        evidence_id
+                        for record in values
+                        for evidence_id in record.get("evidence_ids", [])
+                    )),
+                    "plan_step_id": identifier,
+                })
+    output_ref = str(plan.get("output", {}).get("ref", ""))
+    success = bool(records.get(output_ref)) and not failed
+    return {
+        "success": success,
+        "calculations": calculations,
+        "comparisons": comparisons,
+        "derived_facts": derived_facts,
+        "warnings": warnings,
+        "output_records": records.get(output_ref, []),
+    }
 
 
 def calculate_facts(facts: Iterable[Stage3Fact], intent: Stage3Intent, *, operation: str | None = None) -> dict[str, Any]:

@@ -274,6 +274,9 @@ class Stage3Intent:
     correction_mode: str | None = None
     manifest_filter: dict[str, Any] = field(default_factory=dict)
     query_plan: list[dict[str, Any]] = field(default_factory=list)
+    # One canonical executable plan. ``query_plan`` remains a retrieval-only
+    # compatibility projection and is not interpreted as a calculation DAG.
+    analysis_plan: dict[str, Any] = field(default_factory=dict)
     companies: list[str] = field(default_factory=list)
     excluded_corps: list[dict[str, Any]] = field(default_factory=list)
     sector: str | None = None
@@ -314,6 +317,7 @@ class Stage3Intent:
             "correction_mode": self.correction_mode,
             "manifest_filter": dict(self.manifest_filter),
             "query_plan": [dict(item) for item in self.query_plan],
+            "analysis_plan": dict(self.analysis_plan),
             "companies": list(self.companies),
             "excluded_corps": [dict(item) for item in self.excluded_corps],
             "sector": self.sector,
@@ -414,6 +418,7 @@ def adapt_stage1_intent(intent: Mapping[str, Any], *, question: str | None = Non
         correction_mode=str(source["correction_mode"]) if source.get("correction_mode") is not None else None,
         manifest_filter=_mapping(source.get("manifest_filter")),
         query_plan=[dict(item) for item in source.get("query_plan", []) if isinstance(item, Mapping)],
+        analysis_plan=_mapping(source.get("analysis_plan")),
         companies=companies,
         excluded_corps=[dict(item) for item in source.get("excluded_corps", []) if isinstance(item, Mapping)],
         sector=str(source["sector"]) if source.get("sector") is not None else None,

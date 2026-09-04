@@ -95,6 +95,7 @@ CALCULATION_REGISTRY: dict[str, Callable[..., float]] = {
     "divide": divide,
     "percentage_change": percentage_change,
     "period_change": percentage_change,
+    "percentage_point_change": subtract,
     "cagr": cagr,
     "sum": sum_values,
     "average": average,
