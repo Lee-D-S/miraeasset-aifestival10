@@ -71,6 +71,25 @@ class FactExtractionTests(unittest.TestCase):
 
         self.assertEqual({item.aggregation_scope for item in facts}, {"total", "segment"})
 
+    def test_table_row_with_own_label_is_not_total_even_under_a_consolidated_basis(self):
+        bundle = adapt_stage2_bundle([{
+            "id": "revenue-breakdown",
+            "source": "report.xml",
+            "text": (
+                "| 구분 | 제56기(2024) | 제55기(2023) |\n"
+                "| --- | --- | --- |\n"
+                "| 용역 및 기타매출 | 75,092 | 127,975 |"
+            ),
+            "metadata": {"corp_name": "기업A", "report_period": "2024-12", "basis": "연결"},
+        }])
+
+        facts = [item for item in extract_facts(bundle.documents, self.intent) if item.metric == "revenue"]
+
+        self.assertTrue(facts)
+        for fact in facts:
+            self.assertEqual(fact.aggregation_scope, "not_total")
+        self.assertEqual({fact.period for fact in facts}, {"2024", "2023"})
+
     def test_normalization_applies_stage1_period_and_basis(self):
         bundle = adapt_stage2_bundle([{"id": "d1", "text": "매출액 100억원", "metadata": {"corp_name": "기업A"}}])
         facts, warnings = normalize_facts(extract_facts(bundle.documents, self.intent), self.intent)

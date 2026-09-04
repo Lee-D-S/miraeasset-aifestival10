@@ -4,8 +4,16 @@ import re
 from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping
 
+from stage3.contracts import Stage3Fact, Stage3Intent
+from stage3.grounding import fact_matches_intent
+
 
 _NUMBER = re.compile(r"(?<![\w])[-+]?\d[\d,]*(?:\.\d+)?")
+# Fact/answer periods render as "YYYY-MM" or "YYYY-MM-DD" (see
+# stage3.agents.answer._lookup_claim). The "년/월/일" suffix check below only
+# catches the Korean-suffixed form, so a hyphenated period would otherwise be
+# read as two spurious answer numbers ("2024" and "12").
+_ISO_PERIOD_RE = re.compile(r"(?<!\d)20\d{2}-(?:0[1-9]|1[0-2])(?:-(?:0[1-9]|[12]\d|3[01]))?(?!\d)")
 _UNIT_MULTIPLIERS = {
     "조": Decimal("1000000000000"),
     "십억": Decimal("1000000000"),
@@ -34,12 +42,38 @@ def _unit_multiplier(text: str, end: int) -> tuple[Decimal, str]:
     return Decimal("1"), ""
 
 
+# DART amounts routinely chain 조 and 억 into one figure ("300조 8,709억원").
+# Checked as two independent numbers, neither half equals the combined Fact
+# value, so a correct answer would fail the numeric gate. Match the trailing
+# 억 amount right after a 조 amount and fold both into a single value —
+# mirrors stage3.agents.fact_extraction._compound_amount, which does the same
+# for the source-document side of this parsing.
+_COMPOUND_TAIL = re.compile(r"조원?\s*(?P<minor>[-+]?\d[\d,]*(?:\.\d+)?)\s*억\s*원?")
+
+
+def _compound_amount(answer: str, end: int) -> tuple[Decimal, int] | None:
+    tail = _COMPOUND_TAIL.match(answer, end)
+    if tail is None:
+        return None
+    minor = _decimal(tail.group("minor"))
+    if minor is None:
+        return None
+    return minor, tail.end()
+
+
 def extract_answer_numbers(answer: str) -> list[dict[str, Any]]:
     """Extract answer numbers while ignoring dates, ranks, and document IDs."""
 
     values: list[dict[str, Any]] = []
-    for match in _NUMBER.finditer(answer):
+    matches = list(_NUMBER.finditer(answer))
+    period_spans = [span.span() for span in _ISO_PERIOD_RE.finditer(answer)]
+    index = 0
+    while index < len(matches):
+        match = matches[index]
+        index += 1
         start, end = match.span()
+        if any(period_start <= start and end <= period_end for period_start, period_end in period_spans):
+            continue
         before = answer[max(0, start - 12):start]
         after = answer[end:end + 12]
         if re.search(r"문서\s*ID|Q[-_]?$|질의\s*ID|\[?source:\s*", before, re.IGNORECASE):
@@ -51,6 +85,20 @@ def extract_answer_numbers(answer: str) -> list[dict[str, Any]]:
         if base is None:
             continue
         multiplier, unit = _unit_multiplier(answer, end)
+        compound = _compound_amount(answer, end) if unit == "조" else None
+        if compound is not None:
+            minor, tail_end = compound
+            values.append({
+                "raw": answer[start:tail_end],
+                "value": base * multiplier + minor * _UNIT_MULTIPLIERS["억"],
+                "unit": "조",
+                "percent": False,
+                "start": start,
+                "end": tail_end,
+            })
+            while index < len(matches) and matches[index].start() < tail_end:
+                index += 1
+            continue
         percent = bool(re.match(r"\s*(%|퍼센트)", after))
         values.append({
             "raw": raw,
@@ -63,10 +111,19 @@ def extract_answer_numbers(answer: str) -> list[dict[str, Any]]:
     return values
 
 
-def _candidate_values(stage3_result: Mapping[str, Any]) -> list[dict[str, Any]]:
+def _candidate_values(
+    stage3_result: Mapping[str, Any], intent: Stage3Intent | None = None
+) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
     for fact in stage3_result.get("facts", []):
         if not isinstance(fact, Mapping):
+            continue
+        # Trusting whatever Stage3 extracted (regardless of the requested
+        # company/period/basis/aggregation scope) is what let a mistagged
+        # breakdown-row Fact validate a wrong headline number before. Re-check
+        # the Fact against the intent here instead of only in stage4/node.py's
+        # separate "requested Fact gate".
+        if intent is not None and not fact_matches_intent(Stage3Fact.from_dict(fact), intent):
             continue
         normalized = fact.get("normalized_value")
         value = normalized if normalized is not None else fact.get("value")
@@ -92,9 +149,11 @@ def _candidate_values(stage3_result: Mapping[str, Any]) -> list[dict[str, Any]]:
     return candidates
 
 
-def validate_numeric_answer(answer: str, stage3_result: Mapping[str, Any]) -> dict[str, Any]:
+def validate_numeric_answer(
+    answer: str, stage3_result: Mapping[str, Any], intent: Stage3Intent | None = None
+) -> dict[str, Any]:
     numbers = extract_answer_numbers(answer)
-    candidates = _candidate_values(stage3_result)
+    candidates = _candidate_values(stage3_result, intent)
     allowed = [item["value"] for item in candidates]
     unmatched = [item["raw"] for item in numbers if not any(item["value"] == value or abs(item["value"] - value) <= max(abs(value) * Decimal("0.0001"), Decimal("0.01")) for value in allowed)]
     errors = [f"근거에 없는 답변 수치: {value}" for value in unmatched]

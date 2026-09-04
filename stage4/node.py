@@ -192,7 +192,18 @@ def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any
 
         try:
             stage2_result = state.get("stage2_result") if isinstance(state.get("stage2_result"), Mapping) else None
-            numeric, citation = validate_numeric_answer(answer, stage3_result), validate_citations(answer, stage3_result, stage2_result)
+            intent_source = dict(intent) if isinstance(intent, Mapping) else {}
+            if isinstance(state.get("analysis_plan"), Mapping) and state["analysis_plan"].get("status") == "ready":
+                intent_source["analysis_plan"] = dict(state["analysis_plan"])
+            stage3_intent = adapt_stage1_intent(intent_source, question=question)
+            # Only re-check facts against the intent for a single-metric
+            # lookup/calculation; a multi-query or list/compare intent isn't
+            # what fact_matches_intent's company/period/basis/scope gate is
+            # shaped for, so leave those to the existing "requested Fact
+            # gate" below instead of double-filtering here.
+            numeric_intent = stage3_intent if strict_grounding_enabled() and stage3_intent.metric else None
+            numeric = validate_numeric_answer(answer, stage3_result, numeric_intent)
+            citation = validate_citations(answer, stage3_result, stage2_result)
             # Do not let the deterministic local fallback be rejected because
             # the legacy number parser ignores Korean unit-formatted numbers.
             answer_digits = re.sub(r"\D", "", answer)
@@ -201,10 +212,6 @@ def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any
                 for fact in stage3_result.get("facts", [])
                 if isinstance(fact, Mapping)
             ]
-            intent_source = dict(intent) if isinstance(intent, Mapping) else {}
-            if isinstance(state.get("analysis_plan"), Mapping) and state["analysis_plan"].get("status") == "ready":
-                intent_source["analysis_plan"] = dict(state["analysis_plan"])
-            stage3_intent = adapt_stage1_intent(intent_source, question=question)
             missing_subqueries: list[str] = []
             if strict_grounding_enabled() and (
                 stage3_intent.metric or stage3_intent.analysis_plan.get("status") == "ready"

@@ -9,7 +9,7 @@ from collections.abc import Iterable, Mapping
 from stage3.contracts import Stage3Fact, Stage3Intent
 
 
-AGGREGATION_SCOPES = frozenset({"total", "segment", "product", "region", "unknown"})
+AGGREGATION_SCOPES = frozenset({"total", "segment", "product", "region", "not_total", "unknown"})
 
 _SEGMENT_CUES = ("사업부문", "부문별", "부문", "segment", "business unit")
 _PRODUCT_CUES = ("제품별", "제품", "서비스별", "서비스", "주요 매출원", "product")
@@ -19,6 +19,17 @@ _TOTAL_CUES = ("연결", "별도", "총계", "합계", "전체", "당사")
 
 def _text(value: object) -> str:
     return str(value or "").strip().lower()
+
+
+_ROW_LABEL_PREFIX_RE = re.compile(r"^[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩivx0-9]+[.)．]*")
+
+
+def _normalize_row_label(value: object) -> str:
+    """Strip DART letter-spacing ("매    출    액") and numbering ("Ⅰ.") so a
+    bare total row still matches the label the regex extracted."""
+
+    collapsed = re.sub(r"\s+", "", str(value or ""))
+    return _ROW_LABEL_PREFIX_RE.sub("", collapsed).strip(".)．").lower()
 
 
 def aggregation_scope_for_context(
@@ -52,9 +63,26 @@ def aggregation_scope_for_context(
         return "region"
     if any(cue in joined for cue in _SEGMENT_CUES):
         return "segment"
-    if any(cue in joined for cue in _TOTAL_CUES):
+    # "연결"/"별도"/"당사" describe the statement basis, not the row's
+    # aggregation level. A row with its own descriptive label (for example
+    # "용역 및 기타매출") is a breakdown line even inside a 연결 statement, so
+    # only fall back to the basis cues when the row itself is a bare metric
+    # or an explicit subtotal row (or there is no row context at all, as for
+    # plain-text evidence).
+    row_label_text = _text(context.get("row_label"))
+    normalized_row_label = _normalize_row_label(context.get("row_label"))
+    is_bare_metric_row = (
+        not row_label_text
+        or normalized_row_label == _normalize_row_label(label)
+        or normalized_row_label in {"계", "소계", "합계", "총계"}
+    )
+    if is_bare_metric_row and any(cue in joined for cue in _TOTAL_CUES):
         return "total"
-    return "unknown"
+    # A row that carries its own label but was not identified as a total is
+    # a known breakdown line ("not_total"), distinct from evidence that has
+    # no row context to judge at all ("unknown"). Only the latter should let
+    # a strict "total" request through — see fact_matches_intent.
+    return "unknown" if not row_label_text else "not_total"
 
 
 def requested_aggregation_scope(intent: Stage3Intent) -> str:
@@ -149,7 +177,10 @@ def fact_matches_intent(
         requested_scope = requested_aggregation_scope(intent)
         if fact.aggregation_scope == requested_scope:
             return True
-        # Ratio/amount cells often omit "연결" in the row, so scope stays unknown.
+        # Ratio/amount cells often carry no row context at all, so scope
+        # stays "unknown" rather than a judged "not_total". Only that true
+        # no-context case should pass a strict total request — a Fact with
+        # its own row label that was judged not-total must stay excluded.
         return fact.aggregation_scope == "unknown" and requested_scope == "total"
     return True
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from stage3.contracts import adapt_stage1_intent
 from stage4.node import build_stage4_node
 from stage4.numeric import extract_answer_numbers, validate_numeric_answer
 from integration.rate_limit import RateLimitBlocked
@@ -73,10 +74,95 @@ def test_extracts_korean_units_and_ignores_dates_and_ranks():
     assert [item["value"] for item in values] == [-120000000, 120000000]
 
 
+def test_extracts_compound_jo_eok_amount_as_a_single_value():
+    values = extract_answer_numbers("삼성전자의 2024-12 연결 매출은 300조 8,709억원입니다.")
+    assert [item["value"] for item in values] == [300870900000000]
+
+
+def test_ignores_hyphenated_period_and_contract_date_tokens():
+    assert extract_answer_numbers("삼성전자의 2024-12 연결 매출은 얼마인가요?") == []
+    assert extract_answer_numbers("계약기간은 2025-08-14부터입니다.") == []
+
+
+def test_numeric_validation_matches_compound_jo_eok_fact_value():
+    stage3_result = _stage3(answer="")
+    stage3_result["facts"][0]["normalized_value"] = 300_870_900_000_000
+    stage3_result["facts"][0]["value"] = "300조 8,709억원"
+    result = validate_numeric_answer(
+        "삼성전자의 2024-12 연결 매출은 300조 8,709억원입니다.", stage3_result
+    )
+    assert result["pass"] is True
+    assert result["matched_count"] == 1
+
+
 def test_numeric_validation_uses_normalized_fact_once():
     result = validate_numeric_answer("매출은 1.2억원입니다.", _stage3())
     assert result["pass"] is True
     assert result["matched_count"] == 1
+
+
+def _stage3_with_breakdown_fact(answer: str) -> dict:
+    return {
+        "status": "success",
+        "answer": answer,
+        "facts": [
+            {
+                "metric": "revenue", "label": "매출액", "value": 100, "normalized_value": 10_000_000_000,
+                "unit": "억원", "period": "2025-12", "basis": "연결", "company": "기업A",
+                "document_id": "doc-total", "source": "공시.xml", "evidence": "매출액 100억원",
+                "aggregation_scope": "total",
+            },
+            {
+                "metric": "revenue", "label": "매출", "value": 30, "normalized_value": 3_000_000_000,
+                "unit": "억원", "period": "2025-12", "basis": "연결", "company": "기업A",
+                "document_id": "doc-breakdown", "source": "공시.xml", "evidence": "국내 매출 30억원",
+                "table_context": {"row_label": "국내 매출"}, "aggregation_scope": "not_total",
+            },
+        ],
+        "calculations": [],
+        "comparison_results": [],
+        "linked_events": [],
+        "citations": [
+            {"document_id": "doc-total", "source": "공시.xml", "evidence": "매출액 100억원"},
+            {"document_id": "doc-breakdown", "source": "공시.xml", "evidence": "국내 매출 30억원"},
+        ],
+    }
+
+
+def test_numeric_validation_rejects_a_non_matching_breakdown_fact_even_though_it_was_extracted():
+    intent = {
+        "question_type": "lookup", "metric": "revenue",
+        "companies": ["기업A"], "basis": "연결", "time": {"years": [2025]},
+    }
+    stage3_result = _stage3_with_breakdown_fact("매출액은 3000000000원입니다.")
+
+    without_intent = validate_numeric_answer(stage3_result["answer"], stage3_result)
+    with_intent = validate_numeric_answer(
+        stage3_result["answer"], stage3_result, adapt_stage1_intent(intent)
+    )
+
+    assert without_intent["pass"] is True
+    assert with_intent["pass"] is False
+
+
+def test_stage4_rejects_answer_grounded_only_in_a_non_matching_breakdown_fact():
+    client = SemanticClient()
+    stage3_result = _stage3_with_breakdown_fact("매출액은 3000000000원입니다. [source:doc-breakdown]")
+
+    update = build_stage4_node(validator_client=client)({
+        "route": "ok",
+        "question": "기업A의 2025년 연결 매출액은?",
+        "intent": {
+            "question_type": "lookup", "metric": "revenue",
+            "companies": ["기업A"], "basis": "연결", "time": {"years": [2025]},
+        },
+        "answer": stage3_result["answer"],
+        "stage3_result": stage3_result,
+    })
+
+    assert update["stage4_result"]["status"] == "validation_failed"
+    assert update["stage4_result"]["numeric_check"]["pass"] is False
+    assert any("3000000000" in error for error in update["stage4_result"]["numeric_check"]["errors"])
 
 
 def test_stage4_passes_verified_answer():

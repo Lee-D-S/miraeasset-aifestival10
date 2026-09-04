@@ -43,6 +43,13 @@ def _normalize_disclosure_spacing(value: str) -> str:
 
 def _period_from_table_context(context: dict, metadata: dict) -> str | None:
     column_label = re.sub(r"\s+", "", str(context.get("column_label") or ""))
+    # DART fiscal-year headers ("제56기(2024)", "제55기(2023)") carry the
+    # actual year in parentheses. Read it directly instead of guessing from
+    # the document's own base year — a 전기/전전기 column otherwise inherits
+    # the current document's period and gets misattributed to the wrong year.
+    explicit_year = re.search(r"20\d{2}", column_label)
+    if explicit_year:
+        return explicit_year.group(0)
     year = metadata.get("base_year")
     if year is None:
         return None

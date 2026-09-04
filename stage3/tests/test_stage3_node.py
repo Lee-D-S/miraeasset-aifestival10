@@ -193,6 +193,51 @@ class Stage3NodeTests(unittest.TestCase):
         self.assertIn("258935494", update["answer"].replace(",", ""))
         self.assertIn("financial-table", update["answer"])
 
+    def test_lookup_prefers_total_revenue_over_revenue_type_breakdown_row(self):
+        state = _state()
+        state["question"] = "삼성전자 2024년 연결 매출액은 얼마인가요?"
+        state["intent"]["raw_question"] = state["question"]
+        state["intent"]["normalized_question"] = state["question"]
+        state["intent"]["time"] = {"years": [2024], "base_months": [12]}
+        state["intent"]["basis"] = "연결"
+        state["intent"]["manifest_filter"] = {"corp_names": ["삼성전자"]}
+        state["stage2_result"]["documents"] = [
+            {
+                "id": "total-revenue-note",
+                "source": "annual.md",
+                "text": "2024년 당사의 매출은 300조 8,709억원으로 전년 동기 대비 16.2% 증가하였으며...",
+                "metadata": {
+                    "corp_name": "삼성전자",
+                    "base_year": 2024,
+                    "base_month": 12,
+                    "basis": "연결",
+                },
+            },
+            {
+                "id": "revenue-type-breakdown",
+                "source": "annual.md",
+                "text": (
+                    "| 구분 | 제56기(2024) | 제55기(2023) |\n"
+                    "| --- | --- | --- |\n"
+                    "| 용역 및 기타매출 | 75,092 | 127,975 |"
+                ),
+                "metadata": {
+                    "corp_name": "삼성전자",
+                    "base_year": 2024,
+                    "base_month": 12,
+                    "basis": "연결",
+                },
+            },
+        ]
+
+        update = build_stage3_node()(state)
+
+        result = update["stage3_result"]
+        self.assertEqual(result["status"], "success")
+        self.assertIn("300조 8,709억원", update["answer"])
+        self.assertIn("total-revenue-note", update["answer"])
+        self.assertNotIn("127975", update["answer"].replace(",", ""))
+
     def test_multi_period_trend_uses_first_and_last_period_and_keeps_series(self):
         state = _state(
             question_type="calculation",
