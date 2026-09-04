@@ -96,6 +96,7 @@ $env:STAGE2_EMBEDDING = "e5"
 $env:STAGE2_ALLOW_PARTIAL_INDEX = "true"
 $env:CLOVA_LLM_ENABLED = "true"       # 답변 생성·semantic validation
 $env:STAGE1_USE_LLM = "0"              # unresolved 슬롯 보완
+$env:QUERY_PLANNER_LLM_ENABLED = "false" # unresolved 복합 계산 plan 보완
 $env:CLOVA_RERANKER_ENABLED = "false" # production Reranker 기본 OFF
 $env:CLOVA_RERANKER_CANDIDATE_LIMIT = "100"
 python scripts/check_deployment.py

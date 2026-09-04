@@ -78,6 +78,19 @@ update = stage3_node(state)
 subquery만 근거를 확보한 경우 상태는 `partial_success`이며, 답변에는 확보된
 항목과 확인되지 않은 항목을 함께 남긴다.
 
+### Canonical analysis plan
+
+복합 계산에서는 `AgentState.analysis_plan`이 검색 요구사항과 계산 단계의
+단일 원본이다. `query_plan`은 독립 검색 projection이므로 계산 DAG로 재해석하지
+않는다. `analysis_plan`이 있으면 Stage3는 requirement별 Fact를 모은 뒤 step을
+위상순으로 실행하고, 각 중간 결과를 `kind=derived` Fact로 저장한다. derived
+Fact에는 원본 `document_id`와 `input_fact_ids`가 남아 Stage4와 citation 생성이
+같은 근거 사슬을 사용할 수 있다.
+
+지원되는 plan operation은 기존 whitelist에 `percentage_point_change`를 추가한
+범위이며, plan 자체는 등록 metric/operation과 참조·node/depth/map/reduce 한도를
+검증한다. 유효하지 않은 plan은 계산하지 않고 근거 부족으로 종료한다.
+
 ### 출력 state
 
 process 가능한 요청은 다음 값을 partial update한다.

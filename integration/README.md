@@ -57,6 +57,19 @@ print(compiled_graph.get_graph().draw_mermaid())
 
 ## 로컬 무비용 E2E
 
+## Canonical analysis plan
+
+복합 계산 질의는 `integration.supervisor.build_planner_tool()`이 단일 canonical
+`analysis_plan`을 생성한다. `Intent.calculation`은 Stage1의 단일 계산 seed,
+`Intent.query_plan`은 독립 검색 projection으로만 사용한다. `analysis_plan`이
+있으면 Stage2는 `requirements`를 검색하고 Stage3는 `steps`를 실행하며 Stage4는
+같은 plan과 근거를 재검증한다.
+
+deterministic compiler가 먼저 실행되며, 미해결 계산만
+`QUERY_PLANNER_LLM_ENABLED=true`일 때 Clova JSON proposal을 제한적으로 사용한다.
+LLM 출력은 등록된 metric/operation, 참조, depth/node/map/reduce 한도를 검증한 뒤
+실행한다. 기본값은 false이며 API 제출 응답의 5-field contract는 변하지 않는다.
+
 ## Process-local cache
 
 `build_pipeline()`은 `DIS164_CACHE_*` 설정으로 하나의 pipeline-scoped
