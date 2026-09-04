@@ -9,8 +9,11 @@ part of the active runtime.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Any
 
 from langchain_core.embeddings import Embeddings
+
+from integration.cache import canonical_json, safe_cache_get, safe_cache_put
 
 
 class E5Embeddings(Embeddings):
@@ -29,8 +32,16 @@ class E5Embeddings(Embeddings):
     # Kept in sync with stage2.ingestion.dart.embeddings.MODEL_NAME (asserted in
     # tests/test_embedding.py) so build and serve cannot drift apart.
     MODEL_NAME = "intfloat/multilingual-e5-large"
+    ADAPTER_VERSION = "e5-fastembed-v1"
 
-    def __init__(self, *, cache_dir: str | None = None, threads: int | None = None):
+    def __init__(
+        self,
+        *,
+        cache_dir: str | None = None,
+        threads: int | None = None,
+        cache: Any | None = None,
+        index_signature: str = "",
+    ):
         import os
 
         from stage2.ingestion.dart.embeddings import l2_normalize, load_e5_model
@@ -50,6 +61,10 @@ class E5Embeddings(Embeddings):
                 "intfloat/multilingual-e5-large before starting the server"
             ) from error
         self._normalize = l2_normalize
+        self._cache = cache
+        self._index_signature = str(
+            index_signature or getattr(cache, "index_signature", "")
+        )
 
     def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
         return [
@@ -58,8 +73,30 @@ class E5Embeddings(Embeddings):
         ]
 
     def embed_query(self, text: str) -> list[float]:
-        vector = next(iter(self._model.query_embed([str(text)])))
-        return self._normalize(vector)
+        query = str(text)
+        cache_key = "query-embedding:" + canonical_json(
+            {
+                "query": query,
+                "model": self.MODEL_NAME,
+                "adapter_version": self.ADAPTER_VERSION,
+                "index_signature": self._index_signature,
+            }
+        )
+        cached = safe_cache_get(
+            getattr(self._cache, "query_embeddings", None),
+            cache_key,
+        )
+        if cached is not None:
+            return list(cached)
+
+        vector = next(iter(self._model.query_embed([query])))
+        normalized = self._normalize(vector)
+        safe_cache_put(
+            getattr(self._cache, "query_embeddings", None),
+            cache_key,
+            normalized,
+        )
+        return normalized
 
 
 __all__ = [

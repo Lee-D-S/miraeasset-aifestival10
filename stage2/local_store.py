@@ -19,6 +19,7 @@ from typing import Any
 
 from sqlalchemy import Engine, inspect, text
 
+from integration.cache import canonical_json, safe_cache_get, safe_cache_put
 from stage2.backends import local_chroma, local_sqlite_engine, readonly_sqlite_engine
 from integration.readiness import validate_embedding_dimension
 from stage2.retrieval import _tokens
@@ -169,12 +170,18 @@ class LocalHybridRetriever:
         vectorstore: Any | None = None,
         table_name: str = "chunk_index",
         read_only: bool = True,
+        cache: Any | None = None,
+        index_signature: str = "",
     ):
         if table_name not in _VALID_TABLES:
             raise ValueError(f"unsupported Stage2 SQL table: {table_name}")
         self.sqlite_path = Path(sqlite_path) if sqlite_path is not None else None
         self.table_name = table_name
         self.read_only = read_only
+        self._cache = cache
+        self._index_signature = str(
+            index_signature or getattr(cache, "index_signature", "")
+        )
         if engine is not None:
             self.engine = engine
         elif self.sqlite_path is not None:
@@ -204,6 +211,14 @@ class LocalHybridRetriever:
                 create_directory=not read_only,
             )
         self._initialized = False
+
+    def set_cache(self, cache: Any | None, *, index_signature: str = "") -> None:
+        """Attach a pipeline-scoped cache without changing the store contract."""
+
+        self._cache = cache
+        self._index_signature = str(
+            index_signature or getattr(cache, "index_signature", "")
+        )
 
     def readiness_issues(self) -> list[str]:
         """Validate the SQL/vector index without calling the embedding API."""
@@ -340,6 +355,21 @@ class LocalHybridRetriever:
     def filter_candidates(self, manifest_filter: Mapping[str, Any], limit: int) -> list[dict[str, Any]]:
         self.initialize()
         filter_dict = dict(manifest_filter or {})
+        cache_key = "candidate-documents:" + canonical_json(
+            {
+                "index_signature": self._index_signature,
+                "table": self.table_name,
+                "manifest_filter": filter_dict,
+                "limit": int(limit),
+            }
+        )
+        cached = safe_cache_get(
+            getattr(self._cache, "candidate_documents", None),
+            cache_key,
+        )
+        if cached is not None:
+            return cached
+
         years = [year for year in (filter_dict.get("base_years") or []) if str(year).strip()]
         if len(years) > 1 and limit > 0:
             per_year = max(limit // len(years), 1)
@@ -352,8 +382,15 @@ class LocalHybridRetriever:
                     if row_id and row_id not in seen:
                         seen.add(row_id)
                         merged.append(row)
-            return merged[:limit]
-        return self._query_candidates(filter_dict, limit)
+            result = merged[:limit]
+        else:
+            result = self._query_candidates(filter_dict, limit)
+        safe_cache_put(
+            getattr(self._cache, "candidate_documents", None),
+            cache_key,
+            result,
+        )
+        return result
 
     def _query_candidates(self, manifest_filter: Mapping[str, Any], limit: int) -> list[dict[str, Any]]:
         where_sql, params = build_manifest_where_and_params(manifest_filter or {})

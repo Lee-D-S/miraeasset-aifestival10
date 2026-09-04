@@ -12,8 +12,15 @@ def build_stage2_node(
     *,
     retriever: Stage2Retriever,
     config: RetrievalConfig = RetrievalConfig(),
+    cache: Any | None = None,
 ) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
     """Build a node that writes only Stage2-owned State fields."""
+
+    # LocalHybridRetriever uses this registry for SQL candidate caching.  The
+    # optional capability keeps direct test/custom retrievers compatible.
+    set_cache = getattr(retriever, "set_cache", None)
+    if cache is not None and callable(set_cache):
+        set_cache(cache)
 
     def stage2_node(state: Mapping[str, Any]) -> dict[str, Any]:
         intent = state.get("intent") if isinstance(state.get("intent"), Mapping) else {}
