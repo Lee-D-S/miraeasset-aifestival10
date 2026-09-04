@@ -226,7 +226,7 @@ def test_structured_parser_cache_reuses_same_chunk_text_and_version(monkeypatch)
     structured.parse_structured_evidence(value + " ", cache=registry, document_id="chunk-1")
     assert len(calls) == 2
 
-    monkeypatch.setattr(structured, "STRUCTURED_PARSER_VERSION", "structured-parser-v2")
+    monkeypatch.setattr(structured, "STRUCTURED_PARSER_VERSION", structured.STRUCTURED_PARSER_VERSION + "-next")
     structured.parse_structured_evidence(value, cache=registry, document_id="chunk-1")
     assert len(calls) == 3
 

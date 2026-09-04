@@ -15,6 +15,7 @@ _SEGMENT_CUES = ("사업부문", "부문별", "부문", "segment", "business uni
 _PRODUCT_CUES = ("제품별", "제품", "서비스별", "서비스", "주요 매출원", "product")
 _REGION_CUES = ("지역별", "지역", "국가별", "국가", "region")
 _TOTAL_CUES = ("연결", "별도", "총계", "합계", "전체", "당사")
+_NON_TOTAL_CUES = ("기타매출", "용역 및", "매출유형", "매출 유형")
 
 
 def _text(value: object) -> str:
@@ -53,6 +54,11 @@ def aggregation_scope_for_context(
     ]
     joined = " ".join(_text(value) for value in values if _text(value))
 
+    # A table/section title naming a revenue-type breakdown (e.g. "매출유형별
+    # 현황") is a known non-total signal even when the row itself has no
+    # row_label to compare against the extracted metric label.
+    if any(cue in joined for cue in _NON_TOTAL_CUES):
+        return "not_total"
     # Explicit total rows take precedence over a table title such as
     # "부문별 매출현황". This keeps a table's total row usable for a total query.
     if any(cue in joined for cue in ("총계", "합계", "전체 합", "소계")):
