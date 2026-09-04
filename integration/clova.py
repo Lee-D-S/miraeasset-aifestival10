@@ -50,7 +50,11 @@ class ClovaChatClient:
 
     def __init__(self, *, host: str | None = None, api_key: str | None = None, model: str | None = None, timeout: float | None = None, max_retries: int | None = None, rate_limiter: ClovaRateLimiter | None = None):
         self.host = (host or os.getenv("CLOVA_API_HOST", "clovastudio.stream.ntruss.com")).strip()
-        self.api_key = (api_key or os.getenv("CLOVA_API_KEY", "")).strip()
+        self.api_key = (
+            api_key
+            or os.getenv("CLOVA_API_KEY", "")
+            or os.getenv("CLOVASTUDIO_API_KEY", "")
+        ).strip()
         self.model = model or os.getenv("CLOVA_CHAT_MODEL", "HCX-DASH-002")
         self.timeout = timeout if timeout is not None else _env_float("CLOVA_CHAT_TIMEOUT", 60.0)
         self.max_retries = max_retries if max_retries is not None else _env_int("CLOVA_CHAT_MAX_RETRIES", 1)
