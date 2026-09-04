@@ -14,7 +14,7 @@ _UNIT_RE = re.compile(r"단위\s*[:：]\s*([^()\n]+)")
 _PERIOD_RE = re.compile(r"20\d{2}\s*년(?:\s*\d{1,2}\s*월(?:\s*\d{1,2}\s*일?)?|\s*(?:[1-4]\s*분기|상반기|하반기|연간))?")
 _NUMBER_RE = re.compile(r"(?:△|▲|\-)?\s*\d[\d,]*(?:\.\d+)?")
 _CURRENCY_UNITS = ("조원", "십억원", "억원", "백만원", "천만원", "만원", "천원", "원")
-STRUCTURED_PARSER_VERSION = "structured-parser-v1"
+STRUCTURED_PARSER_VERSION = "structured-parser-v2"
 
 
 @dataclass(frozen=True)
@@ -46,6 +46,12 @@ class StructuredTable:
             return []
         column_labels = _column_labels(self.rows)
         header_index = _column_header_index(self.rows)
+        period_numbers = [
+            int(match.group(1))
+            for label in column_labels
+            if (match := re.search(r"제\s*(\d+)\s*기", label))
+        ]
+        current_period_number = max(period_numbers) if period_numbers else None
         results: list[dict[str, Any]] = []
         for row_index, row in enumerate(self.rows):
             if row_index == header_index:
@@ -58,6 +64,18 @@ class StructuredTable:
                 column_label = column_labels[column_index] if column_index < len(column_labels) else ""
                 if re.sub(r"\s+", "", column_label) in {"주석", "주"}:
                     continue
+                period_offset = None
+                compact_column_label = re.sub(r"\s+", "", column_label)
+                if "당" in compact_column_label:
+                    period_offset = 0
+                elif "전전" in compact_column_label:
+                    period_offset = -2
+                elif "전" in compact_column_label:
+                    period_offset = -1
+                elif current_period_number is not None:
+                    period_match = re.search(r"제\s*(\d+)\s*기", column_label)
+                    if period_match:
+                        period_offset = int(period_match.group(1)) - current_period_number
                 unit = _unit_for_column(self.unit_label, column_label, row_label, value)
                 currency = "USD" if re.search(r"\bUSD\b|\$", value) else ("KRW" if unit in _CURRENCY_UNITS else None)
                 basis = (
@@ -81,6 +99,7 @@ class StructuredTable:
                         "basis_label": basis,
                         "basis": basis,
                         "period_label": self.period_label,
+                        "period_offset": period_offset,
                         "source_format": self.source_format,
                     }
                 )
