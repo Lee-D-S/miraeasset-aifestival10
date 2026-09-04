@@ -78,11 +78,14 @@ def build_manifest_where_and_params(manifest_filter: Mapping[str, Any]) -> tuple
 
     corp_names = [str(c).strip() for c in (manifest_filter.get("corp_names") or []) if str(c).strip()]
     if corp_names:
+        # Stage1 resolves aliases to the canonical universe ``corp_name`` before
+        # it reaches here, so an exact match is correct and lets the SQL use a
+        # ``corp_name`` index. A ``LIKE '%name%'`` predicate cannot.
         ors = []
         for index, name in enumerate(corp_names):
             key = f"corp_{index}"
-            ors.append(f"corp_name LIKE :{key}")
-            params[key] = f"%{name}%"
+            ors.append(f"corp_name = :{key}")
+            params[key] = name
         clauses.append("(" + " OR ".join(ors) + ")")
 
     sector = str(manifest_filter.get("sector") or "").strip()
