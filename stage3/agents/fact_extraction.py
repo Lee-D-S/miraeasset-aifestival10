@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import re
-from typing import Iterable
+from collections.abc import Iterable, Mapping
+from typing import Any
 
+from integration.cache import canonical_json, safe_cache_get, safe_cache_put, sha256_text
 from stage3.contracts import AgentResult, Stage3Document, Stage3Fact, Stage3Intent
 from stage3.deterministic.normalization import UNIT_MULTIPLIERS, normalize_facts, normalize_number
 from stage3.metric_registry import (
@@ -250,7 +252,15 @@ def _text_fact(
     )
 
 
-def extract_facts(documents: Iterable[Stage3Document], intent: Stage3Intent) -> list[Stage3Fact]:
+FACT_EXTRACTOR_VERSION = "fact-extractor-v1"
+
+
+def _extract_facts_uncached(
+    documents: Iterable[Stage3Document],
+    intent: Stage3Intent,
+    *,
+    structured_cache: Any | None = None,
+) -> list[Stage3Fact]:
     """Extract grounded numeric and date facts from Stage2 evidence text."""
 
     facts: list[Stage3Fact] = []
@@ -271,7 +281,11 @@ def extract_facts(documents: Iterable[Stage3Document], intent: Stage3Intent) -> 
         rf"(?P<value>{NUMBER_PATTERN})\s*(?P<unit>{UNIT_PATTERN}|단위)?"
     )
     for document in documents:
-        structured = parse_structured_evidence(document.text or "")
+        structured = parse_structured_evidence(
+            document.text or "",
+            cache=structured_cache,
+            document_id=document.id,
+        )
         text = _normalize_disclosure_spacing(structured.text)
         metadata = document.metadata
         company = metadata.get("corp_name") or (intent.companies[0] if len(intent.companies) == 1 else None)
@@ -427,6 +441,53 @@ def extract_facts(documents: Iterable[Stage3Document], intent: Stage3Intent) -> 
                 confidence=0.85,
                 kind="date",
             ))
+    return facts
+
+
+def _fact_cache_profile(document: Stage3Document, intent: Stage3Intent) -> dict[str, Any]:
+    calculation = intent.calculation if isinstance(intent.calculation, Mapping) else {}
+    companies = tuple(getattr(intent, "companies", ()) or ())
+    metadata_company = str(document.metadata.get("corp_name") or "").strip()
+    return {
+        "document_id": document.id,
+        "text_sha256": sha256_text(document.text or ""),
+        "extractor_version": FACT_EXTRACTOR_VERSION,
+        "metric": str(intent.metric or ""),
+        "operation": str(calculation.get("operation") or ""),
+        "denominator_metric": str(calculation.get("denominator_metric") or ""),
+        "basis": str(intent.basis or ""),
+        # The fallback is only relevant when document metadata has no company.
+        "company_fallback": (
+            str(companies[0]) if len(companies) == 1 and not metadata_company else ""
+        ),
+    }
+
+
+def extract_facts(
+    documents: Iterable[Stage3Document],
+    intent: Stage3Intent,
+    *,
+    cache: Any | None = None,
+) -> list[Stage3Fact]:
+    """Extract facts, reusing only compatible document/profile results."""
+
+    document_list = list(documents)
+    if cache is None:
+        return _extract_facts_uncached(document_list, intent)
+
+    facts: list[Stage3Fact] = []
+    fact_cache = getattr(cache, "fact_results", None)
+    for document in document_list:
+        cache_key = "fact-results:" + canonical_json(_fact_cache_profile(document, intent))
+        cached = safe_cache_get(fact_cache, cache_key)
+        if cached is None:
+            cached = _extract_facts_uncached(
+                [document],
+                intent,
+                structured_cache=cache,
+            )
+            safe_cache_put(fact_cache, cache_key, cached)
+        facts.extend(cached)
     return facts
 
 

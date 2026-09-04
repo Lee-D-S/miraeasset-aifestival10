@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 import config
+from integration.cache import CacheRegistry, build_index_signature
 from integration.graph import StageNodes
 from integration.clova import ClovaChatClient
 from integration.rate_limit import ClovaRateLimiter
@@ -65,7 +66,12 @@ def _shared_clova_rate_limiter() -> ClovaRateLimiter:
     )
 
 
-def _embedding_function(settings: config.Stage2Settings):
+def _embedding_function(
+    settings: config.Stage2Settings,
+    *,
+    cache=None,
+    index_signature: str = "",
+):
     """Dispatch to the configured embedding adapter.
 
     ``e5`` is the only accepted value because it is the model used to build the
@@ -74,7 +80,10 @@ def _embedding_function(settings: config.Stage2Settings):
 
     embedding = settings.embedding
     if embedding == "e5":
-        return E5Embeddings()
+        kwargs = {}
+        if cache is not None:
+            kwargs = {"cache": cache, "index_signature": index_signature}
+        return E5Embeddings(**kwargs)
     raise RuntimeError(
         "unsupported Stage2 embedding: "
         f"{embedding}; choose one of {', '.join(config.VALID_STAGE2_EMBEDDINGS)}"
@@ -85,6 +94,8 @@ def _build_retriever(
     settings: config.Stage2Settings,
     *,
     corpus: Path | None,
+    cache=None,
+    index_signature: str = "",
 ):
     """Open the Stage2 retriever for the configured mode.
 
@@ -101,13 +112,19 @@ def _build_retriever(
             engine=readonly_sqlite_engine(settings.sqlite_path),
             vectorstore=local_chroma(
                 settings.chroma_path,
-                embedding_function=_embedding_function(settings),
+                embedding_function=_embedding_function(
+                    settings,
+                    cache=cache,
+                    index_signature=index_signature,
+                ),
                 collection_name=settings.chroma_collection,
                 create_directory=False,
             ),
             collection_name=settings.chroma_collection,
             table_name=settings.sqlite_table,
             read_only=True,
+            cache=cache,
+            index_signature=index_signature,
         )
     elif settings.mode == "container":
         # Dockerized Postgres RDB + Chroma server. LocalHybridRetriever's
@@ -119,11 +136,17 @@ def _build_retriever(
             vectorstore=chroma_server(
                 settings.chroma_host,
                 settings.chroma_port,
-                embedding_function=_embedding_function(settings),
+                embedding_function=_embedding_function(
+                    settings,
+                    cache=cache,
+                    index_signature=index_signature,
+                ),
                 collection_name=settings.chroma_collection,
             ),
             table_name=settings.sqlite_table,
             read_only=True,
+            cache=cache,
+            index_signature=index_signature,
         )
     else:
         raise RuntimeError(
@@ -151,6 +174,25 @@ def build_pipeline() -> StagePipeline:
     if corpus is not None:
         raise_if_invalid(validate_corpus_directory(corpus))
 
+    index_signature = build_index_signature(
+        stage2_mode=settings.mode,
+        sqlite_path=(
+            getattr(settings, "sqlite_path", None)
+            if settings.mode == "local"
+            else None
+        ),
+        chroma_path=(
+            getattr(settings, "chroma_path", None)
+            if settings.mode == "local"
+            else None
+        ),
+        backend_identity=(
+            f"{settings.mode}:{getattr(settings, 'sqlite_table', '')}:"
+            f"{getattr(settings, 'chroma_collection', '')}"
+        ),
+    )
+    cache = CacheRegistry.from_env(index_signature=index_signature)
+
     live_llm = _env_bool("CLOVA_LLM_ENABLED")
     stage1_use_llm = _env_bool("STAGE1_USE_LLM")
     reranker_enabled = _env_bool("CLOVA_RERANKER_ENABLED")
@@ -172,7 +214,12 @@ def build_pipeline() -> StagePipeline:
         use_llm=stage1_use_llm,
     )
 
-    retriever = _build_retriever(settings, corpus=corpus)
+    retriever = _build_retriever(
+        settings,
+        corpus=corpus,
+        cache=cache,
+        index_signature=index_signature,
+    )
     reranker_candidate_limit = max(
         _env_int("CLOVA_RERANKER_CANDIDATE_LIMIT", 100), 1
     )
@@ -200,9 +247,11 @@ def build_pipeline() -> StagePipeline:
         stage2=build_stage2_node(
             retriever=retriever,
             config=reranker_config,
+            cache=cache,
         ),
         stage3=build_stage3_node(
-            answer_writer=AnswerWriter(chat_client if live_llm else None)
+            answer_writer=AnswerWriter(chat_client if live_llm else None),
+            cache=cache,
         ),
         stage4=build_stage4_node(
             validator_client=chat_client if live_llm else None

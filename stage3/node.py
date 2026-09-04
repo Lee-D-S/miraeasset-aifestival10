@@ -154,6 +154,7 @@ def _execute_stage3(
     stage2_result: Any,
     writer: AnswerWriter,
     write_answer: bool = True,
+    cache: Any | None = None,
 ) -> Stage3Result:
     if not intent.is_processable:
         return Stage3Result(
@@ -168,6 +169,7 @@ def _execute_stage3(
             intent=intent,
             stage2_result=stage2_result,
             writer=writer,
+            cache=cache,
         )
 
     bundle = adapt_stage2_bundle(stage2_result)
@@ -185,7 +187,7 @@ def _execute_stage3(
         if "pdf" in file_format and not document.text.strip() and not has_span_text:
             warnings.append(f"{document.id}: pdf_text_required")
 
-    raw_facts = extract_facts(documents, intent)
+    raw_facts = extract_facts(documents, intent, cache=cache)
     facts, normalization_warnings = normalize_facts(raw_facts, intent)
     warnings.extend(normalization_warnings)
 
@@ -320,6 +322,7 @@ def _execute_multi_query_stage3(
     intent: Stage3Intent,
     stage2_result: Any,
     writer: AnswerWriter,
+    cache: Any | None = None,
 ) -> Stage3Result:
     raw_subresults = stage2_result.get("subresults", []) if isinstance(stage2_result, Mapping) else []
     by_id = {
@@ -342,6 +345,7 @@ def _execute_multi_query_stage3(
             stage2_result=by_id.get(subquery_id, {}),
             writer=writer,
             write_answer=False,
+            cache=cache,
         )
         sub_dict = subresult.to_dict()
         sub_dict["subquery_id"] = subquery_id
@@ -460,6 +464,7 @@ def build_stage3_node(
     *,
     answer_client: Any | None = None,
     answer_writer: AnswerWriter | None = None,
+    cache: Any | None = None,
 ) -> Callable[[Mapping[str, Any]], Stage3NodeOutput]:
     """Build the single LangGraph-compatible Stage3 node.
 
@@ -481,6 +486,7 @@ def build_stage3_node(
                 intent=intent,
                 stage2_result=state.get("stage2_result", {}),
                 writer=writer,
+                cache=cache,
             )
         except Exception as error:  # noqa: BLE001 - node boundary must reach Stage4
             result = Stage3Result(
