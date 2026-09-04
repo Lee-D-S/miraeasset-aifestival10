@@ -12,6 +12,7 @@ from stage4.numeric import validate_numeric_answer
 from stage4.semantic import deterministic_semantic_fallback, validate_semantics
 from stage3.adapters.stage1 import adapt_stage1_intent
 from stage3.contracts import Stage3Fact
+from stage3.deterministic.calculation_planner import validate_analysis_plan
 from stage3.grounding import matching_facts, strict_grounding_enabled
 
 
@@ -108,6 +109,41 @@ def _exact_multi_query_facts(
     return matched, missing
 
 
+def _exact_plan_facts(
+    *,
+    stage3_result: Mapping[str, Any],
+    plan: Mapping[str, Any],
+) -> tuple[list[Stage3Fact], list[str]]:
+    """Apply the same requirement gate used by canonical plan execution."""
+
+    facts = [
+        Stage3Fact.from_dict(fact)
+        for fact in stage3_result.get("facts", [])
+        if isinstance(fact, Mapping)
+    ]
+    matched: list[Stage3Fact] = []
+    missing: list[str] = []
+    for requirement in plan.get("requirements", []):
+        if not isinstance(requirement, Mapping):
+            continue
+        identifier = str(requirement.get("id", "requirement"))
+        metric = str(requirement.get("metric", ""))
+        companies = {str(item) for item in requirement.get("companies", []) if str(item).strip()}
+        periods = {str(item) for item in requirement.get("periods", []) if str(item).strip()}
+        candidates = [
+            fact for fact in facts
+            if fact.kind == "numeric"
+            and fact.metric == metric
+            and (not companies or str(fact.company) in companies)
+            and (not periods or any(str(period) in str(fact.period or "") for period in periods))
+        ]
+        if requirement.get("required", True) and not candidates:
+            missing.append(identifier)
+        matched.extend(candidates)
+    matched.extend(fact for fact in facts if fact.kind == "derived")
+    return matched, missing
+
+
 def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any | None = None) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
     """Build the final validation node for the shared four-stage graph."""
 
@@ -165,10 +201,29 @@ def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any
                 for fact in stage3_result.get("facts", [])
                 if isinstance(fact, Mapping)
             ]
-            stage3_intent = adapt_stage1_intent(intent, question=question)
+            intent_source = dict(intent) if isinstance(intent, Mapping) else {}
+            if isinstance(state.get("analysis_plan"), Mapping) and state["analysis_plan"].get("status") == "ready":
+                intent_source["analysis_plan"] = dict(state["analysis_plan"])
+            stage3_intent = adapt_stage1_intent(intent_source, question=question)
             missing_subqueries: list[str] = []
-            if strict_grounding_enabled() and stage3_intent.metric:
-                if len(stage3_intent.query_plan) > 1:
+            if strict_grounding_enabled() and (
+                stage3_intent.metric or stage3_intent.analysis_plan.get("status") == "ready"
+            ):
+                if stage3_intent.analysis_plan.get("status") == "ready":
+                    try:
+                        plan = validate_analysis_plan(stage3_intent.analysis_plan)
+                    except (TypeError, ValueError) as error:
+                        numeric["pass"] = False
+                        numeric.setdefault("errors", []).append(
+                            f"invalid analysis_plan: {type(error).__name__}"
+                        )
+                        exact_facts = []
+                    else:
+                        exact_facts, missing_subqueries = _exact_plan_facts(
+                            stage3_result=stage3_result,
+                            plan=plan,
+                        )
+                elif len(stage3_intent.query_plan) > 1:
                     exact_facts, missing_subqueries = _exact_multi_query_facts(
                         stage3_result=stage3_result,
                         raw_intent=intent if isinstance(intent, Mapping) else {},

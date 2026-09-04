@@ -147,10 +147,15 @@ class AgentState(MessagesState):
     # Stage1
     intent: dict[str, Any] | None
     route: Route | None
+    analysis_plan: dict[str, Any] | None
+    plan_status: str | None
+    plan_failure_reason: str | None
+    plan_trace: list[str]
 
     # Stage2
     stage2_result: dict[str, Any] | None
     documents: list[dict[str, Any]] | None
+    search_queries: dict[str, str]
 
     # Stage3
     stage3_result: dict[str, Any] | None
@@ -193,8 +198,13 @@ class AgentStateUpdate(TypedDict, total=False):
     context: str | None
     intent: dict[str, Any] | None
     route: Route | None
+    analysis_plan: dict[str, Any] | None
+    plan_status: str | None
+    plan_failure_reason: str | None
+    plan_trace: list[str]
     stage2_result: dict[str, Any] | None
     documents: list[dict[str, Any]] | None
+    search_queries: dict[str, str]
     stage3_result: dict[str, Any] | None
     facts: list[dict[str, Any]] | None
     stage4_result: dict[str, Any] | None
@@ -221,9 +231,13 @@ IMMUTABLE_STATE_FIELDS = frozenset({"question_id", "question"})
 
 STAGE_WRITE_FIELDS: Mapping[str, frozenset[str]] = {
     "stage1": frozenset({"intent", "route", "search_query"}),
-    "stage2": frozenset({"stage2_result", "retry_num", "search_attempts", "documents", "search_query"}),
+    "stage2": frozenset({"stage2_result", "retry_num", "search_attempts", "documents", "search_query", "search_queries"}),
     "stage3": frozenset({"stage3_result", "answer", "context", "messages", "gen_retry_num", "facts"}),
     "stage4": frozenset({"stage4_result", "answer", "messages", "validation_attempts"}),
+    "planner": frozenset({
+        "analysis_plan", "plan_status", "plan_failure_reason", "plan_trace",
+        "planner_retry_num", "planner_attempts",
+    }),
 }
 
 
@@ -281,8 +295,13 @@ def make_initial_agent_state(
         "context": None,
         "intent": None,
         "route": None,
+        "analysis_plan": None,
+        "plan_status": None,
+        "plan_failure_reason": None,
+        "plan_trace": [],
         "stage2_result": None,
         "documents": None,
+        "search_queries": {},
         "stage3_result": None,
         "facts": None,
         "stage4_result": None,

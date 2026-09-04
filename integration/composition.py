@@ -8,6 +8,7 @@ from pathlib import Path
 import config
 from integration.cache import CacheRegistry, build_index_signature
 from integration.graph import StageNodes
+from integration.supervisor import build_planner_tool
 from integration.clova import ClovaChatClient
 from integration.rate_limit import ClovaRateLimiter
 from integration.reranker import ClovaRerankerClient
@@ -29,6 +30,7 @@ from stage2 import (
     readonly_sqlite_engine,
 )
 from stage3 import build_stage3_node
+from stage3.deterministic.calculation_planner import build_state_analysis_plan
 from stage4 import build_stage4_node
 from stage4.node import build_answer_regeneration_node
 from stage3.agents.answer import AnswerWriter
@@ -161,11 +163,12 @@ def build_pipeline() -> StagePipeline:
 
     live_llm = _env_bool("CLOVA_LLM_ENABLED")
     stage1_use_llm = _env_bool("STAGE1_USE_LLM")
+    query_planner_llm_enabled = _env_bool("QUERY_PLANNER_LLM_ENABLED")
     reranker_enabled = _env_bool("CLOVA_RERANKER_ENABLED")
     clova_rate_limiter = _shared_clova_rate_limiter()
     chat_client = (
         ClovaChatClient(rate_limiter=clova_rate_limiter)
-        if live_llm or stage1_use_llm
+        if live_llm or stage1_use_llm or query_planner_llm_enabled
         else None
     )
     reranker_client = (
@@ -203,6 +206,13 @@ def build_pipeline() -> StagePipeline:
         if live_llm and chat_client is not None
         else None
     )
+    calculation_planner = build_planner_tool(
+        lambda state: build_state_analysis_plan(
+            state,
+            llm_client=chat_client if query_planner_llm_enabled else None,
+            llm_enabled=query_planner_llm_enabled,
+        )
+    )
 
     return StagePipeline(StageNodes(
         stage1=stage1,
@@ -222,6 +232,7 @@ def build_pipeline() -> StagePipeline:
         stage4=build_stage4_node(
             validator_client=chat_client if live_llm else None
         ),
+        calculation_planner=calculation_planner,
         answer_regeneration=regeneration,
     ))
 

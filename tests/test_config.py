@@ -17,6 +17,7 @@ _STAGE2_ENV = (
     "STAGE2_ALLOW_PARTIAL_INDEX",
     "CLOVA_LLM_ENABLED",
     "STAGE1_USE_LLM",
+    "QUERY_PLANNER_LLM_ENABLED",
     "CLOVA_RERANKER_ENABLED",
     "CORPUS_DIR",
 )
@@ -74,10 +75,10 @@ def test_validate_environment_requires_key_only_for_live_llm(monkeypatch):
     assert any("CLOVA_API_KEY" in issue for issue in validate_environment("local"))
 
 
-@pytest.mark.parametrize("flag", ["STAGE1_USE_LLM", "CLOVA_RERANKER_ENABLED"])
+@pytest.mark.parametrize("flag", ["STAGE1_USE_LLM", "QUERY_PLANNER_LLM_ENABLED", "CLOVA_RERANKER_ENABLED"])
 def test_validate_environment_requires_key_for_each_clova_capability(monkeypatch, flag):
     monkeypatch.delenv("CLOVA_API_KEY", raising=False)
-    monkeypatch.setenv(flag, "1" if flag == "STAGE1_USE_LLM" else "true")
+    monkeypatch.setenv(flag, "1" if flag in {"STAGE1_USE_LLM", "QUERY_PLANNER_LLM_ENABLED"} else "true")
     assert any("CLOVA_API_KEY" in issue for issue in validate_environment("local"))
 
 

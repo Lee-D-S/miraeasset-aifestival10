@@ -163,7 +163,7 @@ class ClovaChatClient:
             operation="answer_generation",
         )
 
-    def generate_json(self, messages: list[dict[str, Any]], *, schema: Mapping[str, Any], **_: Any) -> dict[str, Any]:
+    def generate_json(self, messages: list[dict[str, Any]], *, schema: Mapping[str, Any], operation: str = "semantic_validation", **_: Any) -> dict[str, Any]:
         prompt = list(messages) + [{
             "role": "user",
             "content": "Return one JSON object only. Follow this schema exactly:\n" + json.dumps(schema, ensure_ascii=False),
@@ -174,7 +174,7 @@ class ClovaChatClient:
             self._request(
                 prompt,
                 max_tokens=_env_int("CLOVA_SEMANTIC_MAX_TOKENS", 128),
-                operation="semantic_validation",
+                operation=operation,
             ),
             flags=re.IGNORECASE | re.DOTALL,
         ).strip()

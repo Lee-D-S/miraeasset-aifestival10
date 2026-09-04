@@ -39,8 +39,9 @@ def validate_environment(mode: str) -> list[str]:
         )
     live_llm = os.getenv("CLOVA_LLM_ENABLED", "false").strip().lower() == "true"
     stage1_llm = os.getenv("STAGE1_USE_LLM", "0").strip().lower() in {"1", "true", "yes", "on"}
+    query_planner_llm = os.getenv("QUERY_PLANNER_LLM_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
     reranker = os.getenv("CLOVA_RERANKER_ENABLED", "false").strip().lower() == "true"
-    provider_enabled = live_llm or stage1_llm or reranker
+    provider_enabled = live_llm or stage1_llm or query_planner_llm or reranker
     if provider_enabled and not _api_key():
         issues.append("CLOVA_API_KEY is not configured")
     if provider_enabled and not os.getenv("CLOVA_API_HOST", "clovastudio.stream.ntruss.com").strip():

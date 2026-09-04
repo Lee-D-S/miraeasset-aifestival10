@@ -14,8 +14,12 @@ from stage3.agents.comparison import compare_facts
 from stage3.agents.event_linker import link_events
 from stage3.agents.fact_extraction import extract_facts
 from stage3.contracts import Stage3Fact, Stage3Intent, Stage3Result
-from stage3.deterministic.calculation_planner import SUPPORTED_OPERATIONS, build_calculation_plan
-from stage3.deterministic.calculations import calculate_facts
+from stage3.deterministic.calculation_planner import (
+    SUPPORTED_OPERATIONS,
+    build_calculation_plan,
+    validate_analysis_plan,
+)
+from stage3.deterministic.calculations import calculate_facts, execute_analysis_plan
 from stage3.deterministic.normalization import normalize_facts
 from stage3.grounding import matching_facts, strict_grounding_enabled
 from stage3.state import Stage3NodeOutput
@@ -147,6 +151,143 @@ def _fact_matches_requested_metric(fact: Stage3Fact, requested: str) -> bool:
     return requested in fact.metric.lower() or requested in fact.label.lower()
 
 
+def _plan_sub_intent(intent: Stage3Intent, requirement: Mapping[str, Any]) -> Stage3Intent:
+    source = intent.to_dict()
+    source["query_plan"] = []
+    source["analysis_plan"] = {}
+    source["metric"] = requirement.get("metric")
+    source["calculation"] = {}
+    source["time"] = {"years": list(requirement.get("periods", []))}
+    source["manifest_filter"] = dict(requirement.get("manifest_filter", {}))
+    return adapt_stage1_intent(source, question=intent.question)
+
+
+def _plan_documents(stage2_result: Any, requirement_id: str, fallback: list[Any]) -> list[Any]:
+    if not isinstance(stage2_result, Mapping):
+        return fallback
+    for item in stage2_result.get("subresults", []):
+        if not isinstance(item, Mapping):
+            continue
+        if str(item.get("requirement_id") or item.get("subquery_id")) != requirement_id:
+            continue
+        bundle = adapt_stage2_bundle(item)
+        return bundle.effective_documents()
+    return fallback
+
+
+def _execute_analysis_plan_stage3(
+    *,
+    question: str,
+    intent: Stage3Intent,
+    stage2_result: Any,
+    writer: AnswerWriter,
+    cache: Any | None = None,
+) -> Stage3Result:
+    try:
+        plan = validate_analysis_plan(intent.analysis_plan)
+    except (TypeError, ValueError) as error:
+        return Stage3Result(
+            status="insufficient_evidence",
+            warnings=[f"analysis_plan_invalid: {type(error).__name__}"],
+            trace=["stage3_start", "analysis_plan_invalid"],
+        )
+
+    bundle = adapt_stage2_bundle(stage2_result)
+    documents = bundle.effective_documents()
+    warnings = list(intent.warnings)
+    warnings.extend(bundle.retrieval_trace)
+    facts: list[Stage3Fact] = []
+    seen_facts: set[tuple[str, str, str, str, str, str]] = set()
+    for requirement in plan["requirements"]:
+        requirement_id = str(requirement["id"])
+        sub_documents = _plan_documents(stage2_result, requirement_id, documents)
+        sub_intent = _plan_sub_intent(intent, requirement)
+        extracted = extract_facts(sub_documents, sub_intent, cache=cache)
+        normalized, normalization_warnings = normalize_facts(extracted, sub_intent)
+        warnings.extend(f"{requirement_id}: {warning}" for warning in normalization_warnings)
+        for fact in normalized:
+            key = (
+                fact.document_id,
+                fact.metric,
+                fact.label,
+                str(fact.period),
+                str(fact.company),
+                str(fact.normalized_value),
+            )
+            if key not in seen_facts:
+                seen_facts.add(key)
+                facts.append(fact)
+    execution = execute_analysis_plan(plan, facts)
+    warnings.extend(execution["warnings"])
+    derived_facts = [Stage3Fact.from_dict(value) for value in execution["derived_facts"]]
+    all_facts = [*facts, *derived_facts]
+    calculations = list(execution["calculations"])
+    comparisons = list(execution["comparisons"])
+    citations = _build_citations(documents, all_facts, calculations, comparisons, [])
+    analysis_success = bool(execution["success"])
+    result = Stage3Result(
+        status="success" if analysis_success else "insufficient_evidence",
+        facts=[fact.to_dict() for fact in all_facts],
+        calculations=calculations,
+        comparison_results=comparisons,
+        citations=citations,
+        warnings=warnings,
+        trace=[
+            "stage3_start",
+            "analysis_plan_executed",
+            f"steps={len(plan['steps'])}",
+            f"requirements={len(plan['requirements'])}",
+            f"facts={len(all_facts)}",
+        ],
+        provider_status={},
+    )
+    valid, validation_warnings = validate_stage3_result(result, intent)
+    if not valid:
+        result = replace(
+            result,
+            status="insufficient_evidence",
+            warnings=[*result.warnings, *validation_warnings],
+            trace=[*result.trace, "stage3_validation_failed"],
+        )
+        analysis_success = False
+
+    if analysis_success:
+        try:
+            answer, answer_mode = writer.write(
+                question=question,
+                intent=intent,
+                facts=all_facts,
+                calculations=calculations,
+                comparisons=comparisons,
+                events=[],
+                citations=citations,
+                warnings=warnings,
+            )
+        except Exception as error:  # noqa: BLE001 - injected provider boundary
+            answer = writer.deterministic(
+                intent=intent,
+                facts=all_facts,
+                calculations=calculations,
+                comparisons=comparisons,
+                events=[],
+                citations=citations,
+                warnings=[*warnings, f"answer_provider_error: {type(error).__name__}"],
+            )
+            answer_mode = "deterministic_fallback"
+    else:
+        answer = writer.deterministic(
+            intent=intent,
+            facts=all_facts,
+            calculations=calculations,
+            comparisons=comparisons,
+            events=[],
+            citations=citations,
+            warnings=warnings,
+        )
+        answer_mode = "deterministic_fallback"
+    return replace(result, answer=str(answer), trace=[*result.trace, f"answer_mode={answer_mode}"])
+
+
 def _execute_stage3(
     *,
     question: str,
@@ -161,6 +302,15 @@ def _execute_stage3(
             status=intent.route,
             warnings=list(intent.warnings),
             trace=[f"route={intent.route}", "stage3_skipped"],
+        )
+
+    if intent.analysis_plan.get("status") == "ready":
+        return _execute_analysis_plan_stage3(
+            question=question,
+            intent=intent,
+            stage2_result=stage2_result,
+            writer=writer,
+            cache=cache,
         )
 
     if len(intent.query_plan) > 1:
@@ -446,6 +596,8 @@ def _intent_from_state(state: Mapping[str, Any]) -> Stage3Intent:
             return adapt_stage1_intent({**raw_intent.to_dict(), "route": state_route}, question=question or raw_intent.question)
         return raw_intent
     source = dict(raw_intent) if isinstance(raw_intent, Mapping) else {}
+    if isinstance(state.get("analysis_plan"), Mapping) and state["analysis_plan"].get("status") == "ready":
+        source["analysis_plan"] = dict(state["analysis_plan"])
     if state_route is not None:
         source["route"] = state_route
     question = question or str(source.get("raw_question", source.get("question", "")))
