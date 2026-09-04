@@ -56,7 +56,7 @@ def _think_trace(state: dict[str, Any]) -> str:
         if isinstance(value, dict):
             trace[key] = {
                 field: value.get(field)
-                for field in ("status", "warnings", "trace", "provider_status")
+                for field in ("status", "warnings", "trace", "provider_status", "failure_reason_code")
                 if field in value
             }
             subresults = value.get("subresults")

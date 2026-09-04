@@ -125,6 +125,7 @@ class Stage4Result(TypedDict, total=False):
     warnings: list[str]
     trace: list[str]
     provider_status: dict[str, Any]
+    failure_reason_code: str | None
 
 
 class AgentState(MessagesState):

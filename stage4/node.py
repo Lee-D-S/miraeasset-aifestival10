@@ -5,6 +5,7 @@ import re
 from typing import Any, Callable
 
 from integration.rate_limit import is_rate_limit_error, rate_limit_event
+from integration.failure_response import build_failure_response
 from stage4.citation import validate_citations
 from stage4.contracts import Stage4Result
 from stage4.numeric import validate_numeric_answer
@@ -12,14 +13,6 @@ from stage4.semantic import deterministic_semantic_fallback, validate_semantics
 from stage3.adapters.stage1 import adapt_stage1_intent
 from stage3.contracts import Stage3Fact
 from stage3.grounding import matching_facts, strict_grounding_enabled
-
-
-_SAFE_ANSWERS = {
-    "need_clarify": "질문의 기업·기간·기준이 명확하지 않습니다.",
-    "unanswerable": "제공된 공시 코퍼스에서 확인할 수 없는 질문입니다.",
-    "unsafe": "공시 근거만으로 답변할 수 없는 요청입니다.",
-}
-_FAILURE_ANSWER = "제공된 공시 근거만으로 답변을 검증할 수 없습니다."
 
 
 def _message(answer: str) -> Any:
@@ -123,14 +116,31 @@ def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any
     def stage4_node(state: Mapping[str, Any]) -> dict[str, Any]:
         route = str(state.get("route", "unanswerable"))
         if route != "ok":
-            answer = _SAFE_ANSWERS.get(route, _FAILURE_ANSWER)
-            result = Stage4Result(status=route, answer=answer, regenerated=False, trace=["blocked_route", f"route={route}"])
+            failure = build_failure_response(state)
+            answer = failure.answer
+            result = Stage4Result(
+                status=route,
+                answer=answer,
+                regenerated=False,
+                trace=["blocked_route", f"route={route}"],
+                failure_reason_code=failure.reason_code.value,
+            )
             return {"stage4_result": result.to_dict(), "answer": answer, "messages": [_message(answer)]}
 
         stage3_result = state.get("stage3_result")
         if not isinstance(stage3_result, Mapping):
-            result = Stage4Result(status="validation_failed", answer=_FAILURE_ANSWER, warnings=["stage3_result가 없습니다."], trace=["missing_stage3_result"])
-            return {"stage4_result": result.to_dict(), "answer": _FAILURE_ANSWER, "messages": [_message(_FAILURE_ANSWER)]}
+            failure = build_failure_response(
+                state,
+                reason_hint="최종 답변을 검증할 Stage3 분석 결과가 없습니다.",
+            )
+            result = Stage4Result(
+                status="validation_failed",
+                answer=failure.answer,
+                warnings=["stage3_result가 없습니다."],
+                trace=["missing_stage3_result"],
+                failure_reason_code=failure.reason_code.value,
+            )
+            return {"stage4_result": result.to_dict(), "answer": failure.answer, "messages": [_message(failure.answer)]}
 
         question = str(state.get("question", ""))
         intent = state.get("intent") or {}
@@ -142,6 +152,7 @@ def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any
         provider_status: dict[str, Any] = {}
         trace = ["stage4_start"]
         regenerated = int(state.get("regeneration_attempts", 0) or 0) > 0
+        failure_reason_code: str | None = None
 
         try:
             stage2_result = state.get("stage2_result") if isinstance(state.get("stage2_result"), Mapping) else None
@@ -285,8 +296,15 @@ def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any
                 trace.append("semantic_uncertainty_grounded")
             valid = bool(numeric.get("pass") and citation.get("pass") and semantic.get("pass"))
             if not valid:
-                answer = _FAILURE_ANSWER
+                failure = build_failure_response(
+                    state,
+                    numeric_check=numeric,
+                    citation_check=citation,
+                    semantic_check=semantic,
+                )
+                answer = failure.answer
                 status = "validation_failed"
+                failure_reason_code = failure.reason_code.value
                 trace.append("validation_failed")
                 if not semantic.get("pass", False):
                     trace.append("semantic_validation_failed")
@@ -300,6 +318,7 @@ def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any
                             warnings.append(f"semantic_{key}: {values}")
             else:
                 status = "regenerated" if regenerated else "success"
+                failure_reason_code = None
                 trace.append("validated")
         except Exception as error:  # workflow boundary must fail closed
             if is_rate_limit_error(error) and numeric.get("pass") and citation.get("pass") and answer.strip():
@@ -316,15 +335,23 @@ def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any
                     "summary": "Deterministic numeric and citation checks passed; semantic provider was rate-limited.",
                 }
                 status = "success"
+                failure_reason_code = None
                 warnings.append("provider_rate_limited: semantic_validation")
                 trace.append("provider_rate_limited_deterministic_grounding")
             else:
-                answer = _FAILURE_ANSWER
+                failure = build_failure_response(
+                    state,
+                    numeric_check=numeric,
+                    citation_check=citation,
+                    semantic_check=semantic,
+                )
+                answer = failure.answer
                 status = "validation_failed"
-                warnings.append(f"stage4_error: {type(error).__name__}: {error}")
+                failure_reason_code = failure.reason_code.value
+                warnings.append(f"stage4_error: {type(error).__name__}")
                 trace.append("validation_error")
 
-        result = Stage4Result(status=status, answer=answer, numeric_check=numeric, citation_check=citation, semantic_check=semantic, regenerated=regenerated, warnings=warnings, trace=trace, provider_status=provider_status)
+        result = Stage4Result(status=status, answer=answer, numeric_check=numeric, citation_check=citation, semantic_check=semantic, regenerated=regenerated, warnings=warnings, trace=trace, provider_status=provider_status, failure_reason_code=failure_reason_code)
         return {
             "stage4_result": result.to_dict(),
             "answer": answer,
