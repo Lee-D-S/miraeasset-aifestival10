@@ -21,6 +21,10 @@ Korean compound amounts such as `300조 8,709억원` are normalized
 deterministically to canonical KRW while retaining the original display text
 for grounded answers. `DIS164_STRICT_GROUNDING_V2` controls the gate and is
 enabled by default; setting it to `false` is a temporary rollback switch.
+Structured DART tables map `제N기` columns relative to the table's highest
+period number, so prior-year cells cannot inherit the report document's current
+period. Revenue-type rows such as `용역 및 기타매출` remain `unknown` scope
+and cannot satisfy a total-revenue lookup.
 
 외부 4-stage 그래프의 전체 실행 State는 `C:/projects/dis-164/shared_state.py`의
 `AgentState`를 사용한다. 이 문서의 `Stage3NodeState`/`Stage3NodeOutput`은 그

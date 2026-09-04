@@ -50,6 +50,13 @@ def _period_from_table_context(context: dict, metadata: dict) -> str | None:
         year_value = int(float(year))
     except (TypeError, ValueError):
         return None
+    if context.get("period_offset") is not None:
+        try:
+            offset = int(context["period_offset"])
+        except (TypeError, ValueError):
+            offset = None
+        if offset is not None:
+            return str(year_value + offset)
     if "전전" in column_label:
         return str(year_value - 2)
     if "전" in column_label:
@@ -252,7 +259,7 @@ def _text_fact(
     )
 
 
-FACT_EXTRACTOR_VERSION = "fact-extractor-v1"
+FACT_EXTRACTOR_VERSION = "fact-extractor-v2"
 
 
 def _extract_facts_uncached(

@@ -15,6 +15,7 @@ _SEGMENT_CUES = ("사업부문", "부문별", "부문", "segment", "business uni
 _PRODUCT_CUES = ("제품별", "제품", "서비스별", "서비스", "주요 매출원", "product")
 _REGION_CUES = ("지역별", "지역", "국가별", "국가", "region")
 _TOTAL_CUES = ("연결", "별도", "총계", "합계", "전체", "당사")
+_NON_TOTAL_CUES = ("기타매출", "용역 및", "매출유형", "매출 유형")
 
 
 def _text(value: object) -> str:
@@ -37,11 +38,15 @@ def aggregation_scope_for_context(
         context.get("section_name", ""),
         context.get("row_label", ""),
         context.get("column_label", ""),
-        context.get("basis", ""),
-        context.get("basis_label", ""),
     ]
     joined = " ".join(_text(value) for value in values if _text(value))
 
+    # A connected/standalone basis identifies the statement basis, not the
+    # aggregation scope. Revenue-type rows such as ``용역 및 기타매출`` must
+    # not become total revenue merely because the surrounding document says
+    # ``연결``.
+    if any(cue in joined for cue in _NON_TOTAL_CUES):
+        return "unknown"
     # Explicit total rows take precedence over a table title such as
     # "부문별 매출현황". This keeps a table's total row usable for a total query.
     if any(cue in joined for cue in ("총계", "합계", "전체 합", "소계")):
@@ -53,6 +58,11 @@ def aggregation_scope_for_context(
     if any(cue in joined for cue in _SEGMENT_CUES):
         return "segment"
     if any(cue in joined for cue in _TOTAL_CUES):
+        return "total"
+    compact_label = re.sub(r"\s+", "", _text(label))
+    compact_row_label = re.sub(r"\s+", "", _text(context.get("row_label", "")))
+    compact_row_label = re.sub(r"^[^가-힣A-Za-z]+", "", compact_row_label)
+    if compact_label in {"매출액", "매출"} and compact_row_label in {"", "매출액", "매출"}:
         return "total"
     return "unknown"
 
@@ -149,8 +159,11 @@ def fact_matches_intent(
         requested_scope = requested_aggregation_scope(intent)
         if fact.aggregation_scope == requested_scope:
             return True
-        # Ratio/amount cells often omit "연결" in the row, so scope stays unknown.
-        return fact.aggregation_scope == "unknown" and requested_scope == "total"
+        # Balance-sheet ratios are queried through Stage1's total_assets
+        # retrieval key, but the ratio row itself may not carry total-scope
+        # wording. Keep those ratio lookups compatible without weakening
+        # revenue/segment scope matching.
+        return fact.metric == "ratio" and fact.aggregation_scope == "unknown" and requested_scope == "total"
     return True
 
 
