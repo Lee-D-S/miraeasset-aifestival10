@@ -153,10 +153,8 @@ class LocalHybridRetriever:
 
     Defaults to a read-only local SQLite file and a local Chroma persist
     directory.
-    Pass ``engine``/``vectorstore`` directly (e.g. from
-    :mod:`stage2.backends`'s ``postgres_engine``/``chroma_server``) to point
-    the same class at a Dockerized RDB/vector DB instead -- the SQL and
-    vector-search code below is identical either way.
+    Tests may pass ``engine``/``vectorstore`` directly to isolate the local
+    SQLite and Chroma adapters from the retriever logic.
     """
 
     def __init__(
@@ -394,7 +392,7 @@ class LocalHybridRetriever:
 
     def _query_candidates(self, manifest_filter: Mapping[str, Any], limit: int) -> list[dict[str, Any]]:
         where_sql, params = build_manifest_where_and_params(manifest_filter or {})
-        # Explicit-key ordering works on both SQLite and PostgreSQL.
+        # Explicit-key ordering keeps candidate results deterministic.
         sql = (
             f"SELECT {self._select_columns()} FROM {self.table_name}"
             f"{where_sql} ORDER BY id ASC LIMIT :limit"

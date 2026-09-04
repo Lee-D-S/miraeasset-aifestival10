@@ -61,8 +61,7 @@ CHROMA_PATH = resolve_path(
     os.getenv("STAGE2_CHROMA_PATH"), LOCAL_DB_DIR / "chunk_index_chroma"
 )
 
-# One collection name for every vector-store mode so a local persist dir and
-# a Chroma server address the same logical collection.
+# One collection name for the local Chroma persist directory.
 CHROMA_COLLECTION = os.getenv("STAGE2_CHROMA_COLLECTION", "").strip() or "chunk_vectors"
 SQLITE_TABLE = os.getenv("STAGE2_SQL_TABLE", "").strip() or "chunk_index"
 # Canonical default for unset ``STAGE2_EMBEDDING``. Keep this a module constant
@@ -71,18 +70,8 @@ SQLITE_TABLE = os.getenv("STAGE2_SQL_TABLE", "").strip() or "chunk_index"
 DEFAULT_STAGE2_EMBEDDING = "e5"
 EMBEDDING = DEFAULT_STAGE2_EMBEDDING
 
-# Container store: a Dockerized Postgres RDB and a Chroma *server*.
-RDB_URL = os.getenv("STAGE2_RDB_URL", "").strip()
-CHROMA_HOST = os.getenv("STAGE2_CHROMA_HOST", "").strip()
-
-try:
-    CHROMA_PORT = int(os.getenv("STAGE2_CHROMA_PORT", "8000") or "8000")
-except ValueError:
-    CHROMA_PORT = 8000
-
-
 # --- Stage2 mode -------------------------------------------------------------
-VALID_STAGE2_MODES: tuple[str, ...] = ("local", "container")
+VALID_STAGE2_MODES: tuple[str, ...] = ("local",)
 # The supplied SQLite/Chroma index and the active query path share this model.
 # Keep the environment variable for deployment compatibility, but do not allow
 # a second embedding space to be selected accidentally.
@@ -94,8 +83,9 @@ DEFAULT_STAGE2_MODE = "local"
 def resolve_stage2_mode() -> str:
     """Return the configured Stage2 mode.
 
-    ``STAGE2_MODE`` (``local`` | ``container``) is the only backend selector.
-    Leaving it unset selects the supplied local read-only index.
+    ``STAGE2_MODE`` is retained as a compatibility setting.  Only ``local``
+    is supported, and leaving it unset selects the supplied local read-only
+    index.
     """
 
     mode = os.getenv("STAGE2_MODE", "").strip().lower()
@@ -131,9 +121,6 @@ class Stage2Settings:
     mode: str
     sqlite_path: Path
     chroma_path: Path
-    rdb_url: str
-    chroma_host: str
-    chroma_port: int
     chroma_collection: str
     sqlite_table: str
     embedding: str
@@ -151,9 +138,6 @@ class Stage2Settings:
             mode=resolve_stage2_mode(),
             sqlite_path=resolve_path(os.getenv("STAGE2_INDEX_PATH"), SQLITE_PATH),
             chroma_path=resolve_path(os.getenv("STAGE2_CHROMA_PATH"), CHROMA_PATH),
-            rdb_url=os.getenv("STAGE2_RDB_URL", "").strip(),
-            chroma_host=os.getenv("STAGE2_CHROMA_HOST", "").strip(),
-            chroma_port=CHROMA_PORT,
             chroma_collection=(
                 os.getenv("STAGE2_CHROMA_COLLECTION", "").strip() or CHROMA_COLLECTION
             ),
@@ -173,9 +157,6 @@ __all__ = [
     "CHROMA_COLLECTION",
     "SQLITE_TABLE",
     "EMBEDDING",
-    "RDB_URL",
-    "CHROMA_HOST",
-    "CHROMA_PORT",
     "VALID_STAGE2_MODES",
     "VALID_STAGE2_EMBEDDINGS",
     "VALID_STAGE2_SQL_TABLES",

@@ -2,10 +2,9 @@
 
 The local equivalent of the Colab notebook cell: parse + chunk disclosures
 with :mod:`stage2.ingestion.dart`, then persist through
-:mod:`stage2.ingestion.writer` so ``local`` and ``container`` serving get the
-exact same schema and chunk-id-aligned vectors.  Serving opens the result
-read-only (:class:`stage2.local_store.LocalHybridRetriever`); this script is the
-only writer.
+:mod:`stage2.ingestion.writer` into the local SQLite and Chroma index. Serving
+opens the result read-only (:class:`stage2.local_store.LocalHybridRetriever`);
+this script is the only writer.
 
 Examples
 --------
@@ -13,10 +12,6 @@ Whole corpus, local e5 embeddings::
 
     python scripts/build_chunk_index.py --corpus-dir data/3.gongsi/corpus
 
-Point the SQL side at a Dockerized Postgres instead of a local file::
-
-    python scripts/build_chunk_index.py --corpus-dir <corpus> \\
-        --rdb-url postgresql+psycopg://user:pass@host:5432/dis
 """
 
 from __future__ import annotations
@@ -28,7 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import config
-from stage2.backends import local_chroma, local_sqlite_engine, postgres_engine
+from stage2.backends import local_chroma, local_sqlite_engine
 from stage2.ingestion import build_dart_chunk_rows
 from stage2.ingestion.writer import CHUNK_TABLE, write_rows
 from stage2.local_store import LocalHybridRetriever
@@ -58,11 +53,6 @@ def main() -> int:
     )
     parser.add_argument("--doc-id", action="append", default=[], help="Index only these doc_ids (repeatable)")
     parser.add_argument("--sqlite", type=Path, default=config.SQLITE_PATH)
-    parser.add_argument(
-        "--rdb-url",
-        default="",
-        help="SQLAlchemy URL for a Postgres RDB target; overrides --sqlite when set",
-    )
     parser.add_argument("--chroma-dir", type=Path, default=config.CHROMA_PATH)
     parser.add_argument("--collection-name", default=config.CHROMA_COLLECTION)
     parser.add_argument("--embedding", choices=("e5",), default="e5")
@@ -85,7 +75,7 @@ def main() -> int:
     if not rows:
         raise SystemExit("no chunk rows produced; check --corpus-dir / --selection")
 
-    engine = postgres_engine(args.rdb_url) if args.rdb_url else local_sqlite_engine(args.sqlite)
+    engine = local_sqlite_engine(args.sqlite)
     vectorstore = local_chroma(
         args.chroma_dir,
         embedding_function=_embedding_function(args.embedding),
@@ -110,7 +100,7 @@ def main() -> int:
     print(f"documents={len({row['doc_id'] for row in rows})}")
     print(f"tables_with_json={sum(1 for row in rows if row.get('raw_json_content'))}")
     print(f"embedding={args.embedding}")
-    print(f"target={args.rdb_url or args.sqlite}")
+    print(f"sqlite={args.sqlite}")
     print(f"chroma_dir={args.chroma_dir}")
     print(f"collection={args.collection_name}")
     return 0

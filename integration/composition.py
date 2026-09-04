@@ -14,7 +14,6 @@ from integration.reranker import ClovaRerankerClient
 from integration.readiness import (
     PARTIAL_INDEX_ISSUES,
     raise_if_invalid,
-    validate_container_settings,
     validate_corpus_directory,
     validate_environment,
     validate_sqlite_path,
@@ -26,9 +25,7 @@ from stage2 import (
     LocalHybridRetriever,
     RetrievalConfig,
     build_stage2_node,
-    chroma_server,
     local_chroma,
-    postgres_engine,
     readonly_sqlite_engine,
 )
 from stage3 import build_stage3_node
@@ -97,62 +94,40 @@ def _build_retriever(
     cache=None,
     index_signature: str = "",
 ):
-    """Open the Stage2 retriever for the configured mode.
+    """Open the read-only local Stage2 retriever.
 
     Every path and connection string comes from :mod:`config`; nothing here
     recomputes a project-relative path or reads the environment directly.
     """
 
-    if settings.mode == "local":
-        # Local hybrid store: a SQLite file for metadata filtering + a local
-        # Chroma persist directory for vector search. Both are opened without
-        # creating or writing index files.
-        raise_if_invalid(validate_sqlite_path(settings.sqlite_path))
-        retriever = LocalHybridRetriever(
-            engine=readonly_sqlite_engine(settings.sqlite_path),
-            vectorstore=local_chroma(
-                settings.chroma_path,
-                embedding_function=_embedding_function(
-                    settings,
-                    cache=cache,
-                    index_signature=index_signature,
-                ),
-                collection_name=settings.chroma_collection,
-                create_directory=False,
-            ),
-            collection_name=settings.chroma_collection,
-            table_name=settings.sqlite_table,
-            read_only=True,
-            cache=cache,
-            index_signature=index_signature,
-        )
-    elif settings.mode == "container":
-        # Dockerized Postgres RDB + Chroma server. LocalHybridRetriever's
-        # SQL/vector-search code is identical to local mode; only the
-        # connections differ (see stage2/backends.py).
-        raise_if_invalid(validate_container_settings(settings))
-        retriever = LocalHybridRetriever(
-            engine=postgres_engine(settings.rdb_url),
-            vectorstore=chroma_server(
-                settings.chroma_host,
-                settings.chroma_port,
-                embedding_function=_embedding_function(
-                    settings,
-                    cache=cache,
-                    index_signature=index_signature,
-                ),
-                collection_name=settings.chroma_collection,
-            ),
-            table_name=settings.sqlite_table,
-            read_only=True,
-            cache=cache,
-            index_signature=index_signature,
-        )
-    else:
+    # Local hybrid store: a SQLite file for metadata filtering + a local
+    # Chroma persist directory for vector search. Both are opened without
+    # creating or writing index files.
+    if settings.mode != "local":
         raise RuntimeError(
             f"unsupported Stage2 mode: {settings.mode}; "
             f"choose one of {', '.join(config.VALID_STAGE2_MODES)}"
         )
+
+    raise_if_invalid(validate_sqlite_path(settings.sqlite_path))
+    retriever = LocalHybridRetriever(
+        engine=readonly_sqlite_engine(settings.sqlite_path),
+        vectorstore=local_chroma(
+            settings.chroma_path,
+            embedding_function=_embedding_function(
+                settings,
+                cache=cache,
+                index_signature=index_signature,
+            ),
+            collection_name=settings.chroma_collection,
+            create_directory=False,
+        ),
+        collection_name=settings.chroma_collection,
+        table_name=settings.sqlite_table,
+        read_only=True,
+        cache=cache,
+        index_signature=index_signature,
+    )
 
     tolerated = PARTIAL_INDEX_ISSUES if settings.allow_partial_index else frozenset()
     raise_if_invalid(retriever.readiness_issues(), tolerate=tolerated)
@@ -176,19 +151,10 @@ def build_pipeline() -> StagePipeline:
 
     index_signature = build_index_signature(
         stage2_mode=settings.mode,
-        sqlite_path=(
-            getattr(settings, "sqlite_path", None)
-            if settings.mode == "local"
-            else None
-        ),
-        chroma_path=(
-            getattr(settings, "chroma_path", None)
-            if settings.mode == "local"
-            else None
-        ),
+        sqlite_path=settings.sqlite_path,
+        chroma_path=settings.chroma_path,
         backend_identity=(
-            f"{settings.mode}:{getattr(settings, 'sqlite_table', '')}:"
-            f"{getattr(settings, 'chroma_collection', '')}"
+            f"{settings.mode}:{settings.sqlite_table}:{settings.chroma_collection}"
         ),
     )
     cache = CacheRegistry.from_env(index_signature=index_signature)

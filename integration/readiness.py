@@ -60,17 +60,6 @@ def validate_environment(mode: str) -> list[str]:
     return issues
 
 
-def validate_container_settings(settings: "config.Stage2Settings") -> list[str]:
-    """Container mode needs both a Postgres DSN and a Chroma server host."""
-
-    issues: list[str] = []
-    if not settings.rdb_url:
-        issues.append("STAGE2_RDB_URL is required for STAGE2_MODE=container")
-    if not settings.chroma_host:
-        issues.append("STAGE2_CHROMA_HOST is required for STAGE2_MODE=container")
-    return issues
-
-
 def raise_if_invalid(issues: list[str], *, tolerate: set[str] | frozenset[str] = frozenset()) -> None:
     """Raise on structural issues and log explicitly tolerated warnings."""
 

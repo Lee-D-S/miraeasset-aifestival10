@@ -8,10 +8,8 @@ from stage2.embedding import (
 )
 from stage2.local_store import LocalHybridRetriever
 from stage2.backends import (
-    chroma_server,
     local_chroma,
     local_sqlite_engine,
-    postgres_engine,
     readonly_sqlite_engine,
 )
 from stage2.retrieval_experiments import (
@@ -36,10 +34,8 @@ __all__ = [
     "build_stage2_node",
     "E5Embeddings",
     "LocalHybridRetriever",
-    "chroma_server",
     "local_chroma",
     "local_sqlite_engine",
-    "postgres_engine",
     "readonly_sqlite_engine",
     "EXPERIMENT_PROFILES",
     "ExactVectorBackend",
