@@ -80,6 +80,12 @@ raw baseline은 A/B 실행기 내부에서만 명시적으로 주입하며 운�
 검색 가능 20개는 유형별 Recall@20 무회귀와 전체 5%p 이상 개선을 요구하고, 정보 한계
 5개는 fail-closed 안전성 gate로 분리 평가한다.
 
+HNSW 대체 후보(FTS5, Exact, FAISS IVFFlat/SQ8/PQ)는 production 설정과 분리된
+실험용 sidecar·서비스로 제공한다. 생성과 실행 방법은
+[docs/retrieval-experiments.md](../docs/retrieval-experiments.md)를 참고한다.
+후보 벡터 검색은 production과 동일한 multilingual-e5-large와 raw query
+계약을 사용하며, 별도의 instruct 임베딩을 사용하지 않는다.
+
 ## 안전 경계
 
 - 제공 SQLite·Chroma 인덱스는 read-only로 연다.

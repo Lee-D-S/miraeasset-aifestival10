@@ -17,6 +17,18 @@ from stage2.backends import (
     postgres_engine,
     readonly_sqlite_engine,
 )
+from stage2.retrieval_experiments import (
+    EXPERIMENT_PROFILES,
+    ExactVectorBackend,
+    ExperimentHybridRetriever,
+    FaissVectorBackend,
+    Fts5KeywordBackend,
+    HnswVectorBackend,
+    PythonTokenKeywordBackend,
+    build_experiment_retriever,
+    build_fts5_sidecar,
+    build_vector_sidecars,
+)
 
 __all__ = [
     "ChunkRow",
@@ -35,4 +47,14 @@ __all__ = [
     "local_sqlite_engine",
     "postgres_engine",
     "readonly_sqlite_engine",
+    "EXPERIMENT_PROFILES",
+    "ExactVectorBackend",
+    "ExperimentHybridRetriever",
+    "FaissVectorBackend",
+    "Fts5KeywordBackend",
+    "HnswVectorBackend",
+    "PythonTokenKeywordBackend",
+    "build_experiment_retriever",
+    "build_fts5_sidecar",
+    "build_vector_sidecars",
 ]
