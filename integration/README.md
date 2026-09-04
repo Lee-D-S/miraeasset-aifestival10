@@ -10,6 +10,7 @@
 - `tools.py`: allow-listed typed tools와 native `ToolNode` 경계
 - `service.py`: `StagePipeline` invoke API와 recursion limit
 - `api.py`: `/health`·`/ready`·`/answer`, 제출용 5-field response adapter
+- `failure_response.py`: 차단·근거 부족 답변의 결정론적 이유·재질문 안내와 내부 reason code
 - `readiness.py`: `STAGE2_MODE`·container 설정·검색 인덱스의 오프라인 readiness 검사
 
 경로와 backend 선택 지점은 프로젝트 루트의 `config.py` 하나다. `composition.py`는
@@ -34,6 +35,11 @@ NCP 배포 전에는 `python scripts/check_deployment.py`로 네트워크 요청
 Production Reranker는 deterministic 검색 결과를 기본으로 하고, 명시적으로 켠 경우에만
 상위 100개를 CLOVA adapter에 보낸다. provider 오류·429·빈 결과는 deterministic 결과로
 fallback하며 `suggestedQueries`는 trace에만 남긴다.
+
+답변 불가·근거 부족 상황의 최종 `answer`는 기존 결론 문장을 유지한 뒤 사용자 조치가
+가능한 이유와 필요한 경우 재질문 안내를 덧붙인다. 문장은 외부 LLM 추가 호출 없이
+결정론적으로 생성하고 약 300자로 제한한다. 내부 `failure_reason_code`는 `think_trace`에
+기록하며, 제출 API의 상위 5개 문자열 필드는 변경하지 않는다.
 
 공용 State는 `shared_state.py`의 `AgentState`다. `question_id`, `question`, `original_question`은 불변이며 Stage node는 `STAGE_WRITE_FIELDS`에 정의된 partial update만 반환한다. Supervisor는 action과 reason만 결정한다.
 

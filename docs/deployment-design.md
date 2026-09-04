@@ -74,6 +74,8 @@ GET /answer?question_id={id}&question={평가 질의}
 
 - 메서드 **GET**, 쿼리 파라미터 2개. 응답 5필드 고정.
 - `retrieved_context` = 검색 근거(공시명·공시일 포함), `think_trace` = 추론 과정.
+- 답변 불가·근거 부족 시 `answer`는 기존 결론 문장 뒤에 결정론적인 이유와 필요한
+  경우 재질문 안내를 포함한다. 내부 `failure_reason_code`는 `think_trace`에만 기록한다.
 - 코드: `stage3/api_contract.py`, `stage3/api.py`, `integration/api.py` 에 계약 구현.
 - **미정:** 최종 endpoint URL (NCP 배포 후 확정 → 제출 API 명세서에 기재).
 

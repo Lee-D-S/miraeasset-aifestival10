@@ -111,4 +111,7 @@ python scripts/check_real_index.py --allow-partial-index
 NCP live smoke는 별도 터미널에서 worker 1개로 서버를 실행한 뒤
 `python scripts/smoke_api.py --base-url http://127.0.0.1:8000`을 사용한다. 이 CLI는
 `/health` → `/ready` → `/answer` 순서와 5개 문자열 필드만 확인하고 API key·authorization
-header·응답 전문을 출력하지 않는다.
+header·응답 전문을 출력하지 않는다. 답변 불가·근거 부족 응답은 기존 결론 뒤에
+결정론적인 이유와 필요한 경우 재질문 안내를 붙이며, 내부 `failure_reason_code`는
+`think_trace`에만 기록한다. 공개 답변에는 API key·원시 provider 오류·검색 점수를
+포함하지 않는다.

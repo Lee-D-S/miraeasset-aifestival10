@@ -130,7 +130,7 @@ GET /ready
 GET /answer?question_id=Q-001&question=질문내용
 ```
 
-응답은 `question_id`, `question`, `retrieved_context`, `think_trace`, `answer`의 다섯 문자열 필드를 유지한다. `think_trace`에는 Supervisor action과 주요 시도 횟수가 포함된다. Stage1이 생성한 `intent.think_trace`도 `stage1_think_trace`로 함께 기록된다.
+응답은 `question_id`, `question`, `retrieved_context`, `think_trace`, `answer`의 다섯 문자열 필드를 유지한다. `think_trace`에는 Supervisor action과 주요 시도 횟수가 포함된다. Stage1이 생성한 `intent.think_trace`도 `stage1_think_trace`로 함께 기록된다. 답변 불가·근거 부족 시 `answer`는 기존 결론 문장 뒤에 결정론적인 이유와 필요한 경우 재질문 안내를 덧붙이며, 내부 `failure_reason_code`는 trace에만 기록한다. 공개 문장은 약 300자로 제한하고 API key·원시 provider 오류·검색 점수는 포함하지 않는다.
 
 `/health`는 FastAPI 프로세스의 liveness만 확인하므로 corpus나 DB가 아직 마운트되지 않아도 응답한다. `/ready`는 pipeline을 지연 초기화하여 Stage1 corpus, Stage2 저장소, provider 설정을 포함한 실행 준비 상태를 확인한다. `/answer`도 pipeline이 준비되지 않은 경우 안전하게 503을 반환한다.
 
