@@ -36,6 +36,20 @@ NUMERIC_METRICS = frozenset(
 _GROUP_FIELDS = frozenset({"company", "period"})
 
 
+def _numeric_metric_catalog() -> str:
+    """List every registered numeric metric with its Korean labels.
+
+    Fed into the LLM planner's prompt so it picks numerator/denominator
+    metric ids from the same registry `validate_analysis_plan` checks
+    against, instead of guessing a name that gets rejected.
+    """
+
+    return ", ".join(
+        f"{metric}({'/'.join(METRIC_SPECS[metric].get('numeric_labels', ()))})"
+        for metric in sorted(NUMERIC_METRICS)
+    )
+
+
 class PlanProposalProvider(Protocol):
     """Minimal provider contract for an optional structured LLM proposal."""
 
@@ -150,7 +164,12 @@ def _ratio_metrics(intent: Stage3Intent, question: str, candidates: list[str]) -
     numerator = str(intent.metric or "") if intent.metric in NUMERIC_METRICS else (candidates[0] if candidates else None)
     calculation = intent.calculation if isinstance(intent.calculation, Mapping) else {}
     denominator = str(calculation.get("denominator_metric") or "")
-    if denominator not in NUMERIC_METRICS:
+    # A denominator that collapses onto the same metric as the numerator
+    # (e.g. the requested numerator has no numeric_labels entry, so the
+    # fallback above picked the denominator's own metric as numerator too)
+    # must not be returned as-is: the caller would build a plan with two
+    # same-id requirements and validate_analysis_plan would raise.
+    if denominator not in NUMERIC_METRICS or denominator == numerator:
         denominator = "revenue" if numerator and numerator != "revenue" else None
     return numerator, denominator
 
@@ -425,6 +444,13 @@ def build_analysis_plan(intent: Stage3Intent, *, question: str | None = None) ->
         ratio_metric, ratio_denominator = _ratio_metrics(intent, raw_question, candidates)
         metric = ratio_metric or metric
         denominator = denominator if denominator in NUMERIC_METRICS else ratio_denominator
+        if metric == denominator:
+            # `metric` (from the text-position fallback) and `denominator`
+            # (kept as-is because Stage1's seed value is itself a registered
+            # metric) independently landed on the same metric — a self-ratio
+            # is never valid. Retry with the position fallback's own
+            # denominator before giving up.
+            denominator = ratio_denominator if ratio_denominator != metric else None
     plan = _single_plan(intent, question=raw_question, operation=operation, metric=metric, denominator_metric=denominator or None)
     return validate_analysis_plan(plan) if plan is not None else None
 
@@ -488,7 +514,19 @@ def build_state_analysis_plan(
         try:
             proposal = llm_client.generate_json(
                 [
-                    {"role": "system", "content": "금융 공시 Fact로 실행할 수 있는 계산 계획만 JSON으로 제안하세요. 값, 문서 ID, Python 코드, 미등록 metric은 포함하지 마세요."},
+                    {
+                        "role": "system",
+                        "content": (
+                            "금융 공시 Fact로 실행할 수 있는 계산 계획만 JSON으로 제안하세요. "
+                            "requirements[].metric과 output에 쓰는 모든 metric은 반드시 다음 등록된 "
+                            f"값 중에서만 고르세요: {_numeric_metric_catalog()}. "
+                            "steps[].operation은 반드시 다음 중에서만 고르세요: "
+                            f"{', '.join(sorted(SUPPORTED_OPERATIONS))}. "
+                            "질문에서 분자(numerator)로 요구한 수치와 분모(denominator)로 요구한 수치를 "
+                            "위 metric 목록에서 각각 정확히 하나씩 고르세요. "
+                            "값, 문서 ID, Python 코드, 목록에 없는 metric은 포함하지 마세요."
+                        ),
+                    },
                     {"role": "user", "content": str({"question": question, "intent": intent.to_dict()})},
                 ],
                 schema=ANALYSIS_PLAN_SCHEMA,
