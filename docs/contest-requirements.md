@@ -123,3 +123,38 @@ result = resp.json()  # 아래 응답 스키마
   프롬프트에 등록된 metric·operation 화이트리스트 전체를 명시하도록 고쳐서(이전에는
   "등록되지 않은 metric은 쓰지 말라"고만 하고 목록 자체는 안 줬다), LLM이 목록을 보고
   고르게 했다. 다만 이 플래그가 배포 서버에도 켜져 있는지는 아직 미확인이다.
+- (해결됨, 2026-09-05) `requirements.txt`가 업스트림 `hnswlib`(is_persistent_index 인자
+  없음)을 지정하고 있어서, 공급 인덱스(Chroma persistent HNSW 디렉터리 포맷)를 로컬에서
+  로드하면 `TypeError` → fallback에서 `RuntimeError: Index seems to be corrupted or
+  unsupported`로 죽었다. `chroma-hnswlib>=0.7,<1`로 교체(로컬에서 `chroma-hnswlib==0.7.6`으로
+  실제 5.5M-row 인덱스가 로드되는 것까지 확인).
+
+## 6. 배포 상태 (2026-09-05 기준)
+
+- **로컬 저장소 사고**: 이 워크트리(`team-feature2`)가 물려 있던 원본 git 저장소
+  (`/home/user/contest/miraeasset-firstpenguin`)가 사용자 실수로 삭제됐다. `team-feature2`를
+  `https://github.com/miraeasset-aifestival-2026-dart/dis-164`에 다시 연결해 독립 저장소로
+  전환했다(`.git`이 이제 실제 gitdir, worktree 아님). `data/local_db/`(96GB, 공급 인덱스)는
+  git과 무관하게 디스크에 그대로 남아 있어 영향 없다.
+- **origin/main 최신 커밋**: `b2d7e99` (`fix(deps): pin chroma-hnswlib instead of upstream
+  hnswlib`). 이 세션에서 push한 커밋:
+  - `1a5372c` — T4 계산 버그(rnd numeric_labels, 분자·분모 충돌 가드, LLM 플래너 프롬프트 개선)
+  - `b2d7e99` — `requirements.txt`의 hnswlib → chroma-hnswlib
+  둘 다 origin/main에 이미 반영돼 있다. 로컬 `main` 브랜치는 `origin/main`을 추적하도록
+  설정해뒀다(`git branch --set-upstream-to=origin/main main`).
+- **NCP 공개 서버(`49.50.142.35`)는 아직 위 두 커밋을 못 받았다.** Claude Code 세션에는
+  이 서버에 접속할 SSH 키가 없어서(`Permission denied (publickey,password)`) 직접 배포할
+  수 없다. SSH 키를 가진 사람이 서버에서 아래를 실행해야 실제 평가 Endpoint에 반영된다.
+  ```bash
+  ssh root@49.50.142.35
+  cd ~/dis-164
+  git pull origin main          # b2d7e99까지 반영
+  INDEX_DIR=/data/local_db docker compose up -d --build
+  curl -s http://localhost:8000/ready
+  ```
+- **마감 임박**: `docs/ncp-deploy.md` 8절에 명시된 대회 규정 — **09.06 마감 이후에는
+  `git pull`/재배포 금지(위반 시 규정상 실격)**. 오늘(09.05) 안에 위 재배포를 마쳐야 한다.
+- **재배포 후 확인할 것**: T2(별도기준 조회, `stage4`가 `validation_failed`로 죽던 문제)는
+  `CLOVA_LLM_ENABLED`가 서버 `.env`에 설정돼 있는지에 달려 있다(2026-09-04 진단, 아직
+  서버에서 미확인). T4는 이번 커밋으로 코드 자체는 고쳤으니 재배포 후 재현 질의로 확인한다:
+  `삼성전자의 2024년 영업이익 대비 연구개발비 비중은?`
