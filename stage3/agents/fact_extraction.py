@@ -309,10 +309,15 @@ def _extract_facts_uncached(
         # with the first metric on the row.
         numeric_sources: list[tuple[str, dict]] = [] if structured.has_structured_tables else [(text, {})]
         for cell in structured.numeric_cells:
-            if structured.source_format == "markdown":
-                cell_source = f"{cell.get('row_label', '')} | {cell.get('value', '')}"
-            else:
-                cell_source = f"{cell.get('row_label', '')} | {cell.get('column_label', '')} | {cell.get('value', '')}"
+            # The column label is retained in ``context`` for period mapping.
+            # Include it in the regex input only when it is itself the metric
+            # label (for example ``매출액``); a label such as
+            # ``2025년 3분기 금액`` would otherwise be extracted as the Fact
+            # value instead of the amount in the cell.
+            row_label = str(cell.get("row_label", ""))
+            column_label = str(cell.get("column_label", ""))
+            metric_label = column_label if any(label in column_label for label in labels) else ""
+            cell_source = f"{row_label} {metric_label} | {cell.get('value', '')}"
             numeric_sources.append(
                 (
                     _normalize_disclosure_spacing(cell_source),
@@ -353,8 +358,8 @@ def _extract_facts_uncached(
                         continue
                     evidence = source_text.strip() if context else _evidence(text, match.start(), match.end())
                     period = (
-                        context.get("period_label")
-                        or _period_from_table_context(context, metadata)
+                        _period_from_table_context(context, metadata)
+                        or context.get("period_label")
                         or _period(evidence, metadata)
                         or _period(text, metadata)
                     )

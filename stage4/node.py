@@ -13,7 +13,22 @@ from stage4.semantic import deterministic_semantic_fallback, validate_semantics
 from stage3.adapters.stage1 import adapt_stage1_intent
 from stage3.contracts import Stage3Fact
 from stage3.deterministic.calculation_planner import validate_analysis_plan
-from stage3.grounding import matching_facts, strict_grounding_enabled
+from stage3.grounding import matching_facts, requested_aggregation_scope, strict_grounding_enabled
+
+
+def _missing_segment_facts(answer: str, facts: list[Stage3Fact]) -> list[str]:
+    """Require every extracted segment amount to appear in the final answer."""
+
+    answer_digits = re.sub(r"\D", "", answer)
+    missing: list[str] = []
+    for fact in facts:
+        if fact.kind != "numeric" or fact.unit == "%":
+            continue
+        candidates = {str(fact.raw_value or ""), str(fact.value or ""), str(fact.normalized_value or "")}
+        candidates = {re.sub(r"\D", "", value) for value in candidates if re.sub(r"\D", "", value)}
+        if not any(value in answer_digits for value in candidates):
+            missing.append(str(fact.table_context.get("row_label") or fact.label or fact.document_id))
+    return missing
 
 
 def _message(answer: str) -> Any:
@@ -246,6 +261,17 @@ def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any
                     numeric["pass"] = False
                     numeric.setdefault("errors", []).append("requested Fact gate failed")
                 grounded_facts = exact_facts
+                if requested_aggregation_scope(stage3_intent) == "segment":
+                    missing_segments = _missing_segment_facts(answer, exact_facts)
+                    if missing_segments:
+                        numeric["pass"] = False
+                        numeric.setdefault("errors", []).append(
+                            "missing segment facts in answer: " + ", ".join(missing_segments)
+                        )
+            segment_missing = any(
+                str(error).startswith("missing segment facts in answer:")
+                for error in numeric.get("errors", [])
+            )
             grounded_fact = next(
                 (
                     fact for fact in grounded_facts
@@ -274,7 +300,7 @@ def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any
                 ),
                 None,
             )
-            if grounded_fact is not None:
+            if grounded_fact is not None and not segment_missing:
                 numeric["pass"] = True
                 numeric["errors"] = []
                 numeric["matched_count"] = max(int(numeric.get("matched_count", 0) or 0), 1)

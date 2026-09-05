@@ -252,16 +252,34 @@ def _resolve_time_mode(sq: str, slots: SlotResult, cfg: Any) -> None:
 
 def _extract_metric(sq: str, slots: SlotResult, index: CorpusIndex) -> None:
     best: Optional[tuple[int, dict[str, Any]]] = None
-    matched_positions: list[tuple[int, str]] = []
+    matched_positions: list[tuple[int, str, str]] = []
     for metric in index.config.metrics.get("metrics", []):
         for label in metric.get("labels", []):
             key = squash(label)
             if key and key in sq:
-                slots.metric_matches.append(metric["key"])
-                matched_positions.append((sq.find(key), metric["key"]))
+                matched_positions.append((sq.find(key), metric["key"], key))
                 if best is None or len(key) > best[0]:
                     best = (len(key), metric)
                 break
+
+    # "사업부문별 매출" asks for the revenue metric split by business
+    # segment.  The phrase "사업부문" is an aggregation cue here, not a
+    # request for the business-overview section.  Keep business_overview for
+    # questions that mention it without a revenue cue.
+    has_revenue = any(key == "revenue" for _position, key, _label in matched_positions)
+    if has_revenue:
+        matched_positions = [
+            item
+            for item in matched_positions
+            if not (item[1] == "business_overview" and item[2] == squash("사업부문"))
+        ]
+        candidates = [
+            (len(label), metric)
+            for _position, key, label in matched_positions
+            for metric in index.config.metrics.get("metrics", [])
+            if metric.get("key") == key
+        ]
+        best = max(candidates, key=lambda item: item[0], default=None)
 
     if best is None:
         return
@@ -288,7 +306,7 @@ def _extract_metric(sq: str, slots: SlotResult, index: CorpusIndex) -> None:
         slots.report_nm_contains = list(metric.get("report_nm_contains", []))
 
     slots.metric_matches = []
-    for _position, key in sorted(matched_positions, key=lambda item: item[0]):
+    for _position, key, _label in sorted(matched_positions, key=lambda item: item[0]):
         if key not in slots.metric_matches:
             slots.metric_matches.append(key)
 
