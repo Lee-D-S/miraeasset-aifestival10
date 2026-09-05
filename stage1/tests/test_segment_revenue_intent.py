@@ -19,3 +19,20 @@ def test_segment_revenue_question_uses_revenue_metric_and_segment_scope():
     assert intent.query_plan == []
     assert intent.manifest_filter.doc_subtype == "quarter"
     assert intent.time.base_months == [9]
+
+
+@pytest.mark.parametrize(
+    ("question", "metric"),
+    [
+        ("현대자동차 2025년 3분기 사업부문별 영업이익을 알려주세요.", "operating_profit"),
+        ("현대자동차 2025년 3분기 사업부문별 설비투자를 알려주세요.", "capex"),
+        ("현대자동차 2025년 3분기 세그먼트별 매출액을 알려주세요.", "revenue"),
+    ],
+)
+def test_scoped_financial_questions_do_not_route_to_business_overview(question, metric):
+    index = CorpusIndex.load()
+
+    intent = build_intent(question, index, use_llm=False)
+
+    assert intent.route == "ok"
+    assert intent.metric == metric

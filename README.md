@@ -192,6 +192,10 @@ are kept in server logs only.
 The default provider-reset wait is 300 seconds, matching the per-question
 deadline; `CLOVA_RATE_LIMIT_MAX_WAIT` can lower or raise that bound.
 
+Stage1 treats `사업부문별`, `부문별`, `세그먼트별`, and `제품군별` as aggregation
+scopes. When one of these scopes is combined with a financial metric, the
+specific metric takes precedence over the generic `business_overview` route.
+
 외부 CLOVA·대용량 DB·임베딩 서버 없이 일반 회귀를 검증하려면
 `integration.testing.build_deterministic_pipeline()`에 deterministic Intent와 InMemory 문서를
 주입한다. 이 factory와 InMemoryRetriever는 테스트 전용이며 production fallback으로 사용하지
