@@ -13,7 +13,7 @@ def calculation_agent(state: Stage3GraphState) -> AgentResult:
         for fact in state.get("facts", [])
     ]
     if intent.analysis_plan.get("status") == "ready":
-        execution = execute_analysis_plan(intent.analysis_plan, facts)
+        execution = execute_analysis_plan(intent.analysis_plan, facts, intent=intent)
         calculations = tuple(dict(item) for item in execution["calculations"])
         comparisons = tuple(dict(item) for item in execution["comparisons"])
         evidence_ids = tuple(

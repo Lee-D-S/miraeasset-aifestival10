@@ -74,7 +74,7 @@ class AnalysisPlanTests(unittest.TestCase):
             _fact("B", "revenue", "2024", 100), _fact("B", "revenue", "2025", 100),
         ]
 
-        result = execute_analysis_plan(plan, facts)
+        result = execute_analysis_plan(plan, facts, intent=_intent())
 
         self.assertTrue(result["success"])
         self.assertEqual(result["comparisons"][0]["top"]["company"], "A")

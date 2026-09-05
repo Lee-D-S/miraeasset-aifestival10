@@ -33,7 +33,11 @@ def _calculation_value(calculation: dict[str, Any]) -> float | None:
     periods: list[str] = []
     for value in values:
         if isinstance(value, dict):
-            parsed.extend(_numbers(value.get("value")))
+            numeric = value.get("normalized_value")
+            if isinstance(numeric, (int, float)) and not isinstance(numeric, bool):
+                parsed.append(float(numeric))
+            else:
+                parsed.extend(_numbers(value.get("value")))
             if value.get("period"):
                 periods.append(str(value["period"]))
         else:
