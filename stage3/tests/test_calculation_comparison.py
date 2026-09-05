@@ -40,6 +40,48 @@ class CalculationComparisonTests(unittest.TestCase):
         self.assertEqual(result["result"], 20.0)
         self.assertEqual(result["evidence_ids"], ["d1", "d2"])
 
+    def test_percentage_change_ignores_not_total_revenue_breakdown(self):
+        intent = adapt_stage1_intent({
+            "raw_question": "삼성전자의 2024년과 2025년 매출액을 비교해줘",
+            "normalized_question": "삼성전자의 2024년과 2025년 매출액을 비교해줘",
+            "route": "ok",
+            "intent": "calc",
+            "question_type": "calculation",
+            "calculation": {"operation": "percentage_change"},
+            "metric": "revenue",
+            "basis": "연결",
+            "companies": ["기업A"],
+            "time": {"years": [2024, 2025], "base_months": [12]},
+        })
+        facts = extract_facts(adapt_stage2_bundle([
+            {
+                "id": "total-2024",
+                "text": "2024년 연결 매출액 100억원",
+                "metadata": {"corp_name": "기업A", "report_period": "2024-12", "basis": "연결"},
+            },
+            {
+                "id": "total-2025",
+                "text": "2025년 연결 매출액 120억원",
+                "metadata": {"corp_name": "기업A", "report_period": "2025-12", "basis": "연결"},
+            },
+            {
+                "id": "revenue-type-breakdown",
+                "text": (
+                    "| 구분 | 제56기(2024) | 제57기(2025) |\n"
+                    "| --- | --- | --- |\n"
+                    "| 용역 및 기타매출 | 75,092 | 100 |"
+                ),
+                "metadata": {"corp_name": "기업A", "report_period": "2025-12", "basis": "연결"},
+            },
+        ]).documents, intent)
+        facts = normalize_facts(facts, intent)[0]
+        result = calculate_facts(facts, intent)
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["result"], 20.0)
+        self.assertEqual(result["evidence_ids"], ["total-2024", "total-2025"])
+        input_values = [str(item.get("value", "")).replace(",", "") for item in result["inputs"]]
+        self.assertFalse(any("75092" in value or value == "100" for value in input_values))
+
     def test_comparison_ranks_by_value_not_retrieval_score(self):
         intent, facts = self._facts(
             "기업A와 기업B 중 매출액이 큰 기업은?", "revenue",
@@ -53,7 +95,7 @@ class CalculationComparisonTests(unittest.TestCase):
         self.assertEqual(result["top"]["company"], "기업B")
         self.assertEqual(result["results"][1]["company"], "기업A")
 
-    def test_mismatched_basis_is_rejected(self):
+    def test_percentage_change_drops_facts_with_unrequested_basis(self):
         intent, facts = self._facts(
             "매출 증가율은?", "revenue",
             [
@@ -62,7 +104,7 @@ class CalculationComparisonTests(unittest.TestCase):
             ],
         )
         result = calculate_facts(facts, intent)
-        self.assertEqual(result["status"], "invalid_basis")
+        self.assertEqual(result["status"], "insufficient_evidence")
 
     def test_percentage_change_does_not_use_unrequested_last_periods(self):
         intent = adapt_stage1_intent({
