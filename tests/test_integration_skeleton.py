@@ -4,6 +4,7 @@ import unittest
 
 from integration import StageNodes, StagePipeline
 from integration.api import create_app, to_submission_response
+from integration.rate_limit import RateLimitBlocked
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from stage2.retrieval import matches_manifest_filter
@@ -171,6 +172,26 @@ class IntegrationSkeletonTests(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertNotIn("secret path", response.text)
         self.assertNotIn("API key", response.text)
+
+    def test_http_rate_limit_is_classified_with_retry_hint(self) -> None:
+        class RateLimitedPipeline:
+            def invoke(self, **_kwargs):
+                raise RateLimitBlocked("provider budget exhausted", retry_after=12.4)
+
+        client = TestClient(create_app(pipeline=RateLimitedPipeline()))
+
+        response = client.get("/answer", params={"question_id": "Q-RATE", "question": "질문"})
+
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.headers["retry-after"], "13")
+        self.assertEqual(
+            response.json()["detail"],
+            {
+                "code": "PROVIDER_RATE_LIMITED",
+                "error_type": "RateLimitBlocked",
+                "retry_after_seconds": 12.4,
+            },
+        )
 
 
 if __name__ == "__main__":

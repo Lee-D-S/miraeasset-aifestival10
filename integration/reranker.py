@@ -84,7 +84,7 @@ class ClovaRerankerClient:
         self.max_tokens = max_tokens if max_tokens is not None else _env_int(
             "CLOVA_RERANKER_MAX_TOKENS", 1024
         )
-        self.rate_limit_max_wait = _env_float("CLOVA_RATE_LIMIT_MAX_WAIT", 60.0)
+        self.rate_limit_max_wait = _env_float("CLOVA_RATE_LIMIT_MAX_WAIT", 300.0)
         self.last_rate_limit: dict[str, str] = {}
         self.last_provider_status: dict[str, Any] = {}
         self.suggested_queries: list[str] = []

@@ -58,7 +58,9 @@ class ClovaChatClient:
         self.model = model or os.getenv("CLOVA_CHAT_MODEL", "HCX-DASH-002")
         self.timeout = timeout if timeout is not None else _env_float("CLOVA_CHAT_TIMEOUT", 60.0)
         self.max_retries = max_retries if max_retries is not None else _env_int("CLOVA_CHAT_MAX_RETRIES", 1)
-        self.rate_limit_max_wait = _env_float("CLOVA_RATE_LIMIT_MAX_WAIT", 60.0)
+        # A question has a 300-second budget; wait through a normal provider
+        # reset window before surfacing a capacity error to the API boundary.
+        self.rate_limit_max_wait = _env_float("CLOVA_RATE_LIMIT_MAX_WAIT", 300.0)
         self.last_rate_limit: dict[str, str] = {}
         self.last_provider_status: dict[str, Any] = {}
         self.rate_limiter = rate_limiter or ClovaRateLimiter(default_qpm=90, default_tpm=80000, min_interval=_env_float("CLOVA_CHAT_MIN_INTERVAL", 0.2))

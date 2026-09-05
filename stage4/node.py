@@ -4,7 +4,7 @@ from collections.abc import Mapping
 import re
 from typing import Any, Callable
 
-from integration.rate_limit import is_rate_limit_error, rate_limit_event
+from integration.rate_limit import RateLimitBlocked, is_rate_limit_error, rate_limit_event
 from integration.failure_response import build_failure_response
 from stage4.citation import validate_citations
 from stage4.contracts import Stage4Result
@@ -454,11 +454,16 @@ def build_answer_regeneration_node(*, answer_client: Any) -> Callable[[Mapping[s
     """Regenerate the draft; a later Stage4 node remains the sole validator."""
 
     def regenerate(state: Mapping[str, Any]) -> dict[str, Any]:
-        response = answer_client.generate_text([{
-            "role": "user",
-            "content": "공시 근거와 계산 결과만 사용해 답변을 다시 작성하고 출처 표기를 포함하세요.\n"
-            + str({"question": state.get("question", ""), "stage3_result": state.get("stage3_result", {})}),
-        }])
+        try:
+            response = answer_client.generate_text([{
+                "role": "user",
+                "content": "공시 근거와 계산 결과만 사용해 답변을 다시 작성하고 출처 표기를 포함하세요.\n"
+                + str({"question": state.get("question", ""), "stage3_result": state.get("stage3_result", {})}),
+            }])
+        except RateLimitBlocked:
+            # Keep the first answer so Stage4 can emit its normal grounded
+            # failure response instead of leaking a generic HTTP 503.
+            response = str(state.get("answer") or "")
         return {
             "answer": str(response),
             "regeneration_attempts": int(state.get("regeneration_attempts", 0) or 0) + 1,
