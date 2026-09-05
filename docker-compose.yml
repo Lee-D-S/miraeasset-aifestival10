@@ -19,6 +19,10 @@ services:
     env_file:
       - .env
     environment:
+      # CLOVA_LLM_ENABLED는 비밀값이 아니라 기능 스위치라 .env(git 비추적) 대신 여기 커밋해
+      # 둔다 -- 이 environment: 블록의 값이 env_file: (.env)의 값보다 우선하므로, .env에서
+      # 값을 빠뜨리거나 false로 둬도 항상 true로 시작한다.
+      CLOVA_LLM_ENABLED: "true"
       STAGE2_MODE: local
       STAGE2_EMBEDDING: e5
       STAGE2_INDEX_PATH: /app/data/local_db/chunk_index.db

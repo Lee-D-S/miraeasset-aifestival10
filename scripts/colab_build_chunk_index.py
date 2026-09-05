@@ -238,6 +238,27 @@ def clean_unescaped_ampersands(xml_string: str) -> str:
     return re.sub(r'&(?!#?\w+;)', '&amp;', xml_string)
 
 
+_STRAY_LT_RE = re.compile(r'<(?![A-Za-z_/!?])')
+
+
+def clean_unescaped_angle_brackets(xml_string: str) -> str:
+    """Escape ``<`` that DART filers use as a bare decorative caption marker.
+
+    Some filings write a caption like ``< TV 시장점유율 추이 >`` directly as text
+    instead of escaping it (seen literally as ``<P>< TV 시장점유율 추이 ></P>`` and
+    as table-cell captions like ``<이사ㆍ감사 전체의 보수현황>``). A real XML tag
+    name always starts with a letter, ``_``, ``/`` (closing tag), ``!``
+    (comment/CDATA/doctype) or ``?`` (processing instruction) — anything else
+    right after ``<`` is not a tag. lxml's XML parser fails to recover cleanly
+    from that malformed markup: it can silently drop large stretches of the
+    surrounding tree (observed: a document's parse tree lost ~96% of its
+    elements — 3,960 of an expected ~89,000 — including entire chapters,
+    because of a handful of these captions).
+    """
+
+    return _STRAY_LT_RE.sub('&lt;', xml_string)
+
+
 class BaseParser(ABC):
 
     @abstractmethod
@@ -264,7 +285,7 @@ class XmlParser(BaseParser):
             print(f"Error reading XML {file_path}: Unable to decode content.")
             return []
 
-        cleaned_xml = clean_unescaped_ampersands(content)
+        cleaned_xml = clean_unescaped_angle_brackets(clean_unescaped_ampersands(content))
         soup = BeautifulSoup(cleaned_xml, "lxml-xml")
 
         current_section = "본문"
