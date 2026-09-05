@@ -94,7 +94,10 @@ METRIC_SPECS: dict[str, dict[str, Any]] = {
     },
     "business_overview": {"section_labels": ("사업의 내용", "사업 개요", "주요 제품·서비스", "제품·서비스")},
     "investment_plan": {"section_labels": ("투자계획", "투자 계획", "투자 목적", "자금 사용 목적")},
-    "rnd": {"section_labels": ("연구개발", "R&D", "연구 개발")},
+    "rnd": {
+        "numeric_labels": ("연구개발비", "연구개발비용", "경상연구개발비"),
+        "section_labels": ("연구개발", "R&D", "연구 개발"),
+    },
     "dividend": {"section_labels": ("배당", "배당에 관한 사항")},
     "employees": {"section_labels": ("임원 및 직원", "임직원", "직원")},
     "shareholders": {"section_labels": ("주주", "주식의 총수", "주주에 관한 사항")},
