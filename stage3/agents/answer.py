@@ -32,7 +32,7 @@ def _fact_debug_enabled() -> bool:
     return os.getenv("DIS164_DEBUG_FACTS", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _log_segment_facts(stage: str, facts: list[Stage3Fact]) -> None:
+def _log_fact_debug(stage: str, facts: list[Stage3Fact]) -> None:
     if not _fact_debug_enabled():
         return
     payload = [
@@ -49,7 +49,7 @@ def _log_segment_facts(stage: str, facts: list[Stage3Fact]) -> None:
             "aggregation_scope": fact.aggregation_scope,
             "table_context": fact.table_context,
         }
-        for fact in facts[:100]
+        for fact in facts[: _env_int("DIS164_DEBUG_FACT_LIMIT", 500)]
     ]
     logger.warning(
         "segment_fact_debug stage=%s count=%d facts=%s",
@@ -256,9 +256,9 @@ def _segment_lookup_facts(intent: Stage3Intent, facts: list[Stage3Fact]) -> list
         or "매출" in str(fact.label)
         or "매출" in str(fact.evidence)
     ]
-    _log_segment_facts("input", input_candidates)
+    _log_fact_debug("segment_input", input_candidates)
     pool = [fact for fact in matching_facts(facts, intent) if fact.unit != "%"]
-    _log_segment_facts("matching", pool)
+    _log_fact_debug("segment_matching", pool)
     if not pool:
         return []
     # Segment questions commonly retrieve both a structured table cell and a
@@ -271,7 +271,7 @@ def _segment_lookup_facts(intent: Stage3Intent, facts: list[Stage3Fact]) -> list
         pool = table_numeric_pool
     elif numeric_pool:
         pool = numeric_pool
-    _log_segment_facts("selected_pool", pool)
+    _log_fact_debug("segment_selected_pool", pool)
     unique: dict[tuple[str, str, str], Stage3Fact] = {}
     for fact in pool:
         row_label = str(fact.table_context.get("row_label") or fact.label or "")
@@ -286,7 +286,7 @@ def _segment_lookup_facts(intent: Stage3Intent, facts: list[Stage3Fact]) -> list
             str(fact.document_id or ""),
         ),
     )[: _env_int("CLOVA_SEGMENT_FACT_LIMIT", 20)]
-    _log_segment_facts("final", selected)
+    _log_fact_debug("segment_final", selected)
     return selected
 
 
@@ -479,6 +479,7 @@ def make_answer_agent(writer: AnswerWriter):
             fact if isinstance(fact, Stage3Fact) else Stage3Fact.from_dict(fact)
             for fact in state.get("facts", [])
         ]
+        _log_fact_debug("answer_input", facts)
         answer, mode = writer.write(
             question=state.get("question", intent.question),
             intent=intent,
