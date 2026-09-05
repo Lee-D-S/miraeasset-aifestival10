@@ -189,6 +189,8 @@ with `detail.code=PROVIDER_RATE_LIMITED` and a `Retry-After` header when a reset
 duration is known. Unexpected pipeline failures remain HTTP 503 with the safe
 `PIPELINE_ERROR` code and exception type; provider messages, prompts, and keys
 are kept in server logs only.
+The default provider-reset wait is 300 seconds, matching the per-question
+deadline; `CLOVA_RATE_LIMIT_MAX_WAIT` can lower or raise that bound.
 
 외부 CLOVA·대용량 DB·임베딩 서버 없이 일반 회귀를 검증하려면
 `integration.testing.build_deterministic_pipeline()`에 deterministic Intent와 InMemory 문서를
