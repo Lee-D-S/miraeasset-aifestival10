@@ -13,6 +13,13 @@ groups when the amount/ratio header omits a leading alignment cell or the
 converted row has trailing empty cells. This keeps prior-year values and ratio
 cells out of the requested period's segment amount answer.
 
+The conversion may give neighbouring rows different numbers of leading label
+cells and may reverse the `금액 | 비중` order. Numeric cells are therefore
+aligned by their order within each data row. When the values clearly separate
+amounts (over 100) from ratios (100 or below), the local measure labels are
+corrected to match that evidence. The parser cache version is bumped whenever
+this mapping changes so an older table parse is not reused.
+
 The answer writer lists each requested segment. Stage4 also checks that every
 extracted segment amount appears in the final answer and fails closed when one
 is missing.
