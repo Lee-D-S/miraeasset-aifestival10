@@ -13,8 +13,31 @@ _CELL_TAGS = {"td", "th", "tu"}
 _UNIT_RE = re.compile(r"단위\s*[:：]\s*([^()\n]+)")
 _PERIOD_RE = re.compile(r"20\d{2}\s*년(?:\s*\d{1,2}\s*월(?:\s*\d{1,2}\s*일?)?|\s*(?:[1-4]\s*분기|상반기|하반기|연간))?")
 _NUMBER_RE = re.compile(r"(?:△|▲|\-)?\s*\d[\d,]*(?:\.\d+)?")
+_FOOTNOTE_MARKER_RE = re.compile(r"\(\s*주\s*\d+\s*\)")
 _CURRENCY_UNITS = ("조원", "십억원", "억원", "백만원", "천만원", "만원", "천원", "원")
 STRUCTURED_PARSER_VERSION = "structured-parser-v2"
+
+
+def _has_numeric_value(value: str) -> bool:
+    """True if ``value`` carries a real numeric value, not just a label.
+
+    Two label shapes look numeric under a bare digit search but are not:
+
+    - A row/column label like ``매출액이익률(주1)`` contains a digit only inside a
+      footnote reference (``(주1)``). Without stripping that first, the label
+      gets misread as a value cell — losing the row label and, worse, letting
+      the footnote digit itself become a bogus Fact value.
+    - A period header cell like ``2024년`` is entirely a period label, not an
+      amount. When such a header row is isolated into its own chunk (DART's
+      row-wise table chunking can do this), it has no sibling data row to be
+      recognized as the header, so without this check it gets read as a data
+      row and its own year labels become bogus values.
+    """
+
+    stripped = _FOOTNOTE_MARKER_RE.sub("", value).strip()
+    if _PERIOD_RE.fullmatch(stripped):
+        return False
+    return bool(_NUMBER_RE.search(stripped))
 
 
 @dataclass(frozen=True)
@@ -52,7 +75,7 @@ class StructuredTable:
             index
             for row in self.rows[(header_index + 1) if header_index is not None else 0 :]
             for index, value in enumerate(row)
-            if _NUMBER_RE.search(value)
+            if _has_numeric_value(value)
         ]
         data_start = min(data_start_candidates) if data_start_candidates else None
         period_group_width = None
@@ -72,8 +95,7 @@ class StructuredTable:
                 continue
             row_label = _row_label(row)
             for column_index, value in enumerate(row):
-                number_match = _NUMBER_RE.search(value)
-                if not number_match:
+                if not _has_numeric_value(value):
                     continue
                 column_label = column_labels[column_index] if column_index < len(column_labels) else ""
                 if re.sub(r"\s+", "", column_label) in {"주석", "주"}:
@@ -284,7 +306,7 @@ def _table_metadata(rows: list[list[str]]) -> tuple[str | None, str | None, str 
         unit_match = _UNIT_RE.search(row_text)
         # A unit embedded in a metric row (for example basic EPS ``(단위:
         # 원)``) applies only to that row, not to the complete table.
-        if unit_match and not any(_NUMBER_RE.search(value) for value in row):
+        if unit_match and not any(_has_numeric_value(value) for value in row):
             unit_label = _clean_text(unit_match.group(1))
             break
     basis_label = next((value for row in rows for value in row if "연결" in value or "별도" in value), None)
@@ -335,7 +357,7 @@ def _column_labels(rows: list[list[str]]) -> list[str]:
 
 def _column_header_index(rows: list[list[str]]) -> int | None:
     for index, row in enumerate(rows):
-        nonnumeric = [value for value in row if value and not _NUMBER_RE.search(value)]
+        nonnumeric = [value for value in row if value and not _has_numeric_value(value)]
         if len(nonnumeric) >= 2 and not any("단위" in value for value in nonnumeric):
             return index
     return None
@@ -349,7 +371,7 @@ def _row_label(row: list[str]) -> str:
     for value in row:
         if not value.strip():
             continue
-        if _NUMBER_RE.search(value):
+        if _has_numeric_value(value):
             break
         labels.append(value.strip())
     return " ".join(labels)

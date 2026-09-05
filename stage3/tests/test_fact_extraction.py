@@ -327,6 +327,25 @@ class FactExtractionTests(unittest.TestCase):
         self.assertFalse([item for item in numeric if abs(float(item.value)) > 1e15])
         self.assertEqual(numeric[0].value, 1_852_115.0)
 
+    def test_nearby_year_mention_is_not_captured_as_the_metric_value(self):
+        # Real-world regression: "역대 최고의 매출 및 영업이익을 달성 ... 당사는
+        # 2024년 연결기준 매출 11조 2,401억원"에서, 첫 "매출" 뒤 80자 안의 가장
+        # 가까운 숫자가 "2024"(연도)였다 — 실제 매출액이 아니라 연도 숫자가
+        # revenue Fact 값으로 잡히는 문제가 있었다.
+        bundle = adapt_stage2_bundle([{
+            "id": "narrative",
+            "text": (
+                "2024년은 당사가 역대 최고의 매출 및 영업이익을 달성한 한 해였습니다. "
+                "당사는 2024년 연결기준 매출 11조 2,401억원을 기록하였습니다."
+            ),
+            "metadata": {"corp_name": "기업A", "report_period": "2024-12", "basis": "연결"},
+        }])
+        facts = extract_facts(bundle.documents, self.intent)
+        revenue_values = {item.value for item in facts if item.metric == "revenue"}
+        self.assertNotIn(2024.0, revenue_values)
+        self.assertNotIn(202.0, revenue_values)
+        self.assertTrue(any(value > 1e12 for value in revenue_values))
+
 
 if __name__ == "__main__":
     unittest.main()

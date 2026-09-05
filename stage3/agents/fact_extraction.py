@@ -292,7 +292,13 @@ def _extract_facts_uncached(
     numeric_pattern = re.compile(
         rf"(?P<label>{label_pattern})(?!채권|원가|총이익)"
         rf"(?:(?!(?:{label_pattern}))[^\d\-△▲]){{0,80}}"
-        rf"(?P<value>{NUMBER_PATTERN})\s*(?P<unit>{UNIT_PATTERN}|단위)?"
+        # A bare number immediately followed by 년/월/일 is a calendar date
+        # (e.g. "2024년말 기준"), not an amount — without this guard a nearby
+        # year mention gets captured as the metric's value instead of the
+        # real figure that follows later in the sentence. The atomic group
+        # keeps a rejected date digit run (e.g. "2024") from backtracking
+        # into a shorter, still-date-shaped match (e.g. "202").
+        rf"(?P<value>(?>{NUMBER_PATTERN}))(?!\s*(?:년|월|일))\s*(?P<unit>{UNIT_PATTERN}|단위)?"
     )
     for document in documents:
         structured = parse_structured_evidence(
