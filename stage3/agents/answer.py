@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from typing import Any
@@ -8,6 +9,9 @@ from typing import Any
 from stage3.contracts import AgentResult, Stage3Fact, Stage3Intent
 from stage3.state import Stage3GraphState
 from stage3.grounding import matching_facts, period_matches, requested_aggregation_scope
+
+
+logger = logging.getLogger(__name__)
 
 
 def _citation_lines(citations: list[dict[str, Any]]) -> list[str]:
@@ -22,6 +26,36 @@ def _env_int(name: str, default: int) -> int:
         return max(int(os.getenv(name, str(default))), 1)
     except ValueError:
         return default
+
+
+def _fact_debug_enabled() -> bool:
+    return os.getenv("DIS164_DEBUG_FACTS", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _log_segment_facts(stage: str, facts: list[Stage3Fact]) -> None:
+    if not _fact_debug_enabled():
+        return
+    payload = [
+        {
+            "document_id": fact.document_id,
+            "kind": fact.kind,
+            "metric": fact.metric,
+            "label": fact.label,
+            "value": fact.value,
+            "unit": fact.unit,
+            "period": fact.period,
+            "basis": fact.basis,
+            "aggregation_scope": fact.aggregation_scope,
+            "table_context": fact.table_context,
+        }
+        for fact in facts[:100]
+    ]
+    logger.warning(
+        "segment_fact_debug stage=%s count=%d facts=%s",
+        stage,
+        len(facts),
+        json.dumps(payload, ensure_ascii=False, default=str),
+    )
 
 
 def _format_fact_value(fact: Stage3Fact) -> str:
@@ -215,6 +249,7 @@ def _segment_lookup_facts(intent: Stage3Intent, facts: list[Stage3Fact]) -> list
     """Return the requested metric for every available segment."""
 
     pool = [fact for fact in matching_facts(facts, intent) if fact.unit != "%"]
+    _log_segment_facts("matching", pool)
     if not pool:
         return []
     # Segment questions commonly retrieve both a structured table cell and a
@@ -227,13 +262,14 @@ def _segment_lookup_facts(intent: Stage3Intent, facts: list[Stage3Fact]) -> list
         pool = table_numeric_pool
     elif numeric_pool:
         pool = numeric_pool
+    _log_segment_facts("selected_pool", pool)
     unique: dict[tuple[str, str, str], Stage3Fact] = {}
     for fact in pool:
         row_label = str(fact.table_context.get("row_label") or fact.label or "")
         value = str(fact.normalized_value if fact.normalized_value is not None else fact.value)
         key = (row_label, str(fact.period or ""), value)
         unique.setdefault(key, fact)
-    return sorted(
+    selected = sorted(
         unique.values(),
         key=lambda fact: (
             str(fact.table_context.get("row_label") or fact.label or ""),
@@ -241,6 +277,8 @@ def _segment_lookup_facts(intent: Stage3Intent, facts: list[Stage3Fact]) -> list
             str(fact.document_id or ""),
         ),
     )[: _env_int("CLOVA_SEGMENT_FACT_LIMIT", 20)]
+    _log_segment_facts("final", selected)
+    return selected
 
 
 def _segment_lookup_claim(
