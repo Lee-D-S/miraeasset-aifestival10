@@ -46,6 +46,7 @@ class StructuredTable:
             return []
         column_labels = _column_labels(self.rows)
         header_index = _column_header_index(self.rows)
+        table_scope = " ".join(self.row_text(row) for row in self.rows[:2])
         period_numbers = [
             int(match.group(1))
             for label in column_labels
@@ -99,6 +100,7 @@ class StructuredTable:
                         "basis_label": basis,
                         "basis": basis,
                         "period_label": self.period_label,
+                        "table_scope": table_scope,
                         "period_offset": period_offset,
                         "source_format": self.source_format,
                     }

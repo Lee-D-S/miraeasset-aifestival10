@@ -49,6 +49,7 @@ def aggregation_scope_for_context(
         context.get("section_name", ""),
         context.get("row_label", ""),
         context.get("column_label", ""),
+        context.get("table_scope", ""),
         context.get("basis", ""),
         context.get("basis_label", ""),
     ]

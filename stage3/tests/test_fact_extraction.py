@@ -90,6 +90,33 @@ class FactExtractionTests(unittest.TestCase):
             self.assertEqual(fact.aggregation_scope, "not_total")
         self.assertEqual({fact.period for fact in facts}, {"2024", "2023"})
 
+    def test_table_header_scope_is_preserved_for_segment_rows(self):
+        bundle = adapt_stage2_bundle([{
+            "id": "segment-table",
+            "source": "report.xml",
+            "text": (
+                "| 사업부문 | 구분 | 2025년 3분기(제58기) |\n"
+                "| --- | --- | --- |\n"
+                "| 차량부문 | 영업이익 | 1,234 |"
+            ),
+            "metadata": {"corp_name": "현대자동차", "report_period": "2025-09", "basis": "연결"},
+        }])
+        intent = adapt_stage1_intent({
+            "raw_question": "현대자동차 2025년 3분기 사업부문별 영업이익",
+            "normalized_question": "현대자동차 2025년 3분기 사업부문별 영업이익",
+            "route": "ok",
+            "intent": "lookup",
+            "metric": "operating_profit",
+            "basis": "연결",
+            "time": {"years": [2025], "base_months": [9]},
+            "companies": ["현대자동차"],
+        })
+
+        facts = extract_facts(bundle.documents, intent)
+
+        operating_profit = next(item for item in facts if item.metric == "operating_profit")
+        self.assertEqual(operating_profit.aggregation_scope, "segment")
+
     def test_total_revenue_ignores_prior_revenue_type_table_cell(self):
         intent = adapt_stage1_intent({
             "raw_question": "삼성전자 2024년 연결 매출액은 얼마인가요?",

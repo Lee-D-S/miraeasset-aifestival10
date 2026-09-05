@@ -195,6 +195,9 @@ deadline; `CLOVA_RATE_LIMIT_MAX_WAIT` can lower or raise that bound.
 Stage1 treats `사업부문별`, `부문별`, `세그먼트별`, and `제품군별` as aggregation
 scopes. When one of these scopes is combined with a financial metric, the
 specific metric takes precedence over the generic `business_overview` route.
+Structured table extraction also carries the table header into each numeric
+Fact, so segment/product scope is retained when row chunks contain only a
+metric label and value.
 
 외부 CLOVA·대용량 DB·임베딩 서버 없이 일반 회귀를 검증하려면
 `integration.testing.build_deterministic_pipeline()`에 deterministic Intent와 InMemory 문서를
