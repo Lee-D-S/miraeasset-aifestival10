@@ -217,6 +217,16 @@ def _segment_lookup_facts(intent: Stage3Intent, facts: list[Stage3Fact]) -> list
     pool = [fact for fact in matching_facts(facts, intent) if fact.unit != "%"]
     if not pool:
         return []
+    # Segment questions commonly retrieve both a structured table cell and a
+    # narrative sentence containing an unrelated number.  Prefer numeric,
+    # table-backed facts whenever they exist so the narrative cannot win just
+    # because it happens to match the metric and scope words.
+    numeric_pool = [fact for fact in pool if fact.kind == "numeric"]
+    table_numeric_pool = [fact for fact in numeric_pool if fact.table_context]
+    if table_numeric_pool:
+        pool = table_numeric_pool
+    elif numeric_pool:
+        pool = numeric_pool
     unique: dict[tuple[str, str, str], Stage3Fact] = {}
     for fact in pool:
         row_label = str(fact.table_context.get("row_label") or fact.label or "")
