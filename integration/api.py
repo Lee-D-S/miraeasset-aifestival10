@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from collections.abc import Callable
 from threading import Lock
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
 
+from integration.rate_limit import is_rate_limit_error
 from integration.service import StagePipeline
 
 
@@ -170,8 +172,28 @@ def create_app(
         except Exception as error:  # noqa: BLE001 - HTTP boundary
             if current_pipeline is None:
                 raise HTTPException(status_code=503, detail="pipeline is not ready") from error
+            if is_rate_limit_error(error):
+                retry_after = max(float(getattr(error, "retry_after", 0.0) or 0.0), 0.0)
+                logger.warning(
+                    "pipeline request rate limited: type=%s retry_after=%.3f",
+                    type(error).__name__,
+                    retry_after,
+                )
+                headers = {"Retry-After": str(max(1, math.ceil(retry_after)))} if retry_after else None
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        "code": "PROVIDER_RATE_LIMITED",
+                        "error_type": type(error).__name__,
+                        "retry_after_seconds": round(retry_after, 3),
+                    },
+                    headers=headers,
+                ) from error
             logger.exception("pipeline request failed")
-            raise HTTPException(status_code=503, detail="pipeline request failed") from error
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "PIPELINE_ERROR", "error_type": type(error).__name__},
+            ) from error
         return to_submission_response(state)
 
     return app

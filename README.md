@@ -182,6 +182,14 @@ pytest
 
 ## 로컬 무비용 E2E
 
+### HTTP error classification
+
+The public `/answer` endpoint classifies provider capacity failures as HTTP 429
+with `detail.code=PROVIDER_RATE_LIMITED` and a `Retry-After` header when a reset
+duration is known. Unexpected pipeline failures remain HTTP 503 with the safe
+`PIPELINE_ERROR` code and exception type; provider messages, prompts, and keys
+are kept in server logs only.
+
 외부 CLOVA·대용량 DB·임베딩 서버 없이 일반 회귀를 검증하려면
 `integration.testing.build_deterministic_pipeline()`에 deterministic Intent와 InMemory 문서를
 주입한다. 이 factory와 InMemoryRetriever는 테스트 전용이며 production fallback으로 사용하지
