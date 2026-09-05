@@ -116,6 +116,24 @@ def requested_periods(intent: Stage3Intent) -> list[str]:
     return years
 
 
+def _normalize_period_key(value: object) -> str:
+    """Normalize Korean quarter/year labels to the API's YYYY[-MM] form."""
+
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    quarter = re.search(r"(\d{4})\s*년\s*([1-4])\s*분기", text)
+    if quarter:
+        return f"{quarter.group(1)}-{int(quarter.group(2)) * 3:02d}"
+    year_month = re.search(r"(\d{4})\s*[-/.]\s*(\d{1,2})", text)
+    if year_month:
+        return f"{year_month.group(1)}-{int(year_month.group(2)):02d}"
+    year = re.search(r"(\d{4})\s*년", text)
+    if year:
+        return year.group(1)
+    return text
+
+
 def period_matches(fact_period: str | None, requested: str) -> bool:
     """Match a Fact period to a Stage1 requested period.
 
@@ -124,8 +142,8 @@ def period_matches(fact_period: str | None, requested: str) -> bool:
     distinct months (``2025-03`` vs ``2025-12``) distinct.
     """
 
-    period = str(fact_period or "").strip()
-    wanted = str(requested or "").strip()
+    period = _normalize_period_key(fact_period)
+    wanted = _normalize_period_key(requested)
     if not period or not wanted:
         return False
     if period == wanted:
