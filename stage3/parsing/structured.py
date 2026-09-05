@@ -296,6 +296,20 @@ def _column_labels(rows: list[list[str]]) -> list[str]:
         # those value columns so current/prior facts remain distinguishable.
         if len(labels) == 4 and max_columns >= 6 and re.sub(r"\s+", "", labels[1]) in {"주석", "주"}:
             labels = [labels[0], labels[1], labels[2], labels[2], labels[3], labels[3]]
+        # Some DART tables use a second header row for amount/ratio columns:
+        # ``2025년 3분기 | 2025년 3분기`` followed by ``금액 | 비중``.
+        # Keep both pieces so unit detection can exclude percentage cells
+        # while period detection still sees the fiscal column.
+        if header_index + 1 < len(rows):
+            sub_labels = rows[header_index + 1]
+            if any(value.strip() in {"금액", "비중", "수량", "단가"} for value in sub_labels):
+                labels = [
+                    f"{base} {sub}".strip() if sub.strip() else base
+                    for base, sub in zip(
+                        labels,
+                        sub_labels + [""] * (len(labels) - len(sub_labels)),
+                    )
+                ]
         return labels + [""] * (max_columns - len(labels))
     return rows[0] if rows else []
 
@@ -309,10 +323,17 @@ def _column_header_index(rows: list[list[str]]) -> int | None:
 
 
 def _row_label(row: list[str]) -> str:
+    # DART tables commonly use multiple leading text cells as a hierarchical
+    # row header, for example ``차량부문 | 매출액 | 109,041,330``.  Preserve
+    # all leading labels so Fact extraction can still see the metric label.
+    labels: list[str] = []
     for value in row:
-        if value.strip() and not _NUMBER_RE.search(value):
-            return value
-    return ""
+        if not value.strip():
+            continue
+        if _NUMBER_RE.search(value):
+            break
+        labels.append(value.strip())
+    return " ".join(labels)
 
 
 def _unit_for_column(unit_label: str | None, column_label: str, row_label: str = "", value: str = "") -> str:
@@ -321,7 +342,15 @@ def _unit_for_column(unit_label: str | None, column_label: str, row_label: str =
     if not unit_label:
         if "원" in row_label or "원" in column_label:
             return "원"
-        if "%" in row_label or "%" in value or "비중" in row_label or "비율" in row_label:
+        if (
+            "%" in row_label
+            or "%" in column_label
+            or "%" in value
+            or "비중" in row_label
+            or "비중" in column_label
+            or "비율" in row_label
+            or "비율" in column_label
+        ):
             return "%"
         return ""
     if "%" in column_label or "비중" in column_label or "율" in column_label:

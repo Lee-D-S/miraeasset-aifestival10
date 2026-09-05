@@ -211,9 +211,46 @@ def _lookup_facts(intent: Stage3Intent, facts: list[Stage3Fact]) -> list[Stage3F
     return selected or _relevant_facts(intent, pool, limit=1)
 
 
+def _segment_lookup_facts(intent: Stage3Intent, facts: list[Stage3Fact]) -> list[Stage3Fact]:
+    """Return the requested metric for every available segment."""
+
+    pool = [fact for fact in matching_facts(facts, intent) if fact.unit != "%"]
+    if not pool:
+        return []
+    unique: dict[tuple[str, str, str], Stage3Fact] = {}
+    for fact in pool:
+        row_label = str(fact.table_context.get("row_label") or fact.label or "")
+        value = str(fact.normalized_value if fact.normalized_value is not None else fact.value)
+        key = (row_label, str(fact.period or ""), value)
+        unique.setdefault(key, fact)
+    return sorted(
+        unique.values(),
+        key=lambda fact: (
+            str(fact.table_context.get("row_label") or fact.label or ""),
+            str(fact.period or ""),
+            str(fact.document_id or ""),
+        ),
+    )[: _env_int("CLOVA_SEGMENT_FACT_LIMIT", 20)]
+
+
+def _segment_lookup_claim(
+    facts: list[Stage3Fact], intent: Stage3Intent, citations: list[dict[str, Any]]
+) -> str:
+    lines: list[str] = []
+    for fact in facts:
+        row_label = str(fact.table_context.get("row_label") or fact.label or "부문")
+        lines.append(
+            f"- {row_label}: {_format_fact_value(fact)} "
+            f"({fact.period or '기간 미상'}, {fact.basis or '기준 미상'})"
+        )
+    return "결론\n사업부문별 매출\n" + "\n".join(lines)
+
+
 def _selected_answer_facts(intent: Stage3Intent, facts: list[Stage3Fact]) -> list[Stage3Fact]:
     question_type = str(intent.question_type or intent.intent).lower()
     if question_type in {"lookup", "text", "exists"}:
+        if requested_aggregation_scope(intent) == "segment":
+            return _segment_lookup_facts(intent, facts)
         selected = _lookup_facts(intent, facts)
         extra = [fact for fact in _relevant_facts(intent, facts) if fact not in selected]
         return selected + extra[: max(0, 8 - len(selected))]
@@ -353,12 +390,16 @@ class AnswerWriter:
                 sections.append(f"결론\n{result_line}\n\n계산식\n{calculation.get('formula', '')}")
         else:
             facts_to_render = facts[:8]
-            if intent.query_plan:
+            if requested_aggregation_scope(intent) == "segment":
+                facts_to_render = _segment_lookup_facts(intent, facts)
+            elif intent.query_plan:
                 facts_to_render = facts[:8]
             elif str(intent.question_type or intent.intent).lower() in {"lookup", "text", "exists"}:
                 facts_to_render = _lookup_facts(intent, facts)
             if facts_to_render and not intent.query_plan and str(intent.question_type or intent.intent).lower() in {"lookup", "text", "exists"}:
-                if len(facts_to_render) > 1:
+                if requested_aggregation_scope(intent) == "segment":
+                    sections.append(_segment_lookup_claim(facts_to_render, intent, citations))
+                elif len(facts_to_render) > 1:
                     sections.append(_multi_period_lookup_claim(facts_to_render, intent, citations))
                 else:
                     sections.append(_lookup_claim(facts_to_render[0], intent, citations))
