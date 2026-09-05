@@ -47,6 +47,19 @@ class StructuredTable:
         column_labels = _column_labels(self.rows)
         header_index = _column_header_index(self.rows)
         table_scope = " ".join(self.row_text(row) for row in self.rows[:2])
+        period_labels = list(dict.fromkeys(_PERIOD_RE.findall(table_scope)))
+        data_start_candidates = [
+            index
+            for row in self.rows[(header_index + 1) if header_index is not None else 0 :]
+            for index, value in enumerate(row)
+            if _NUMBER_RE.search(value)
+        ]
+        data_start = min(data_start_candidates) if data_start_candidates else None
+        period_group_width = None
+        if data_start is not None and len(period_labels) >= 2:
+            value_columns = max(len(row) for row in self.rows) - data_start
+            if value_columns >= len(period_labels) and value_columns % len(period_labels) == 0:
+                period_group_width = value_columns // len(period_labels)
         period_numbers = [
             int(match.group(1))
             for label in column_labels
@@ -55,7 +68,7 @@ class StructuredTable:
         current_period_number = max(period_numbers) if period_numbers else None
         results: list[dict[str, Any]] = []
         for row_index, row in enumerate(self.rows):
-            if row_index == header_index:
+            if header_index is not None and row_index <= header_index:
                 continue
             row_label = _row_label(row)
             for column_index, value in enumerate(row):
@@ -77,6 +90,10 @@ class StructuredTable:
                     period_match = re.search(r"제\s*(\d+)\s*기", column_label)
                     if period_match:
                         period_offset = int(period_match.group(1)) - current_period_number
+                if period_offset is None and period_group_width and data_start is not None:
+                    group_index = (column_index - data_start) // period_group_width
+                    if 0 <= group_index < len(period_labels):
+                        period_offset = -group_index
                 unit = _unit_for_column(self.unit_label, column_label, row_label, value)
                 currency = "USD" if re.search(r"\bUSD\b|\$", value) else ("KRW" if unit in _CURRENCY_UNITS else None)
                 basis = (
