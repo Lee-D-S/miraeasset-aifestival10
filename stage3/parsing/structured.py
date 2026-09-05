@@ -14,7 +14,7 @@ _UNIT_RE = re.compile(r"단위\s*[:：]\s*([^()\n]+)")
 _PERIOD_RE = re.compile(r"20\d{2}\s*년(?:\s*\d{1,2}\s*월(?:\s*\d{1,2}\s*일?)?|\s*(?:[1-4]\s*분기|상반기|하반기|연간))?")
 _NUMBER_RE = re.compile(r"(?:△|▲|\-)?\s*\d[\d,]*(?:\.\d+)?")
 _CURRENCY_UNITS = ("조원", "십억원", "억원", "백만원", "천만원", "만원", "천원", "원")
-STRUCTURED_PARSER_VERSION = "structured-parser-v2"
+STRUCTURED_PARSER_VERSION = "structured-parser-v3"
 
 
 @dataclass(frozen=True)
@@ -48,16 +48,23 @@ class StructuredTable:
         header_index = _column_header_index(self.rows)
         table_scope = " ".join(self.row_text(row) for row in self.rows[:2])
         period_labels = list(dict.fromkeys(_PERIOD_RE.findall(table_scope)))
-        data_start_candidates = [
-            index
-            for row in self.rows[(header_index + 1) if header_index is not None else 0 :]
-            for index, value in enumerate(row)
-            if _NUMBER_RE.search(value)
-        ]
-        data_start = min(data_start_candidates) if data_start_candidates else None
+        numeric_positions = sorted(
+            {
+                index
+                for row in self.rows[(header_index + 1) if header_index is not None else 0 :]
+                for index, value in enumerate(row)
+                if _NUMBER_RE.search(value)
+            }
+        )
+        data_start = numeric_positions[0] if numeric_positions else None
+        data_end = numeric_positions[-1] if numeric_positions else None
         period_group_width = None
-        if data_start is not None and len(period_labels) >= 2:
-            value_columns = max(len(row) for row in self.rows) - data_start
+        if data_start is not None and data_end is not None and len(period_labels) >= 2:
+            # Use the numeric span rather than the physical row width. DART
+            # markdown conversion may leave trailing empty cells or add
+            # hierarchical label columns, which otherwise makes an even
+            # amount/ratio period group look non-divisible.
+            value_columns = data_end - data_start + 1
             if value_columns >= len(period_labels) and value_columns % len(period_labels) == 0:
                 period_group_width = value_columns // len(period_labels)
         period_numbers = [
@@ -329,7 +336,54 @@ def _column_labels(rows: list[list[str]]) -> list[str]:
                         sub_labels + [""] * (len(labels) - len(sub_labels)),
                     )
                 ]
-        return labels + [""] * (max_columns - len(labels))
+        labels += [""] * (max_columns - len(labels))
+
+        # Some DART markdown tables keep the period headers on the row above
+        # the amount/ratio header, but omit the leading blank cell that would
+        # align both rows. In that shape the raw header labels only cover the
+        # first period group and later numeric columns receive an empty label.
+        # Reconstruct labels over the contiguous numeric span so period and
+        # unit inference can still distinguish 2025/2024/2023 and 금액/비중.
+        period_labels = list(
+            dict.fromkeys(
+                _PERIOD_RE.findall(
+                    " ".join(" ".join(value for value in item) for item in rows[: header_index + 1])
+                )
+            )
+        )
+        measure_labels = [
+            value.strip()
+            for value in row
+            if value.strip() in {"금액", "비중", "수량", "단가"}
+        ]
+        numeric_positions = sorted(
+            {
+                index
+                for item in rows[header_index + 1 :]
+                for index, value in enumerate(item)
+                if _NUMBER_RE.search(value)
+            }
+        )
+        if len(period_labels) >= 2 and measure_labels and numeric_positions:
+            data_start = numeric_positions[0]
+            data_end = numeric_positions[-1]
+            value_columns = data_end - data_start + 1
+            if (
+                value_columns >= len(period_labels)
+                and value_columns % len(period_labels) == 0
+                and len(measure_labels) >= value_columns
+            ):
+                group_width = value_columns // len(period_labels)
+                for offset in range(value_columns):
+                    column_index = data_start + offset
+                    group_index = offset // group_width
+                    measure_index = offset % group_width
+                    if group_index >= len(period_labels) or measure_index >= len(measure_labels):
+                        continue
+                    labels[column_index] = (
+                        f"{period_labels[group_index]} {measure_labels[measure_index]}"
+                    ).strip()
+        return labels
     return rows[0] if rows else []
 
 

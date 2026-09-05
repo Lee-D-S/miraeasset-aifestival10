@@ -8,8 +8,10 @@ the query remains a single periodic revenue lookup.
 Structured DART tables can use hierarchical row headers such as
 `차량부문 | 매출액 | 금액`. The parser preserves the leading labels together,
 retains amount and ratio subheaders, and extracts the metric from the row
-header when it is present in a separate cell. Ratio cells are excluded from
-segment amount answers.
+header when it is present in a separate cell. It also reconstructs period
+groups when the amount/ratio header omits a leading alignment cell or the
+converted row has trailing empty cells. This keeps prior-year values and ratio
+cells out of the requested period's segment amount answer.
 
 The answer writer lists each requested segment. Stage4 also checks that every
 extracted segment amount appears in the final answer and fails closed when one
