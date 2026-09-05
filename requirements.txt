@@ -17,7 +17,7 @@ sqlalchemy>=2.0,<3
 # 버전 불일치 시 rust/sqlite/src/db.rs panic -> 정확히 고정.
 chromadb==1.5.9
 langchain-chroma>=1.0,<2
-hnswlib>=0.8,<1                  # backends.ReadOnlyHnswVectorStore (공급 HNSW 직접 read)
+chroma-hnswlib>=0.7,<1            # backends.ReadOnlyHnswVectorStore (공급 HNSW 직접 read) - is_persistent_index는 Chroma의 포크(chroma-hnswlib)에만 있고 upstream hnswlib에는 없다
 
 # --- 임베딩 (기본: STAGE2_EMBEDDING=e5) ---
 # intfloat/multilingual-e5-large (1024-dim, non-instruct) via fastembed / ONNX.
