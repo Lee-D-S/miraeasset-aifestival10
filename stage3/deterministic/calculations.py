@@ -7,7 +7,7 @@ from typing import Any
 
 from stage3.contracts import Stage3Fact, Stage3Intent
 from stage3.deterministic.calculation_registry import execute_operation
-from stage3.grounding import period_matches
+from stage3.grounding import matching_facts, period_matches
 
 
 def numeric_facts(facts: Iterable[Stage3Fact], *, metric: str | None = None) -> list[Stage3Fact]:
@@ -667,6 +667,10 @@ def calculate_facts(facts: Iterable[Stage3Fact], intent: Stage3Intent, *, operat
         selected = numeric_facts(all_numeric, metric=intent.metric)
     if not selected:
         return _error(operation, "insufficient_evidence", "계산에 필요한 수치 근거가 없습니다.")
+    if operation in {"percentage_change", "cagr"}:
+        grounded = matching_facts(selected, intent, require_scope=True)
+        if grounded:
+            selected = grounded
     if operation in {"percentage_change", "cagr", "sum", "average", "min", "max"}:
         selected = _coalesce_units(selected)
 

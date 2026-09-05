@@ -238,6 +238,72 @@ class Stage3NodeTests(unittest.TestCase):
         self.assertIn("total-revenue-note", update["answer"])
         self.assertNotIn("127975", update["answer"].replace(",", ""))
 
+    def test_percentage_change_prefers_total_revenue_over_revenue_type_breakdown_row(self):
+        state = _state(
+            question_type="calculation",
+            calculation={"operation": "percentage_change", "metric": "revenue"},
+        )
+        question = "삼성전자의 2024년과 2025년 매출액을 비교해줘"
+        state["question"] = question
+        state["intent"]["raw_question"] = question
+        state["intent"]["normalized_question"] = question
+        state["intent"]["time"] = {"years": [2024, 2025], "base_months": [12]}
+        state["intent"]["basis"] = "연결"
+        state["intent"]["manifest_filter"] = {"corp_names": ["삼성전자"]}
+        state["stage2_result"]["documents"] = [
+            {
+                "id": "total-revenue-2024",
+                "source": "annual.md",
+                "text": "2024년 당사의 매출은 300조원으로 전년 동기 대비 증가하였으며...",
+                "metadata": {
+                    "corp_name": "삼성전자",
+                    "base_year": 2024,
+                    "base_month": 12,
+                    "basis": "연결",
+                },
+            },
+            {
+                "id": "total-revenue-2025",
+                "source": "annual.md",
+                "text": "2025년 당사의 매출은 330조원으로 전년 동기 대비 증가하였으며...",
+                "metadata": {
+                    "corp_name": "삼성전자",
+                    "base_year": 2025,
+                    "base_month": 12,
+                    "basis": "연결",
+                },
+            },
+            {
+                "id": "revenue-type-breakdown",
+                "source": "annual.md",
+                "text": (
+                    "| 구분 | 제56기(2024) | 제57기(2025) |\n"
+                    "| --- | --- | --- |\n"
+                    "| 용역 및 기타매출 | 75,092 | 100 |"
+                ),
+                "metadata": {
+                    "corp_name": "삼성전자",
+                    "base_year": 2025,
+                    "base_month": 12,
+                    "basis": "연결",
+                },
+            },
+        ]
+
+        update = build_stage3_node()(state)
+
+        result = update["stage3_result"]
+        calculation = result["calculations"][0]
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(calculation["status"], "ok")
+        self.assertEqual(calculation["result"], 10.0)
+        self.assertEqual(calculation["evidence_ids"], ["total-revenue-2024", "total-revenue-2025"])
+        answer = update["answer"].replace(",", "")
+        self.assertNotIn("75092", answer)
+        self.assertNotIn("-99", answer)
+        self.assertIn("total-revenue-2024", answer)
+        self.assertIn("total-revenue-2025", answer)
+
     def test_multi_period_trend_uses_first_and_last_period_and_keeps_series(self):
         state = _state(
             question_type="calculation",
