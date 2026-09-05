@@ -11,11 +11,14 @@ from integration.cache import canonical_json, safe_cache_get, safe_cache_put, sh
 
 _CELL_TAGS = {"td", "th", "tu"}
 _UNIT_RE = re.compile(r"단위\s*[:：]\s*([^()\n]+)")
-_PERIOD_RE = re.compile(r"20\d{2}\s*년(?:\s*\d{1,2}\s*월(?:\s*\d{1,2}\s*일?)?|\s*(?:[1-4]\s*분기|상반기|하반기|연간))?")
+_PERIOD_RE = re.compile(
+    r"20\d{2}\s*년(?:\s*\d{1,2}\s*월(?:\s*\d{1,2}\s*일?)?|\s*(?:[1-4]\s*분기|상반기|하반기|연간))?"
+    r"(?:\s*\(\s*제\s*\d+\s*기\s*\))?"
+)
 _NUMBER_RE = re.compile(r"(?:△|▲|\-)?\s*\d[\d,]*(?:\.\d+)?")
 _FOOTNOTE_MARKER_RE = re.compile(r"\(\s*주\s*\d+\s*\)")
 _CURRENCY_UNITS = ("조원", "십억원", "억원", "백만원", "천만원", "만원", "천원", "원")
-STRUCTURED_PARSER_VERSION = "structured-parser-v3"
+STRUCTURED_PARSER_VERSION = "structured-parser-v4"
 
 
 def _has_numeric_value(value: str) -> bool:
@@ -366,45 +369,45 @@ def _column_labels(rows: list[list[str]]) -> list[str]:
         # first period group and later numeric columns receive an empty label.
         # Reconstruct labels over the contiguous numeric span so period and
         # unit inference can still distinguish 2025/2024/2023 and 금액/비중.
-        period_labels = list(
-            dict.fromkeys(
-                _PERIOD_RE.findall(
-                    " ".join(" ".join(value for value in item) for item in rows[: header_index + 1])
-                )
-            )
+        header_scope = " ".join(
+            " ".join(value for value in item)
+            for item in rows[: min(len(rows), header_index + 2)]
         )
-        measure_labels = [
-            value.strip()
-            for value in row
-            if value.strip() in {"금액", "비중", "수량", "단가"}
-        ]
+        period_labels = list(dict.fromkeys(_PERIOD_RE.findall(header_scope)))
+        measure_labels = next(
+            (
+                [value.strip() for value in candidate if value.strip() in {"금액", "비중", "수량", "단가"}]
+                for candidate in rows[header_index : min(len(rows), header_index + 2)]
+                if any(value.strip() in {"금액", "비중", "수량", "단가"} for value in candidate)
+            ),
+            [],
+        )
         numeric_positions = sorted(
             {
                 index
                 for item in rows[header_index + 1 :]
                 for index, value in enumerate(item)
-                if _NUMBER_RE.search(value)
+                if _has_numeric_value(value)
             }
         )
-        if len(period_labels) >= 2 and measure_labels and numeric_positions:
+        if (
+            len(period_labels) >= 2
+            and measure_labels
+            and len(measure_labels) % len(period_labels) == 0
+            and numeric_positions
+        ):
             data_start = numeric_positions[0]
-            data_end = numeric_positions[-1]
-            value_columns = data_end - data_start + 1
-            if (
-                value_columns >= len(period_labels)
-                and value_columns % len(period_labels) == 0
-                and len(measure_labels) >= value_columns
-            ):
-                group_width = value_columns // len(period_labels)
-                for offset in range(value_columns):
-                    column_index = data_start + offset
-                    group_index = offset // group_width
-                    measure_index = offset % group_width
-                    if group_index >= len(period_labels) or measure_index >= len(measure_labels):
-                        continue
-                    labels[column_index] = (
-                        f"{period_labels[group_index]} {measure_labels[measure_index]}"
-                    ).strip()
+            value_columns = len(measure_labels)
+            group_width = value_columns // len(period_labels)
+            for offset in range(value_columns):
+                column_index = data_start + offset
+                group_index = offset // group_width
+                measure_index = offset % group_width
+                if column_index >= max_columns:
+                    break
+                labels[column_index] = (
+                    f"{period_labels[group_index]} {measure_labels[measure_index]}"
+                ).strip()
         return labels
     return rows[0] if rows else []
 
