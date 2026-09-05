@@ -2,12 +2,17 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
+from dataclasses import replace
 import re
 from typing import Any
 
 from stage3.contracts import Stage3Fact, Stage3Intent
 from stage3.deterministic.calculation_registry import execute_operation
 from stage3.grounding import matching_facts, period_matches
+
+
+_AMOUNT_METRICS = frozenset({"revenue", "operating_profit", "net_income"})
+_AMOUNT_UNITS = frozenset({"백만원", "원", "천원", "억원", "조원", "조"})
 
 
 def numeric_facts(facts: Iterable[Stage3Fact], *, metric: str | None = None) -> list[Stage3Fact]:
@@ -49,7 +54,7 @@ def _pick_best(facts: Iterable[Stage3Fact]) -> Stage3Fact | None:
             magnitude = abs(float(fact.normalized_value or fact.value))
         except (TypeError, ValueError):
             magnitude = 0.0
-        amount_unit = 1 if unit in {"백만원", "원", "천원", "억원", "조원", "조"} else 0
+        amount_unit = 1 if unit in _AMOUNT_UNITS else 0
         not_percent = 0 if unit == "%" else 1
         label_match = 1 if fact.label in {"매출액", "매출"} else 0
         return (not_percent, label_match, amount_unit, fact.confidence, magnitude, str(fact.document_id))
@@ -115,6 +120,7 @@ def _display_amount(fact: Stage3Fact) -> float | str:
 def _input_dict(fact: Stage3Fact) -> dict[str, Any]:
     return {
         "value": _display_amount(fact),
+        "normalized_value": fact.normalized_value,
         "unit": fact.unit,
         "currency": fact.currency,
         "period": fact.period,
@@ -343,37 +349,112 @@ def _derived_record(
     }
 
 
-def _requirement_records(requirement: Mapping[str, Any], facts: list[Stage3Fact]) -> list[dict[str, Any]]:
+def _requirement_intent(intent: Stage3Intent | None, requirement: Mapping[str, Any]) -> Stage3Intent | None:
+    if intent is None:
+        return None
+    years: list[int] = []
+    for period in requirement.get("periods", []) or []:
+        year = str(period)[:4]
+        if year.isdigit():
+            years.append(int(year))
+    companies = [str(item) for item in requirement.get("companies", []) if str(item).strip()]
+    time = dict(intent.time or {})
+    if years:
+        time["years"] = years
+    manifest = dict(intent.manifest_filter or {})
+    if companies:
+        manifest["corp_names"] = list(dict.fromkeys([*manifest.get("corp_names", []), *companies]))
+    return replace(
+        intent,
+        metric=str(requirement.get("metric") or intent.metric or ""),
+        companies=companies or list(intent.companies),
+        time=time,
+        manifest_filter=manifest,
+    )
+
+
+def _record_from_fact(fact: Stage3Fact) -> dict[str, Any]:
+    return {
+        "value": float(fact.normalized_value),
+        "company": fact.company,
+        "period": fact.period,
+        "unit": fact.unit,
+        "label": fact.label,
+        "basis": fact.basis,
+        "currency": fact.currency,
+        "evidence_ids": [fact.document_id],
+        "input": {
+            "value": fact.display_value or fact.value,
+            "normalized_value": fact.normalized_value,
+            "unit": fact.unit,
+            "period": fact.period,
+            "basis": fact.basis,
+            "document_id": fact.document_id,
+        },
+    }
+
+
+def _requirement_records(
+    requirement: Mapping[str, Any],
+    facts: list[Stage3Fact],
+    *,
+    intent: Stage3Intent | None = None,
+) -> list[dict[str, Any]]:
     metric = str(requirement.get("metric", ""))
     companies = {str(item) for item in requirement.get("companies", []) if str(item).strip()}
     periods = {str(item) for item in requirement.get("periods", []) if str(item).strip()}
-    records: list[dict[str, Any]] = []
+    selected: list[Stage3Fact] = []
     for fact in facts:
-        if fact.kind != "numeric" or not isinstance(fact.normalized_value, (int, float)):
+        if fact.kind != "numeric" or not isinstance(fact.normalized_value, (int, float)) or not fact.unit.strip():
             continue
         if fact.metric != metric:
+            continue
+        if metric in _AMOUNT_METRICS and fact.unit == "%":
             continue
         if companies and str(fact.company) not in companies:
             continue
         if periods and not any(period_matches(fact.period, period) for period in periods):
             continue
-        records.append({
-            "value": float(fact.normalized_value),
-            "company": fact.company,
-            "period": fact.period,
-            "unit": fact.unit,
-            "basis": fact.basis,
-            "currency": fact.currency,
-            "evidence_ids": [fact.document_id],
-            "input": {
-                "value": fact.display_value or fact.value,
-                "unit": fact.unit,
-                "period": fact.period,
-                "basis": fact.basis,
-                "document_id": fact.document_id,
-            },
-        })
-    return records
+        selected.append(fact)
+    grounded_intent = _requirement_intent(intent, requirement)
+    if grounded_intent is not None:
+        grounded = matching_facts(selected, grounded_intent, require_scope=True)
+        if grounded:
+            selected = grounded
+        else:
+            selected = []
+    return [_record_from_fact(fact) for fact in selected]
+
+
+def _pick_best_record(records: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not records:
+        return None
+
+    def rank(record: Mapping[str, Any]) -> tuple:
+        unit = str(record.get("unit") or "")
+        value = abs(_record_value(record) or 0.0)
+        amount_unit = 1 if unit in _AMOUNT_UNITS else 0
+        not_percent = 0 if unit == "%" else 1
+        label = str(record.get("label") or "")
+        label_match = 1 if label in {"매출액", "매출"} else 0
+        return (not_percent, label_match, amount_unit, value)
+
+    return max(records, key=rank)
+
+
+def _best_records_by_year(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for record in records:
+        year, _ = _plan_period_key(record.get("period"))
+        if year <= 0:
+            continue
+        grouped[year].append(record)
+    chosen: list[dict[str, Any]] = []
+    for year in sorted(grouped):
+        best = _pick_best_record(grouped[year])
+        if best is not None:
+            chosen.append(best)
+    return chosen
 
 
 def _pair_records(left: list[dict[str, Any]], right: list[dict[str, Any]]) -> list[tuple[dict[str, Any], dict[str, Any]]]:
@@ -450,7 +531,7 @@ def _execute_plan_step(operation: str, inputs: list[list[dict[str, Any]]], step:
             grouped[str(record.get("company", "미상"))].append(record)
         results = []
         for company, records in grouped.items():
-            ordered = sorted(records, key=lambda record: _plan_period_key(record.get("period")))
+            ordered = _best_records_by_year(records)
             if len(ordered) < 2:
                 continue
             old, new = ordered[0], ordered[-1]
@@ -541,7 +622,12 @@ def _execute_plan_step(operation: str, inputs: list[list[dict[str, Any]]], step:
     return []
 
 
-def execute_analysis_plan(plan: Mapping[str, Any], facts: Iterable[Stage3Fact]) -> dict[str, Any]:
+def execute_analysis_plan(
+    plan: Mapping[str, Any],
+    facts: Iterable[Stage3Fact],
+    *,
+    intent: Stage3Intent | None = None,
+) -> dict[str, Any]:
     """Execute a validated plan over grounded Facts and preserve provenance."""
 
     fact_list = list(facts)
@@ -551,7 +637,7 @@ def execute_analysis_plan(plan: Mapping[str, Any], facts: Iterable[Stage3Fact]) 
         if isinstance(item, Mapping) and item.get("id")
     }
     records: dict[str, list[dict[str, Any]]] = {
-        identifier: _requirement_records(requirement, fact_list)
+        identifier: _requirement_records(requirement, fact_list, intent=intent)
         for identifier, requirement in requirements.items()
     }
     calculations: list[dict[str, Any]] = []
