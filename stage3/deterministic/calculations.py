@@ -671,7 +671,7 @@ def calculate_facts(facts: Iterable[Stage3Fact], intent: Stage3Intent, *, operat
         grounded = matching_facts(selected, intent, require_scope=True)
         if grounded:
             selected = grounded
-    if operation in {"percentage_change", "cagr", "sum", "average", "min", "max"}:
+    elif operation in {"sum", "average", "min", "max"}:
         selected = _coalesce_units(selected)
 
     if operation in {"compare", "rank"}:

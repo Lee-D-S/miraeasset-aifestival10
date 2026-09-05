@@ -82,6 +82,52 @@ class CalculationComparisonTests(unittest.TestCase):
         input_values = [str(item.get("value", "")).replace(",", "") for item in result["inputs"]]
         self.assertFalse(any("75092" in value or value == "100" for value in input_values))
 
+    def test_percentage_change_keeps_jo_total_when_million_won_breakdown_is_present(self):
+        def amount(*, document_id: str, period: str, value: float, unit: str, scope: str, label: str) -> Stage3Fact:
+            multiplier = {"조원": 1_000_000_000_000, "백만원": 1_000_000}[unit]
+            return Stage3Fact(
+                metric="revenue",
+                label=label,
+                value=value,
+                raw_value=value,
+                unit=unit,
+                normalized_value=value * multiplier,
+                period=period,
+                basis="연결",
+                company="기업A",
+                document_id=document_id,
+                source="",
+                evidence=label,
+                confidence=0.9,
+                currency="KRW",
+                aggregation_scope=scope,
+            )
+
+        intent = adapt_stage1_intent({
+            "raw_question": "삼성전자의 2024년과 2025년 매출액을 비교해줘",
+            "normalized_question": "삼성전자의 2024년과 2025년 매출액을 비교해줘",
+            "route": "ok",
+            "intent": "calc",
+            "question_type": "calculation",
+            "calculation": {"operation": "percentage_change"},
+            "metric": "revenue",
+            "basis": "연결",
+            "companies": ["기업A"],
+            "time": {"years": [2024, 2025], "base_months": [12]},
+        })
+        facts = [
+            amount(document_id="total-2024", period="2024-12", value=300, unit="조원", scope="unknown", label="매출"),
+            amount(document_id="total-2025", period="2025-12", value=330, unit="조원", scope="unknown", label="매출"),
+            amount(document_id="breakdown-2024", period="2024-12", value=75_092, unit="백만원", scope="unknown", label="매출"),
+            amount(document_id="breakdown-2025", period="2025-12", value=100, unit="백만원", scope="unknown", label="매출"),
+        ]
+        result = calculate_facts(facts, intent)
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["result"], 10.0)
+        self.assertEqual(result["evidence_ids"], ["total-2024", "total-2025"])
+        input_values = [str(item.get("value", "")).replace(",", "") for item in result["inputs"]]
+        self.assertFalse(any("75092" in value or value == "100" for value in input_values))
+
     def test_comparison_ranks_by_value_not_retrieval_score(self):
         intent, facts = self._facts(
             "기업A와 기업B 중 매출액이 큰 기업은?", "revenue",
