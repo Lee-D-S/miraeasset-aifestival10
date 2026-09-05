@@ -41,6 +41,7 @@ def _log_segment_facts(stage: str, facts: list[Stage3Fact]) -> None:
             "kind": fact.kind,
             "metric": fact.metric,
             "label": fact.label,
+            "company": fact.company,
             "value": fact.value,
             "unit": fact.unit,
             "period": fact.period,
@@ -248,6 +249,14 @@ def _lookup_facts(intent: Stage3Intent, facts: list[Stage3Fact]) -> list[Stage3F
 def _segment_lookup_facts(intent: Stage3Intent, facts: list[Stage3Fact]) -> list[Stage3Fact]:
     """Return the requested metric for every available segment."""
 
+    input_candidates = [
+        fact
+        for fact in facts
+        if fact.metric == intent.metric
+        or "매출" in str(fact.label)
+        or "매출" in str(fact.evidence)
+    ]
+    _log_segment_facts("input", input_candidates)
     pool = [fact for fact in matching_facts(facts, intent) if fact.unit != "%"]
     _log_segment_facts("matching", pool)
     if not pool:
