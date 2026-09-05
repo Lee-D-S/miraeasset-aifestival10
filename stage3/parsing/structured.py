@@ -18,7 +18,8 @@ _PERIOD_RE = re.compile(
 _NUMBER_RE = re.compile(r"(?:△|▲|\-)?\s*\d[\d,]*(?:\.\d+)?")
 _FOOTNOTE_MARKER_RE = re.compile(r"\(\s*주\s*\d+\s*\)")
 _CURRENCY_UNITS = ("조원", "십억원", "억원", "백만원", "천만원", "만원", "천원", "원")
-STRUCTURED_PARSER_VERSION = "structured-parser-v4"
+STRUCTURED_PARSER_VERSION = "structured-parser-v5"
+_MEASURE_LABELS = {"금액", "비중", "수량", "단가"}
 
 
 def _has_numeric_value(value: str) -> bool:
@@ -74,6 +75,13 @@ class StructuredTable:
         header_index = _column_header_index(self.rows)
         table_scope = " ".join(self.row_text(row) for row in self.rows[:2])
         period_labels = list(dict.fromkeys(_PERIOD_RE.findall(table_scope)))
+        measure_labels = _measure_labels(self.rows, header_index)
+        grouped_row_labels = _grouped_row_labels(
+            self.rows,
+            header_index,
+            period_labels,
+            measure_labels,
+        )
         numeric_positions = sorted(
             {
                 index
@@ -107,7 +115,11 @@ class StructuredTable:
             for column_index, value in enumerate(row):
                 if not _has_numeric_value(value):
                     continue
-                column_label = column_labels[column_index] if column_index < len(column_labels) else ""
+                row_mapping = grouped_row_labels.get(row_index, {})
+                column_label = row_mapping.get(
+                    column_index,
+                    column_labels[column_index] if column_index < len(column_labels) else "",
+                )
                 if re.sub(r"\s+", "", column_label) in {"주석", "주"}:
                     continue
                 period_offset = None
@@ -374,14 +386,7 @@ def _column_labels(rows: list[list[str]]) -> list[str]:
             for item in rows[: min(len(rows), header_index + 2)]
         )
         period_labels = list(dict.fromkeys(_PERIOD_RE.findall(header_scope)))
-        measure_labels = next(
-            (
-                [value.strip() for value in candidate if value.strip() in {"금액", "비중", "수량", "단가"}]
-                for candidate in rows[header_index : min(len(rows), header_index + 2)]
-                if any(value.strip() in {"금액", "비중", "수량", "단가"} for value in candidate)
-            ),
-            [],
-        )
+        measure_labels = _measure_labels(rows, header_index)
         numeric_positions = sorted(
             {
                 index
@@ -399,6 +404,12 @@ def _column_labels(rows: list[list[str]]) -> list[str]:
             data_start = numeric_positions[0]
             value_columns = len(measure_labels)
             group_width = value_columns // len(period_labels)
+            measure_labels = _oriented_measure_labels(
+                rows,
+                header_index,
+                measure_labels,
+                group_width,
+            )
             for offset in range(value_columns):
                 column_index = data_start + offset
                 group_index = offset // group_width
@@ -410,6 +421,111 @@ def _column_labels(rows: list[list[str]]) -> list[str]:
                 ).strip()
         return labels
     return rows[0] if rows else []
+
+
+def _measure_labels(rows: list[list[str]], header_index: int | None) -> list[str]:
+    if header_index is None:
+        return []
+    return next(
+        (
+            [value.strip() for value in candidate if value.strip() in _MEASURE_LABELS]
+            for candidate in rows[header_index : min(len(rows), header_index + 2)]
+            if any(value.strip() in _MEASURE_LABELS for value in candidate)
+        ),
+        [],
+    )
+
+
+def _numeric_magnitude(value: str) -> float | None:
+    match = _NUMBER_RE.search(str(value).replace(" ", ""))
+    if not match:
+        return None
+    try:
+        return abs(float(match.group(0).lstrip("△▲-").replace(",", "")))
+    except ValueError:
+        return None
+
+
+def _oriented_measure_labels(
+    rows: list[list[str]],
+    header_index: int,
+    measure_labels: list[str],
+    group_width: int,
+) -> list[str]:
+    """Align amount/ratio labels with values when DART reverses header cells.
+
+    Some converted DART tables put ``비중`` before ``금액`` in the second
+    header row even though data rows contain amount then ratio.  A clear
+    magnitude split is enough to correct that local reversal without guessing
+    on tables whose values do not distinguish the two measures.
+    """
+
+    if group_width != 2 or len(measure_labels) < 2:
+        return measure_labels
+    oriented = list(measure_labels)
+    for start in range(0, len(oriented), group_width):
+        pair = oriented[start : start + group_width]
+        if set(pair) != {"금액", "비중"}:
+            continue
+        magnitudes: list[list[float]] = [[], []]
+        for row in rows[header_index + 1 :]:
+            row_values = [value for value in row if _has_numeric_value(value)]
+            for offset in range(group_width):
+                ordinal = start + offset
+                if ordinal < len(row_values):
+                    magnitude = _numeric_magnitude(row_values[ordinal])
+                    if magnitude is not None:
+                        magnitudes[offset].append(magnitude)
+        maxima = [max(values, default=0.0) for values in magnitudes]
+        minima = [min(values, default=0.0) for values in magnitudes]
+        if max(maxima) > 100 and min(minima) <= 100:
+            amount_offset = 0 if maxima[0] >= maxima[1] else 1
+            oriented[start : start + group_width] = [
+                "금액" if offset == amount_offset else "비중"
+                for offset in range(group_width)
+            ]
+    return oriented
+
+
+def _grouped_row_labels(
+    rows: list[list[str]],
+    header_index: int | None,
+    period_labels: list[str],
+    measure_labels: list[str],
+) -> dict[int, dict[int, str]]:
+    """Map each row's numeric sequence to grouped period/measure labels.
+
+    Rows in one DART table can have different numbers of leading label cells.
+    Mapping by numeric ordinal keeps the same six values aligned even when a
+    neighbouring row starts one physical column earlier or later.
+    """
+
+    if header_index is None or len(period_labels) < 2 or not measure_labels:
+        return {}
+    if len(measure_labels) % len(period_labels) != 0:
+        return {}
+    group_width = len(measure_labels) // len(period_labels)
+    oriented = _oriented_measure_labels(
+        rows,
+        header_index,
+        measure_labels,
+        group_width,
+    )
+    mapping: dict[int, dict[int, str]] = {}
+    for row_index in range(header_index + 1, len(rows)):
+        row_positions = [
+            index for index, value in enumerate(rows[row_index]) if _has_numeric_value(value)
+        ]
+        if not row_positions:
+            continue
+        for ordinal, column_index in enumerate(row_positions[: len(oriented)]):
+            group_index = ordinal // group_width
+            if group_index >= len(period_labels):
+                break
+            mapping.setdefault(row_index, {})[column_index] = (
+                f"{period_labels[group_index]} {oriented[ordinal]}"
+            ).strip()
+    return mapping
 
 
 def _column_header_index(rows: list[list[str]]) -> int | None:
