@@ -128,6 +128,41 @@ result = resp.json()  # 아래 응답 스키마
   로드하면 `TypeError` → fallback에서 `RuntimeError: Index seems to be corrupted or
   unsupported`로 죽었다. `chroma-hnswlib>=0.7,<1`로 교체(로컬에서 `chroma-hnswlib==0.7.6`으로
   실제 5.5M-row 인덱스가 로드되는 것까지 확인).
+- `CLOVA_LLM_ENABLED`는 `.env`(git 비추적)에만 있고 코드 어디에도 하드코딩돼 있지 않다 — 서버
+  배포 설정 문제이지 코드 버그가 아니다. PR로는 못 고치고, 서버에서 `.env`에
+  `CLOVA_LLM_ENABLED=true`를 넣고 컨테이너를 재시작해야 한다(2026-09-05, T2 재현으로 확인:
+  `answer_mode=deterministic_fallback` → stage4 `validation_failed`).
+- (해결됨, 2026-09-05) Fact 추출(`stage3/agents/fact_extraction.py`,
+  `stage3/parsing/structured.py`)에 근거 없는 수치가 답으로 나가는 버그 두 개를 재현·수정했다.
+  실제 예시(한화에어로스페이스 "2024년 대비 2025년 매출 증감률은?"): stage4 검증은
+  통과했지만 답이 "2024-12: 2,024 / 2025-12: 2, 증감률 -99.9%"로 나왔다 — 실제 매출액이
+  아니라 연도 숫자·각주 번호가 매출액 Fact 값으로 잘못 추출된 결과였다.
+  - **연도 헤더가 값으로 잡히는 버그**: DART row-wise 청킹이 표 헤더 행("구 분 | 2024년 |
+    2023년 | 2022년")만 담긴 청크를 만들 수 있는데, `_column_header_index`가 "2024년" 같은
+    셀도 숫자를 포함한다는 이유로 "값 셀"로 오판해 헤더로 인식하지 못했다. 그 결과 헤더 행
+    자체가 데이터 행으로 처리되어 연도 숫자가 Fact 값이 됐다.
+  - **각주 번호가 값으로 잡히는 버그**: "매출액이익률(주1)" 같은 행 라벨 셀은 "(주1)"의 숫자
+    "1" 때문에 값 셀로 오판됐다 — row_label을 잃고, 각주 번호 자체가 Fact 값이 됐다.
+  - **서술형 문장에서 엉뚱한 숫자가 값으로 잡히는 버그**: 구조화된 표가 없는 본문에서는
+    "매출액"/"매출" 뒤 80자 이내의 가장 가까운 숫자를 값으로 잡는데, 그 숫자가 실제 매출액이
+    아니라 근처의 연도 언급("2024년말 기준")인 경우가 있었다.
+  - 수정: `stage3/parsing/structured.py`에 `_has_numeric_value()`를 추가해 각주 표시와
+    순수 기간 라벨(예: "2024년")을 "값"으로 보지 않게 했고, `stage3/agents/fact_extraction.py`의
+    수치 추출 정규식에 "숫자 뒤 년/월/일이 바로 오면 날짜이지 값이 아니다" 가드를 추가했다
+    (원자 그룹으로 감싸 부분 자릿수로 되돌아가는 백트래킹도 막았다 — 안 그러면 "2024" 거부 후
+    "202"로 되돌아가 여전히 틀린 값을 낸다). 회귀 테스트:
+    `stage3/tests/test_structured_parsing.py::test_footnote_marker_in_row_label_is_not_read_as_a_value_cell`,
+    `::test_single_header_row_chunk_is_not_read_as_a_data_row`,
+    `stage3/tests/test_fact_extraction.py::test_nearby_year_mention_is_not_captured_as_the_metric_value`.
+  - 이 버그는 stage4 검증을 통과한 채로 오답이 나갔다는 점에서, `deterministic_fallback`
+    보다 더 나쁜 유형이다("정확성"·"근거 기반" 둘 다 위반). "매출"처럼 2글자짜리 짧은 라벨은
+    본문 전체에서 매우 자주 등장하므로, 구조가 없는 서술형 텍스트에서의 근접 매칭은 여전히
+    다른 형태의 오탐 여지가 남아 있다 — 근본적으로는 표 셀 기반 추출을 우선하고 텍스트
+    스캔은 최후 수단으로 좁히는 방향이 더 안전하다.
+- 2026-09-05 서버 재테스트에서 T4(영업이익 대비 연구개발비 비중)는 크래시는 재현되지 않았지만
+  (`analysis_plan_executed`, `requirements=2`), Stage2가 "영업이익" Fact를 근거 문서에서 못 찾아
+  (`필수 계산 입력 근거가 없습니다: operating_profit`) 비율 계산을 못 하고 raw fallback으로
+  답이 나갔다. 원인 미조사 — Stage2 검색 recall 쪽 문제로 추정되나 확인 필요.
 
 ## 6. 배포 상태 (2026-09-05 기준)
 
@@ -153,8 +188,34 @@ result = resp.json()  # 아래 응답 스키마
   curl -s http://localhost:8000/ready
   ```
 - **마감 임박**: `docs/ncp-deploy.md` 8절에 명시된 대회 규정 — **09.06 마감 이후에는
-  `git pull`/재배포 금지(위반 시 규정상 실격)**. 오늘(09.05) 안에 위 재배포를 마쳐야 한다.
-- **재배포 후 확인할 것**: T2(별도기준 조회, `stage4`가 `validation_failed`로 죽던 문제)는
-  `CLOVA_LLM_ENABLED`가 서버 `.env`에 설정돼 있는지에 달려 있다(2026-09-04 진단, 아직
-  서버에서 미확인). T4는 이번 커밋으로 코드 자체는 고쳤으니 재배포 후 재현 질의로 확인한다:
-  `삼성전자의 2024년 영업이익 대비 연구개발비 비중은?`
+  `git pull`/재배포 금지(위반 시 규정상 실격)**. 오늘(09.05) 안에 재배포를 마쳐야 한다.
+- **2026-09-05 서버 재배포 후 재테스트 결과** (`http://49.50.142.35:8000`, `b2d7e99`까지 반영된
+  상태로 컨테이너 재기동됨):
+  - T2(별도기준 영업이익) — 여전히 실패. `answer_mode=deterministic_fallback` → stage4
+    `validation_failed`. `CLOVA_LLM_ENABLED`가 서버 `.env`에 꺼져 있는 것으로 추정(서버 접근
+    권한이 없어 직접 확인 불가). 코드로는 못 고친다 — 위 "현재 알려진 격차" 참고.
+  - T3(매출 증감률) — stage4는 통과했지만 답이 명백히 틀렸다(연도 숫자·각주 번호를 매출액으로
+    오인). 이번 세션에서 원인을 찾아 `stage3/parsing/structured.py`,
+    `stage3/agents/fact_extraction.py`를 고쳤다(위 "현재 알려진 격차" 항목 참고). **아직
+    push·배포 안 됨.**
+  - T4(연구개발비 비중) — `deterministic_plan_unavailable:ValueError` 크래시는 재현되지 않아
+    이전 수정이 서버에 반영된 것을 확인했다. 다만 영업이익 Fact를 못 찾아 비율 계산 자체는
+    아직 못 한다(원인 미조사, 위 항목 참고).
+- **재배포 대상**: 이번 세션에서 고친 T3/T4 관련 Fact 추출 버그는 브랜치로 push하고 PR을 열어둔다
+  (사용자가 GitHub에서 직접 머지). **머지 후에도 서버 재배포는 사용자 또는 SSH 키를 가진 사람이
+  직접 해야 한다** — 아래 커맨드는 위 "재배포" 절차와 동일하다.
+  ```bash
+  ssh root@49.50.142.35
+  cd ~/dis-164
+  git pull origin main
+  INDEX_DIR=/data/local_db docker compose up -d --build
+  curl -s http://localhost:8000/ready
+  ```
+- **재배포 후 확인할 것**: T3는 "한화에어로스페이스의 2024년 대비 2025년 매출 증감률은?"으로
+  재현·확인한다(고치기 전 답: "2024-12: 2,024 / 2025-12: 2, 증감률 -99.9%" — 명백히 틀린 값).
+  T4는 계산 자체가 되는지 "삼성전자의 2024년 영업이익 대비 연구개발비 비중은?"으로 확인한다.
+  T2는 코드 수정 없이 서버 `.env`의 `CLOVA_LLM_ENABLED` 값을 먼저 바꿔야 한다.
+- **2026-09-05부터 워크플로 변경**: 앞으로 Claude Code는 main에 직접 push하지 않고 브랜치로
+  push한 뒤 GitHub PR만 연다. PR 머지는 항상 사용자가 GitHub에서 직접 한다. 브랜치 이름에는
+  `claude`, `ai` 등 AI가 만들었다는 표시를 넣지 않는다(사용자 명시적 요청) — 변경 내용을
+  그대로 드러내는 이름을 쓴다.

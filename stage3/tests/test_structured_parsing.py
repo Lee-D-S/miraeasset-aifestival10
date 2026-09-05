@@ -50,6 +50,36 @@ class StructuredParsingTests(unittest.TestCase):
         columns = [cell["column_label"] for cell in parsed.numeric_cells if "매" in cell["row_label"]]
         self.assertEqual(columns, ["제 55 (당) 기", "제 54 (전) 기"])
 
+    def test_footnote_marker_in_row_label_is_not_read_as_a_value_cell(self):
+        # A row like "매출액이익률(주1) | 15.38% | 8.23%" has a digit only inside
+        # the footnote marker "(주1)". Before the fix, that digit made the
+        # label cell itself look like a value cell — losing the row label and
+        # turning the footnote number "1" into a bogus Fact value.
+        parsed = parse_structured_evidence(
+            "[한화에어로스페이스 | 사업보고서 (2024.12)]\n"
+            "| 주요가정치 | Hanwha AeroEngines Co., Ltd. | Hanwha AerospaceUSA Co., Ltd. |\n"
+            "| --- | --- | --- |\n"
+            "| 매출액이익률(주1) | 15.38% | 8.23% |\n"
+            "| 매출성장률(주2) | 20.48% | 3.87% |"
+        )
+        row_labels = {cell["row_label"] for cell in parsed.numeric_cells}
+        self.assertEqual(row_labels, {"매출액이익률(주1)", "매출성장률(주2)"})
+        values = {cell["value"] for cell in parsed.numeric_cells}
+        self.assertEqual(values, {"15.38%", "8.23%", "20.48%", "3.87%"})
+        self.assertNotIn("1", values)
+        self.assertNotIn("2", values)
+
+    def test_single_header_row_chunk_is_not_read_as_a_data_row(self):
+        # DART's row-wise table chunking can isolate a header row into its
+        # own chunk with no data rows alongside it. "2024년" etc. contain
+        # digits, so before the fix this lone header row was misclassified
+        # as a data row and its own year labels became bogus values.
+        parsed = parse_structured_evidence(
+            "[한화에어로스페이스 | 사업보고서 (2024.12)]\n"
+            "| 구 분 | 2024년 | 2023년 | 2022년 |"
+        )
+        self.assertEqual(parsed.numeric_cells, [])
+
 
 if __name__ == "__main__":
     unittest.main()
