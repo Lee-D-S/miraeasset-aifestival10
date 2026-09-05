@@ -203,6 +203,9 @@ pipeline 검증은 deterministic Stage3·Stage4 provider를 사용한다.
 `CLOVA_RATE_LIMIT_QPM`, `CLOVA_RATE_LIMIT_TPM`, `CLOVA_CHAT_MIN_INTERVAL`로
 보수적인 로컬 한도를 조정할 수 있다. provider가 보낸 rate-limit header와 로컬 차단
 상태는 Stage trace의 `provider_status`에 구조화해 남긴다.
+provider의 `x-ratelimit-reset-tokens`가 있으면 잔여 토큰이 다음 요청 예산보다 작을 때
+reset 시각까지 대기 후 재시도한다. 재생성 단계에서 rate-limit 차단이 발생해도 예외를
+HTTP 503으로 전파하지 않고 최초 답변을 유지해 Stage4의 안전한 실패 응답으로 종료한다.
 `DIS164_STRICT_GROUNDING_V2`는 요청 조건과 정확히 일치하는 Fact만 답변·검증에
 사용하는 grounding gate이며 기본값은 `true`다. 문제 발생 시 일시적으로 `false`로
 되돌릴 수 있지만, 대회 평가 전에는 기본값을 유지하고 회귀 테스트를 통과해야 한다.

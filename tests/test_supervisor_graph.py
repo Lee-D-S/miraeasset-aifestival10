@@ -3,7 +3,9 @@ from __future__ import annotations
 import unittest
 
 from integration import StageNodes, StagePipeline
+from integration.rate_limit import RateLimitBlocked
 from integration.supervisor import SupervisorDecision, build_supervisor_node
+from stage4.node import build_answer_regeneration_node
 
 
 class SupervisorGraphTests(unittest.TestCase):
@@ -128,6 +130,16 @@ class SupervisorGraphTests(unittest.TestCase):
         self.assertEqual(calls, ["첫 답", "재생성 답"])
         self.assertEqual(state["answer"], "재생성 답")
         self.assertEqual(state["regeneration_attempts"], 1)
+
+    def test_rate_limited_regeneration_keeps_first_answer(self) -> None:
+        class RateLimitedClient:
+            def generate_text(self, _messages):
+                raise RateLimitBlocked("provider token budget exhausted", 10)
+
+        node = build_answer_regeneration_node(answer_client=RateLimitedClient())
+        result = node({"answer": "첫 답", "regeneration_attempts": 0})
+        self.assertEqual(result["answer"], "첫 답")
+        self.assertEqual(result["regeneration_attempts"], 1)
 
 
 if __name__ == "__main__":

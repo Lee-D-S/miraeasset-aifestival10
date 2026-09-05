@@ -100,6 +100,7 @@ class ClovaRateLimiter:
         self._blocked_until = 0.0
         self._remaining_requests: int | None = None
         self._remaining_tokens: int | None = None
+        self._token_reset_until = 0.0
         self._lock = threading.Lock()
 
     def observe(self, headers: Mapping[str, object]) -> None:
@@ -112,6 +113,11 @@ class ClovaRateLimiter:
                 parse_reset_seconds(normalized.get("x-ratelimit-reset-tokens")),
             ]
             reset = max(reset_values, default=0.0)
+            if reset > 0 and self._remaining_tokens is not None:
+                self._token_reset_until = max(
+                    self._token_reset_until,
+                    time.monotonic() + reset,
+                )
             if (self._remaining_requests == 0 or self._remaining_tokens == 0) and reset > 0:
                 self._blocked_until = max(self._blocked_until, time.monotonic() + reset)
 
@@ -120,12 +126,22 @@ class ClovaRateLimiter:
         with self._lock:
             while self._calls and now - self._calls[0][0] >= 60.0:
                 self._calls.popleft()
+            if self._token_reset_until and now >= self._token_reset_until:
+                # Provider remaining-token headers describe the previous
+                # window. Clear them after reset so the next call can refresh
+                # the budget instead of being blocked by stale state.
+                self._remaining_tokens = None
+                self._token_reset_until = 0.0
             if now < self._blocked_until:
                 raise RateLimitBlocked("CLOVA rate-limit reset 전이라 호출을 차단했습니다.", self._blocked_until - now)
             if self._remaining_requests is not None and self._remaining_requests <= 0:
                 raise RateLimitBlocked("CLOVA remaining requests가 0이라 호출을 차단했습니다.")
             if self._remaining_tokens is not None and self._remaining_tokens < estimated_tokens:
-                raise RateLimitBlocked("CLOVA remaining tokens가 요청 예산보다 작아 호출을 차단했습니다.")
+                retry_after = max(self._token_reset_until - now, 0.0)
+                raise RateLimitBlocked(
+                    "CLOVA remaining tokens가 요청 예산보다 작아 호출을 차단했습니다.",
+                    retry_after,
+                )
             if len(self._calls) >= self.default_qpm:
                 retry_after = max(60.0 - (now - self._calls[0][0]), 0.0) if self._calls else 60.0
                 raise RateLimitBlocked("로컬 QPM 예산을 초과해 CLOVA 호출을 차단했습니다.", retry_after)
@@ -153,6 +169,10 @@ class ClovaRateLimiter:
                 "remaining_requests": self._remaining_requests,
                 "remaining_tokens": self._remaining_tokens,
                 "reset_in_seconds": round(reset_in, 3),
+                "token_reset_in_seconds": round(
+                    max(self._token_reset_until - now, 0.0),
+                    3,
+                ),
             }
 
     @staticmethod
