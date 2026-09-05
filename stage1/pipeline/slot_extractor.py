@@ -266,12 +266,23 @@ def _extract_metric(sq: str, slots: SlotResult, index: CorpusIndex) -> None:
     # segment.  The phrase "사업부문" is an aggregation cue here, not a
     # request for the business-overview section.  Keep business_overview for
     # questions that mention it without a revenue cue.
-    has_revenue = any(key == "revenue" for _position, key, _label in matched_positions)
-    if has_revenue:
+    scope_cues = (
+        "사업부문별",
+        "부문별",
+        "세그먼트별",
+        "제품군별",
+        "사업부문 단위",
+        "부문 단위",
+    )
+    has_scope = any(squash(cue) in sq for cue in scope_cues)
+    has_specific_metric = any(
+        key != "business_overview" for _position, key, _label in matched_positions
+    )
+    if has_scope and has_specific_metric:
         matched_positions = [
             item
             for item in matched_positions
-            if not (item[1] == "business_overview" and item[2] == squash("사업부문"))
+            if item[1] != "business_overview"
         ]
         candidates = [
             (len(label), metric)
