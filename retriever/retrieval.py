@@ -238,6 +238,8 @@ def _diversify_by_year(
     documents: Sequence[Mapping[str, Any]],
     years: Sequence[str],
     limit: int,
+    *,
+    metric: str | None = None,
 ) -> list[Mapping[str, Any]]:
     """Keep top hits while guaranteeing one document per requested year when possible."""
 
@@ -246,6 +248,7 @@ def _diversify_by_year(
         return []
     if len(years) <= 1:
         return ranked[:limit]
+    prefer_company_total = str(metric or "") == "revenue"
     picked: list[Mapping[str, Any]] = []
     used: set[str] = set()
     for year in years:
@@ -256,7 +259,9 @@ def _diversify_by_year(
         ]
         if not year_docs:
             continue
-        chosen = min(year_docs, key=_company_total_rank)
+        # The company-total preference targets the revenue "당사의 매출" sentence.
+        # For other metrics keep the top-ranked hit of the year unchanged.
+        chosen = min(year_docs, key=_company_total_rank) if prefer_company_total else year_docs[0]
         picked.append(chosen)
         used.add(_document_id(chosen))
     rank_index = {_document_id(document): index for index, document in enumerate(ranked)}
@@ -277,23 +282,26 @@ def _search_results_by_year(
     candidates: Sequence[Mapping[str, Any]],
     years: Sequence[str],
     limit: int,
+    *,
+    metric: str | None = None,
 ) -> list[Mapping[str, Any]]:
     if limit <= 0:
         return []
     if len(years) <= 1:
         return list(search(query, candidates, limit))
     per_year = max(limit // len(years), 1)
+    force_company_total = str(metric or "") == "revenue"
     seen: set[str] = set()
     merged: list[Mapping[str, Any]] = []
     for year in years:
         subset = [document for document in candidates if _document_year(document) == str(year)]
         if not subset:
             continue
-        hits = _ensure_company_total_in_year(
-            search(query, subset, per_year),
-            subset,
-            per_year,
-        )
+        hits = list(search(query, subset, per_year))
+        if force_company_total:
+            # Only the revenue question needs the "당사의 매출" company-total row
+            # forced past investment-plan tables; other metrics keep the raw hits.
+            hits = _ensure_company_total_in_year(hits, subset, per_year)
         for document in hits:
             identifier = _document_id(document)
             if identifier and identifier not in seen:
@@ -478,16 +486,15 @@ def retrieve(
         return {**empty, "status": "error", "warnings": ["Interpreter manifest_filter가 없습니다."]}
 
     query = _text(search_query) or build_search_query(question, intent)
-    candidates = retriever.filter_candidates(
-        manifest_filter, config.candidate_limit, query=query
-    )
+    metric = _text(intent.get("metric"))
+    candidates = retriever.filter_candidates(manifest_filter, config.candidate_limit)
     years = _requested_years(intent)
     keyword_results = _search_results_by_year(
-        retriever.keyword_search, query, candidates, years, config.branch_limit,
+        retriever.keyword_search, query, candidates, years, config.branch_limit, metric=metric,
     )
     try:
         vector_results = _search_results_by_year(
-            retriever.vector_search, query, candidates, years, config.branch_limit,
+            retriever.vector_search, query, candidates, years, config.branch_limit, metric=metric,
         )
     except Exception as error:  # provider/backend boundary; never fake semantic success
         provider_status = {}
@@ -583,7 +590,7 @@ def retrieve(
             retrieval_trace.append(
                 f"reranker_suggested_queries_count={len(suggested_queries)}"
             )
-    documents = _diversify_by_year(ranked, _requested_years(intent), config.final_limit)
+    documents = _diversify_by_year(ranked, _requested_years(intent), config.final_limit, metric=metric)
     cited = documents
     status = "ok" if cited else "not_found"
     retrieval_trace.extend(

@@ -52,16 +52,33 @@ def _amount_selection_rank(
     value: float,
     text: str,
     confidence: float = 0.0,
+    metric: str | None = None,
 ) -> tuple:
     unit = str(unit or "")
     label = str(label or "")
     text = str(text or "")
     not_percent = 0 if unit == "%" else 1
     plan_table = any(cue in text for cue in _PLAN_TABLE_CUES)
+    amount_unit = 1 if unit in _AMOUNT_UNITS else 0
+    if str(metric or "") != "revenue":
+        # The 조-scale / 백만원-table / "당사의 매출" cues below are tuned for the
+        # revenue company-total sentence. For operating_profit and net_income the
+        # authoritative number is the 백만원 income-statement cell, so keep the
+        # plain ordering: prefer amount units, then confidence, then magnitude.
+        return (
+            not_percent,
+            int(not plan_table),
+            0,
+            0,
+            0,
+            amount_unit,
+            1,
+            float(confidence),
+            abs(value),
+        )
     narrative_total = any(cue in text for cue in _NARRATIVE_TOTAL_CUES)
     jo_scale = unit in {"조원", "조", "억원"} or "조" in text
     label_match = 1 if label in {"매출액", "매출"} else 0
-    amount_unit = 1 if unit in _AMOUNT_UNITS else 0
     million_table = unit == "백만원" and "조" not in text
     return (
         not_percent,
@@ -81,6 +98,11 @@ def _pick_best(facts: Iterable[ReasonerFact]) -> ReasonerFact | None:
     if not candidates:
         return None
 
+    metric = next(
+        (str(candidate.metric) for candidate in candidates if getattr(candidate, "metric", "")),
+        None,
+    )
+
     def rank(fact: ReasonerFact) -> tuple:
         try:
             magnitude = abs(float(fact.normalized_value or fact.value))
@@ -97,6 +119,7 @@ def _pick_best(facts: Iterable[ReasonerFact]) -> ReasonerFact | None:
             value=magnitude,
             text=text,
             confidence=float(fact.confidence or 0.0),
+            metric=metric,
         )
 
     return max(candidates, key=rank)
@@ -420,6 +443,7 @@ def _record_from_fact(fact: ReasonerFact) -> dict[str, Any]:
         "period": fact.period,
         "unit": fact.unit,
         "label": fact.label,
+        "metric": fact.metric,
         "basis": fact.basis,
         "currency": fact.currency,
         "evidence": fact.evidence,
@@ -471,6 +495,11 @@ def _pick_best_record(records: list[dict[str, Any]]) -> dict[str, Any] | None:
     if not records:
         return None
 
+    metric = next(
+        (str(record.get("metric")) for record in records if record.get("metric")),
+        None,
+    )
+
     def rank(record: Mapping[str, Any]) -> tuple:
         payload = record.get("input") if isinstance(record.get("input"), dict) else {}
         text = " ".join(
@@ -489,6 +518,7 @@ def _pick_best_record(records: list[dict[str, Any]]) -> dict[str, Any] | None:
             label=str(record.get("label") or ""),
             value=abs(_record_value(record) or 0.0),
             text=text,
+            metric=metric,
         )
 
     return max(records, key=rank)

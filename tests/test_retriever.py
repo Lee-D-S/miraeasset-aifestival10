@@ -197,10 +197,47 @@ def test_retriever_diversify_prefers_company_total_over_plan_table():
             "hybrid_score": 0.4,
         },
     ]
-    picked = _diversify_by_year(docs, ["2023", "2024", "2025"], 10)
+    picked = _diversify_by_year(docs, ["2023", "2024", "2025"], 10, metric="revenue")
     by_year = {str(item["metadata"]["base_year"]): item["id"] for item in picked[:3]}
     assert by_year["2025"] == "total-2025"
     assert {item["id"] for item in picked} >= {"total-2023", "total-2024", "total-2025"}
+
+
+def test_retriever_diversify_keeps_top_hit_for_non_revenue_metric():
+    """The company-total promotion is revenue-only; operating_profit keeps the
+    top-scored chunk of each year (an income-statement table row), not a
+    '당사의 매출' sentence."""
+    from retriever.retrieval import _diversify_by_year
+
+    docs = [
+        {
+            "id": "income-2025",
+            "text": "| 영업이익 | 42,180,000 | 32,725,961 |",
+            "metadata": {"base_year": 2025},
+            "hybrid_score": 0.99,
+        },
+        {
+            "id": "narrative-2025",
+            "text": "2025년 당사의 매출은 333조 6,059억원으로 영업이익은 42조원을 기록하였으며...",
+            "metadata": {"base_year": 2025},
+            "hybrid_score": 0.1,
+        },
+        {
+            "id": "income-2024",
+            "text": "| 영업이익 | 32,725,961 | 6,566,976 |",
+            "metadata": {"base_year": 2024},
+            "hybrid_score": 0.7,
+        },
+        {
+            "id": "income-2023",
+            "text": "| 영업이익 | 6,566,976 | 43,376,630 |",
+            "metadata": {"base_year": 2023},
+            "hybrid_score": 0.6,
+        },
+    ]
+    picked = _diversify_by_year(docs, ["2023", "2024", "2025"], 10, metric="operating_profit")
+    by_year = {str(item["metadata"]["base_year"]): item["id"] for item in picked[:3]}
+    assert by_year["2025"] == "income-2025"
 
 
 def test_retriever_keeps_yearly_totals_when_plan_tables_dominate_candidates():
