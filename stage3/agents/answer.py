@@ -15,10 +15,12 @@ logger = logging.getLogger(__name__)
 
 
 def _citation_lines(citations: list[dict[str, Any]]) -> list[str]:
-    return [
-        f"- {item.get('source') or item.get('document_id', '')} ({item.get('document_id', '')})"
-        for item in citations
-    ]
+    lines: list[str] = []
+    for item in citations:
+        document_id = str(item.get("document_id", "")).strip()
+        marker = f" [문서ID: {document_id}]" if document_id else ""
+        lines.append(f"- {item.get('source') or document_id}{marker}")
+    return lines
 
 
 def _env_int(name: str, default: int) -> int:
@@ -72,6 +74,16 @@ def _format_fact_value(fact: Stage3Fact) -> str:
     except (TypeError, ValueError):
         formatted = str(fact.value)
     return f"{formatted}{fact.unit or ''}"
+
+
+def _display_fact_period(fact: Stage3Fact) -> str:
+    """Render a period without exposing a bare year as an answer number."""
+
+    context_period = str(fact.table_context.get("period_label") or "").strip()
+    period = context_period or str(fact.period or "").strip()
+    if re.fullmatch(r"20\d{2}", period):
+        return f"{period}년"
+    return period
 
 
 def _index_like_amount(fact: Stage3Fact) -> bool:
@@ -206,7 +218,7 @@ def _lookup_claim(fact: Stage3Fact, intent: Stage3Intent, citations: list[dict[s
     """
 
     subject = fact.company or (intent.companies[0] if intent.companies else "요청 기업")
-    period = fact.period or ", ".join(
+    period = _display_fact_period(fact) or ", ".join(
         str(year) for year in intent.time.get("years", [])
     ) or "요청 기간"
     basis = fact.basis or intent.basis or "공시 기준"
@@ -296,9 +308,10 @@ def _segment_lookup_claim(
     lines: list[str] = []
     for fact in facts:
         row_label = str(fact.table_context.get("row_label") or fact.label or "부문")
+        period = _display_fact_period(fact) or "기간 미상"
         lines.append(
             f"- {row_label}: {_format_fact_value(fact)} "
-            f"({fact.period or '기간 미상'}, {fact.basis or '기준 미상'})"
+            f"({period}, {fact.basis or '기준 미상'})"
         )
     return "결론\n사업부문별 매출\n" + "\n".join(lines)
 
@@ -323,7 +336,7 @@ def _multi_period_lookup_claim(
     lines = []
     for fact in facts:
         value = _format_fact_value(fact)
-        lines.append(f"- {fact.period or '기간 미상'}: {value}")
+        lines.append(f"- {_display_fact_period(fact) or '기간 미상'}: {value}")
     citation = _citation_for_fact(facts[-1], citations)
     source_line = ""
     if citation:
