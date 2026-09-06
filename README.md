@@ -1,152 +1,128 @@
 # dis-164
 
-AI Festival 2026 공시 질의 응답 Agent 실행 엔진.
+AI Festival 2026 공시 질의 응답 Agent 실행 엔진이다. FastAPI 프로세스가 Supervisor가
+제어하는 LangGraph 파이프라인(Interpreter → Retriever → Reasoner → Validator)을 실행한다.
 
-## 현재 canonical 구조
+## 환경 구성
 
-```text
-app.py                  # FastAPI 진입점
-config.py               # 프로젝트 루트 기준 경로·Retriever 모드 단일 설정 지점
-integration/            # LangGraph 조립, Supervisor, API adapter
-shared_state.py         # 공용 AgentState와 Stage write contract
-interpreter/                 # 질의 정규화·Intent·manifest filter
-retriever/                 # local SQLite / Chroma hybrid retrieval·embedding·rerank
-reasoner/                 # Fact·event·계산·답변 초안
-validator/                 # 수치·출처·의미 검증
-tests/                  # 현재 통합 계약 테스트
+Python 3.11 또는 3.12가 필요하다.
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -r requirements.txt -r requirements-langgraph.txt -r requirements-dev.txt
 ```
 
-실행 흐름은 `Interpreter → Supervisor → Retriever → Supervisor → Reasoner → Supervisor → Validator → Supervisor`다. Supervisor는 허용된 action만 선택하고, 실제 Stage 작업과 반복 제한은 코드가 담당한다.
+환경변수는 `.env.example`를 복사해서 채운다. 경로와 Retriever 모드는 모두 프로젝트 루트의
+`config.py` 한 곳에서 읽는다. 상대경로는 실행 CWD가 아니라 프로젝트 루트를 기준으로
+해석하므로 어느 디렉터리에서 실행해도 동작이 같다.
 
-## 그래프 구조
+```bash
+cp .env.example .env
+```
 
-`integration/graph.py`가 조립하는 실제 LangGraph 상태머신이다. Stage별 phase 갱신과 소유권 검증은
-각 Stage 노드를 감싸는 훅으로 처리되어 별도 노드로 나타나지 않고, 4단계 Supervisor는 하나의
-`supervisor` 노드로 합쳐져 있다.
+주요 환경변수는 다음과 같다. 값의 의미는 `.env.example`에 정리되어 있다.
+
+| 환경변수 | 기본값 | 설명 |
+|---|---|---|
+| `CLOVA_API_KEY` | (없음) | 답변 생성·semantic 검증에 필요. 배포 환경에서만 주입한다. |
+| `RETRIEVER_MODE` | `local` | `local` 외의 값은 허용하지 않는다. |
+| `RETRIEVER_INDEX_PATH` | `data/local_db/chunk_index.db` | 제공된 SQLite `chunk_index` 위치. |
+| `RETRIEVER_CHROMA_PATH` | `data/local_db/chunk_index_chroma` | 제공된 Chroma persistent 인덱스 위치. |
+| `RETRIEVER_CHROMA_COLLECTION` | `chunk_vectors` | 인덱스를 만든 시점의 컬렉션 이름과 일치해야 한다. |
+| `RETRIEVER_EMBEDDING` | `e5` | 질의 임베딩. `intfloat/multilingual-e5-large` 하나로 고정한다. |
+| `RETRIEVER_ALLOW_PARTIAL_INDEX` | `true` | 제공 인덱스 테스트 시에만 사용한다. 스키마·빈 테이블·차원 오류는 계속 실패한다. |
+| `CORPUS_DIR` | (자동 탐색) | Interpreter의 `universe.csv`·`manifest.jsonl` 디렉터리. 자동 탐색이 실패할 때만 지정한다. |
+| `CLOVA_LLM_ENABLED` | `true` | 답변 생성·semantic 검증 사용 여부. |
+| `INTERPRETER_USE_LLM` | `0` | Interpreter의 unresolved 슬롯 보완에 CLOVA Chat 호출 여부. |
+| `CLOVA_RERANKER_ENABLED` | `false` | production Reranker. 켤 때만 상위 100개 후보를 전송한다. |
+
+E5 모델은 서버의 fastembed/Hugging Face 캐시에 미리 준비되어 있어야 한다. 기동 시 외부
+다운로드는 하지 않으며, 캐시가 없으면 Retriever 초기화가 실패한다. 실행 중 SQLite·Chroma
+인덱스에는 쓰지 않는다.
+
+## 실행 명령어
+
+| 목적 | 명령 |
+|---|---|
+| 개발 서버 실행 | `uvicorn app:app --reload` |
+| 배포 전 오프라인 점검 (CLOVA 호출 없음) | `python scripts/check_deployment.py` |
+| 전체 테스트 | `pytest` |
+| 통합 테스트만 (pytest 없이) | `python -m unittest discover -s tests -p "test_*.py"` |
+| 단일 테스트 | `pytest tests/test_retriever.py::TestClass::test_case` |
+| 무비용 로컬 E2E | `pytest tests/test_local_e2e.py` |
+| Interpreter gold-query·불변식 검사 | `python -m interpreter.tests.run_checks` |
+| 문법 검사 (ruff/flake8 없음) | `python -m compileall -q integration shared_state.py interpreter retriever reasoner validator` |
+| 그래프 이미지 재생성 | `python scripts/render_graph.py --png integration/graph.png` |
+| 제공 인덱스 구조·대표 질의 검증 | `python scripts/check_real_index.py --allow-partial-index` 후 `pytest -m real_index` |
+
+일반 `pytest`는 대용량 인덱스에 의존하지 않으며 `real_index` marker를 자동 제외한다.
+
+## 디렉터리 구조
+
+```text
+app.py              # FastAPI 진입점
+config.py           # 경로·Retriever 모드 단일 설정 지점
+shared_state.py     # 공용 AgentState와 Stage write contract
+integration/        # LangGraph 조립, Supervisor, API adapter
+interpreter/        # 질의 정규화·Intent·manifest filter
+retriever/          # SQLite + Chroma hybrid retrieval·embedding·rerank
+reasoner/           # Fact·계산·이벤트 연결·답변 초안
+validator/          # 수치·출처·의미 검증
+tests/              # 통합 계약 테스트
+```
+
+`README.md`, 각 Stage의 `README.md`, `NCP_DEPLOYMENT.md`는 각 Stage 계약의 authoritative
+spec이다. `docs/contest-requirements.md`에 대회 요구사항과 평가 API 스키마가 있다.
+
+## 실행 흐름
+
+```text
+START → interpreter → supervisor → retriever → supervisor → reasoner → supervisor → validator → supervisor → END
+```
+
+- Supervisor는 허용된 action과 이유만 선택한다. 실제 Stage 작업과 반복 제한은 코드가
+  담당한다. 기본값은 Supervisor 12단계, 검색 재시도 1회, planner 재시도 1회, 답변
+  재생성 1회다.
+- 4단계 Supervisor는 하나의 `supervisor` 노드로 합쳐져 있고, `supervisor_phase`를 읽어
+  `_PHASE_ROUTES`로 라우팅한다. 알 수 없는 action은 fail-closed 처리한다.
+- Stage별 phase 갱신과 write 권한 검증은 각 Stage 노드를 감싸는 미들웨어이며 별도 노드로
+  나타나지 않는다.
+- Supervisor 정책은 교체 가능하다. 기본은 LLM을 쓰지 않는 `DeterministicSupervisor`이고,
+  `StructuredSupervisorClient`는 action JSON만 반환한다.
+
+### 상태 계약
+
+`AgentState`가 유일한 cross-stage 상태다. 각 Stage는 partial update만 반환하고,
+`STAGE_WRITE_FIELDS`가 Stage별 쓰기 가능 키를 정의한다. `question_id`, `question`,
+`original_question`은 실행 중 불변이다. 재시도는 `search_query`만 바꾸고 `question`은
+바꾸지 않는다. 초기 상태는 `make_initial_agent_state()`로만 만든다.
+
+### 그래프 이미지
 
 ![integration/graph.py의 LangGraph 상태머신](integration/graph.png)
 
-그래프 구조(노드·엣지)가 바뀌면 다음 명령으로 다시 뽑는다. 저장된 이미지가 실제 코드와 항상
-일치하도록, 손으로 그리지 않고 이 스크립트로만 갱신한다.
+노드나 엣지가 바뀌면 `python scripts/render_graph.py --png integration/graph.png`로 다시
+뽑는다. 손으로 그리지 않는다.
 
-```powershell
-python scripts/render_graph.py --png integration/graph.png
-```
+## Retriever
 
-## NCP & instance level architecture
+제공된 read-only 인덱스를 쓰는 `local` 모드만 지원한다.
 
-![instance_levle_arch](img/instance_level_schema.drawio.png)
+- `manifest_filter`를 SQLite `chunk_index`의 SQL `WHERE`절로 적용하고, 후보는
+  최신 공시 우선(`rcept_dt DESC, rcept_no DESC`)으로 정렬한다.
+- Chroma persistent HNSW 파일은 query-only로 읽는다. 제공 인덱스는 legacy HNSW 형식이므로
+  애플리케이션은 Chroma client를 열지 않고 `chroma.sqlite3`를 `mode=ro`로 읽으며 HNSW
+  파일을 직접 검색한다.
+- 질의 임베딩은 E5 1024차원 하나로 고정한다. 문서와 질의는 같은 공간을 쓰며 `e5-instruct`는
+  허용하지 않는다.
 
-단일 ec2인스턴스 내 
-- 단일 agent app
-- vector DB, RDB 가 포함되어 있다.
+제공 인덱스는 SQLite `chunk_index` 약 1,155,170행과 Chroma `chunk_vectors` 약 800,460개
+벡터로 구성된다. 벡터 커버리지와 Interpreter manifest 문서 집합이 완전히 일치하지 않을 수
+있으므로, 이 인덱스를 테스트할 때만 `RETRIEVER_ALLOW_PARTIAL_INDEX=true`를 지정한다.
+HNSW에 검색 가능한 벡터가 없는 후보는 결과에서 제외한다.
 
-## 설치 및 실행
-
-```powershell
-python -m pip install -r requirements.txt
-python -m pip install -r requirements-langgraph.txt
-python -m pip install -r requirements-dev.txt
-uvicorn app:app --reload
-```
-
-기본 factory는 `integration/composition.py`에서 Interpreter~Validator를 조립한다. 경로와 Retriever 모드
-선택은 모두 프로젝트 루트의 **`config.py`** 한 곳에서 관리한다. 환경변수의 상대경로는
-실행 CWD가 아니라 프로젝트 루트를 기준으로 해석된다.
-
-Retriever는 제공된 인덱스를 사용하는 `local` 모드만 지원한다.
-
-- `local`: 제공된 로컬 SQLite(`RETRIEVER_INDEX_PATH`)의 `chunk_index`로
-  `manifest_filter`를 SQL `WHERE`절로 필터링하고, 기존 Chroma persistent HNSW 파일을
-  query-only로 읽는다. 현재 제공 인덱스는 최신 Chroma writer와 호환되지 않는 legacy
-  HNSW pickle 형식이므로 애플리케이션은 Chroma migration/client를 열지 않고
-  `chroma.sqlite3`를 SQLite `mode=ro`로 읽으며 HNSW 파일을 직접 검색한다. 질의 임베딩은
-  `RETRIEVER_EMBEDDING=e5`, 즉 `intfloat/multilingual-e5-large` 하나로 고정한다.
-  문서와 질의는 저장 인덱스와 같은 1024차원 E5 공간을 사용하며, `e5-instruct`는
-  active 경로에서 허용하지 않는다.
-`RETRIEVER_CHROMA_COLLECTION`(기본 `chunk_vectors`)은 제공 인덱스를 만든 시점의 컬렉션
-이름과 일치해야 한다. `RETRIEVER_MODE=container`를 포함해 `local` 외의 값은 readiness에서
-허용되지 않으며, 자동으로 local 모드로 전환하지 않는다.
-
-제공된 local 인덱스는 SQLite `chunk_index` 약 1,155,170행과 Chroma `chunk_vectors`
-약 800,460개 벡터로 구성되어 있다. 벡터 커버리지와 Interpreter manifest 문서 집합이 완전히
-일치하지 않을 수 있으므로, 해당 인덱스를 테스트할 때만
-`RETRIEVER_ALLOW_PARTIAL_INDEX=true`를 명시한다. 스키마·빈 테이블·차원 오류는 계속 실패한다.
-`chunk_index`와 Chroma collection의 ID 관계는 readiness에서 확인하며, HNSW에 실제로
-검색 가능한 벡터가 없는 후보는 결과에서 제외된다.
-
-Interpreter corpus 자동 탐색이 실패하는 실행 환경에서는 `CORPUS_DIR`에 `universe.csv`와
-`manifest.jsonl`이 있는 corpus 디렉터리를 명시한다(상대경로는 루트 기준).
-
-E5 모델 cache가 없으면 Retriever 초기화가 명확히 실패한다. CLOVA API key는 답변 생성,
-Interpreter 슬롯 보완 또는 Reranker 중 하나를 활성화할 때만 필요하다. 의미 검증 provider가
-없거나 실패하면 숫자·출처·Fact grounding local gate만 통과한 답변을 제한적으로 허용한다.
-
-제공된 local 인덱스를 테스트하려면 다음처럼 설정한다. 압축본을 다시 풀거나 인덱스를
-재생성하지 않으며, 실행 중 SQLite·Chroma에 쓰지 않는다.
-
-```powershell
-$env:RETRIEVER_MODE = "local"
-$env:RETRIEVER_INDEX_PATH = "data/team-feature2-local-db/local_db/chunk_index.db"
-$env:RETRIEVER_CHROMA_PATH = "data/team-feature2-local-db/local_db/chunk_index_chroma"
-$env:RETRIEVER_CHROMA_COLLECTION = "chunk_vectors"
-$env:RETRIEVER_SQL_TABLE = "chunk_index"
-$env:RETRIEVER_EMBEDDING = "e5"
-$env:RETRIEVER_ALLOW_PARTIAL_INDEX = "true"
-$env:CLOVA_LLM_ENABLED = "true"       # 답변 생성·semantic validation
-$env:INTERPRETER_USE_LLM = "0"              # unresolved 슬롯 보완
-$env:QUERY_PLANNER_LLM_ENABLED = "false" # unresolved 복합 계산 plan 보완
-$env:CLOVA_RERANKER_ENABLED = "false" # production Reranker 기본 OFF
-$env:CLOVA_RERANKER_CANDIDATE_LIMIT = "100"
-python scripts/check_deployment.py
-uvicorn app:app --reload
-```
-
-제공 인덱스의 구조·대표 질의·read-only 파일 불변성·mock 전체 pipeline 검증은 다음 명령으로
-실행한다. 이 검증은 네트워크 다운로드나 인덱스 변경을 수행하지 않는다.
-
-```powershell
-python scripts/check_real_index.py --allow-partial-index
-pytest -m real_index
-```
-
-일반 `pytest`는 대용량 인덱스에 의존하지 않으며 `real_index` marker를 자동 제외한다.
-검색 백엔드 실험은 `docs/retrieval-experiments.md`의 별도 sidecar에서 실행하고,
-production Reranker 외부 변동은 섞지 않는다.
-
-`CORPUS_DIR`는 Interpreter의 `universe.csv`·`manifest.jsonl` 경로로 유지한다. E5 모델은
-서버의 Hugging Face 캐시에 미리 준비되어 있어야 하며, 기동 시 외부 다운로드는 하지 않는다.
-이후 `/answer`는 기존 API의 5개 문자열 필드를 반환한다.
-
-## API
-
-```text
-GET /health
-GET /ready
-GET /answer?question_id=Q-001&question=질문내용
-```
-
-응답은 `question_id`, `question`, `retrieved_context`, `think_trace`, `answer`의 다섯 문자열 필드를 유지한다. `think_trace`에는 Supervisor action과 주요 시도 횟수가 포함된다. Interpreter가 생성한 `intent.think_trace`도 `interpreter_think_trace`로 함께 기록된다. 답변 불가·근거 부족 시 `answer`는 기존 결론 문장 뒤에 결정론적인 이유와 필요한 경우 재질문 안내를 덧붙이며, 내부 `failure_reason_code`는 trace에만 기록한다. 공개 문장은 약 300자로 제한하고 API key·원시 provider 오류·검색 점수는 포함하지 않는다.
-
-`/health`는 FastAPI 프로세스의 liveness만 확인하므로 corpus나 DB가 아직 마운트되지 않아도 응답한다. `/ready`는 pipeline을 지연 초기화하여 Interpreter corpus, Retriever 저장소, provider 설정을 포함한 실행 준비 상태를 확인한다. `/answer`도 pipeline이 준비되지 않은 경우 안전하게 503을 반환한다.
-
-## 검색과 안전 제어
-
-## Retriever·Reasoner process-local cache
-
-canonical `integration.composition.build_pipeline()`은 pipeline마다 독립적인
-`CacheRegistry`를 만들고 Retriever·Reasoner에 주입한다. 캐시는 원본 인덱스를 대체하지
-않는 bounded TTL/LRU 메모리 최적화 계층이다.
-
-- E5 질의 임베딩은 `build_search_query()` 이후 최종 검색 질의를 key로 재사용한다.
-- 동일 `manifest_filter`의 SQL 후보 문서는 본문을 포함해 재사용하지만, keyword/vector/hybrid
-  정렬과 최종 Reranker 결과는 매 실행 계산한다.
-- 구조화 본문 parsing은 chunk ID·본문 SHA-256·parser version으로, Fact는 문서·metric·계산·basis
-  등 추출 profile로 구분해 재사용한다.
-- 기본 TTL은 600초이며 `DIS164_CACHE_*` 환경변수로 전체·개별 cache를 조정할 수 있다.
-- cache hit/miss는 사용자 답변·`think_trace`에 노출하지 않는다. cache 오류는 원래 계산으로
-  우회하며, CLOVA Chat/Reranker 응답은 cache하지 않는다.
-- worker 간 cache 공유나 Redis는 추가하지 않으며, SQLite·Chroma 인덱스는 계속 read-only다.
+### 검색 파이프라인
 
 ```text
 Interpreter manifest_filter
@@ -158,86 +134,77 @@ Interpreter manifest_filter
 → cited_documents
 ```
 
-- `question_id`, `question`, `original_question`은 실행 중 불변이다.
-- Stage별 partial update는 `STAGE_WRITE_FIELDS`로 검증한다.
-- Supervisor 전체 단계는 기본 12회, 검색·planner 재시도는 기본 1회다.
-- 답변 재생성은 최대 1회다.
-- `CLOVA_RERANKER_ENABLED=true`일 때만 상위 100개 후보를 CLOVA Reranker에 보내며,
-  실패하면 전체 merged 후보의 deterministic 순위로 fallback한다. `suggestedQueries`는
-  trace에만 기록한다.
-- `INTERPRETER_USE_LLM=1`일 때만 규칙으로 unresolved 상태인 Interpreter 슬롯에 CLOVA Chat을 호출한다.
-- 잘못된 action, provider 오류, 근거 부족은 fail-closed 처리한다.
+- 기본 factory는 metadata 필터 후보 최대 1,000개에서 keyword·vector branch를 각각 100개까지
+  합치고, hybrid 결과 최대 200개를 Reasoner에 전달한다.
+- `CLOVA_RERANKER_ENABLED=true`일 때만 상위 100개를 Reranker에 보내고, 실패하면 전체
+  merged 후보의 deterministic 순위로 fallback한다.
+- Retriever·Reasoner는 pipeline마다 독립적인 bounded TTL/LRU 메모리 cache를 쓴다. 원본
+  인덱스를 대체하지 않으며, cache hit/miss는 사용자 답변이나 `think_trace`에 노출하지 않는다.
+  기본 TTL은 600초이고 `DIS164_CACHE_*`로 조정한다.
 
-## 검증
+## Stage 책임
 
-```powershell
-python -m unittest discover -s tests -p "test_*.py"
-python -m interpreter.tests.run_checks
-pytest interpreter/tests
-python -m compileall -q integration shared_state.py interpreter retriever reasoner validator
-pytest
+- **interpreter** — 질문을 정규화하고 기업·기간·공시유형·지표·질문유형을 추출해 `intent`,
+  `route`, Retriever용 `manifest_filter`를 만든다. `universe.csv`·`manifest.jsonl` 메타데이터만
+  읽는다. 기본은 규칙 기반이고 `INTERPRETER_USE_LLM=1`일 때만 unresolved 슬롯에 CLOVA Chat을
+  호출한다.
+- **retriever** — 검색만 담당한다. 위 파이프라인으로 `cited_documents`를 만들고
+  `retriever_result`를 쓴다.
+- **reasoner** — cited 문서에서 Fact를 추출하고, Interpreter가 지정한 계산·비교·이벤트 연결을
+  whitelist 연산만으로 실행한 뒤 grounded 답변을 만든다. 검색·rerank·검증은 하지 않는다.
+  `question_type=calculation`인데 `calculation.operation`이 없으면 질문 텍스트에서 다시
+  추측하지 않고 `missing_calculation_plan`을 반환한다.
+- **validator** — Reasoner 답변을 수치 → 출처 → 의미 순으로 검증한다. 새 검색이나 Fact 생성은
+  하지 않는다. `regenerate_answer`는 최대 1회 답변을 다시 만든 뒤 재검증한다.
+
+## API
+
+```text
+GET /health   프로세스 liveness만 확인. corpus·DB가 없어도 응답한다.
+GET /ready    pipeline을 지연 초기화하고 실행 준비 상태를 확인한다.
+GET /answer?question_id=Q-001&question=질문내용
 ```
 
-현재 실행 경로의 기준은 integration/composition.py와 integration/graph.py다.
+`/answer`는 항상 대회 규격의 다섯 문자열 필드를 반환한다: `question_id`, `question`,
+`retrieved_context`, `think_trace`, `answer`. `think_trace`에는 Stage별
+`status`/`warnings`/`trace`, Interpreter의 `think_trace`, Supervisor의 action과 시도
+횟수가 들어간다. 답변 불가·근거 부족이면 `answer`는 결론 문장 뒤에 결정론적인 이유를
+덧붙이고, 내부 `failure_reason_code`는 trace에만 남긴다. 공개 문장은 약 300자로 제한하고
+API key·원시 provider 오류·검색 점수는 넣지 않는다.
 
-## 로컬 무비용 E2E
+pipeline이 준비되지 않으면 `/answer`는 503을 반환한다. provider 용량 실패는 429와
+`detail.code=PROVIDER_RATE_LIMITED`로, 그 외 예기치 못한 실패는 503과 `PIPELINE_ERROR`로
+분류한다.
 
-### HTTP error classification
+## 안전 제어
 
-The public `/answer` endpoint classifies provider capacity failures as HTTP 429
-with `detail.code=PROVIDER_RATE_LIMITED` and a `Retry-After` header when a reset
-duration is known. Unexpected pipeline failures remain HTTP 503 with the safe
-`PIPELINE_ERROR` code and exception type; provider messages, prompts, and keys
-are kept in server logs only.
-The default provider-reset wait is 300 seconds, matching the per-question
-deadline; `CLOVA_RATE_LIMIT_MAX_WAIT` can lower or raise that bound.
+- 잘못된 action, provider 오류, 근거 부족은 fail-closed 처리한다.
+- 프로덕션 경로에서 가짜 embedding·LLM·validator를 대신 쓰지 않는다. CLOVA key가 없으면
+  Retriever는 `embedding_unavailable`을 반환하고, semantic validator가 없거나 실패하면
+  Validator는 통과시키지 않는다.
+- Chat·Reranker·Interpreter 슬롯 호출은 하나의 process-local QPM/TPM limiter를 공유하며
+  bounded 재시도·timeout을 적용한다. API key와 요청 본문은 기록하지 않고 `x-ratelimit-*`
+  헤더만 `last_rate_limit`에 남긴다.
+- `DIS164_STRICT_GROUNDING_V2`는 요청 조건과 정확히 일치하는 Fact만 답변·검증에 쓰는
+  grounding gate이며 기본값은 `true`다. 대회 평가 전에는 기본값을 유지한다.
 
-Interpreter treats `사업부문별`, `부문별`, `세그먼트별`, and `제품군별` as aggregation
-scopes. When one of these scopes is combined with a financial metric, the
-specific metric takes precedence over the generic `business_overview` route.
-Structured table extraction also carries the table header into each numeric
-Fact, so segment/product scope is retained when row chunks contain only a
-metric label and value.
+## 무비용 로컬 테스트
 
-외부 CLOVA·대용량 DB·임베딩 서버 없이 일반 회귀를 검증하려면
-`integration.testing.build_deterministic_pipeline()`에 deterministic Intent와 InMemory 문서를
-주입한다. 이 factory와 InMemoryRetriever는 테스트 전용이며 production fallback으로 사용하지
-않는다. local store 계약 테스트는 임시 SQLite/Chroma를 사용한다.
+외부 CLOVA·대용량 DB·임베딩 서버 없이 회귀를 검증하려면
+`integration.testing.build_deterministic_pipeline()`에 deterministic Intent와 InMemory
+문서를 주입한다. 이 factory와 `InMemoryRetriever`는 테스트 전용이며 production fallback으로
+쓰지 않는다.
 
-```powershell
+```bash
 pytest tests/test_local_e2e.py
 ```
 
-실제 CLOVA 호출은 provider 환경변수가 설정된 NCP smoke에서만 수행한다. CI와 `check_real_index.py`
-pipeline 검증은 deterministic Reasoner·Validator provider를 사용한다.
-배포 전 오프라인 구성 검사는 `python scripts/check_deployment.py`로 실행한다. 이 검사는 CLOVA endpoint를 호출하지 않고 corpus, SQLite·Chroma index의 일관성까지 검사한다.
-답변·semantic timeout은 `CLOVA_CHAT_TIMEOUT`, 429 재시도 대기 상한은
-`CLOVA_RATE_LIMIT_MAX_WAIT`로 조정한다.
-실행 중 adapter의 `last_rate_limit`에서 API가 반환한 `x-ratelimit-*` 헤더를 확인할 수
-있으며, API key와 요청 본문은 기록하지 않는다.
-호출 전에는 Chat·Reranker·Interpreter 슬롯 호출이 하나의 process-local QPM·TPM limiter를
-공유해 예상 입력·출력 토큰 예산과 provider 잔여량을 확인한다.
-`CLOVA_RATE_LIMIT_QPM`, `CLOVA_RATE_LIMIT_TPM`, `CLOVA_CHAT_MIN_INTERVAL`로
-보수적인 로컬 한도를 조정할 수 있다. provider가 보낸 rate-limit header와 로컬 차단
-상태는 Stage trace의 `provider_status`에 구조화해 남긴다.
-provider의 `x-ratelimit-reset-tokens`가 있으면 잔여 토큰이 다음 요청 예산보다 작을 때
-reset 시각까지 대기 후 재시도한다. 재생성 단계에서 rate-limit 차단이 발생해도 예외를
-HTTP 503으로 전파하지 않고 최초 답변을 유지해 Validator의 안전한 실패 응답으로 종료한다.
-`DIS164_STRICT_GROUNDING_V2`는 요청 조건과 정확히 일치하는 Fact만 답변·검증에
-사용하는 grounding gate이며 기본값은 `true`다. 문제 발생 시 일시적으로 `false`로
-되돌릴 수 있지만, 대회 평가 전에는 기본값을 유지하고 회귀 테스트를 통과해야 한다.
-답변·semantic 출력 토큰 기본값은 각각 256·128이며 `CLOVA_ANSWER_MAX_TOKENS`와
-`CLOVA_SEMANTIC_MAX_TOKENS`로 조정할 수 있다. 답변 prompt는 기본적으로 Fact 8개,
-출처 4개·출처별 근거 500자까지, semantic prompt는 Fact 10개·출처 4개·출처별
-근거 500자까지 전달한다. 이 범위는 `CLOVA_PROMPT_*`와 `CLOVA_SEMANTIC_*`
-prompt 환경변수로 조정할 수 있다.
+실제 CLOVA 호출은 provider 환경변수가 설정된 NCP smoke에서만 한다. CI와
+`check_real_index.py` pipeline 검증은 deterministic Reasoner·Validator provider를 쓴다.
 
-기본 factory는 metadata-filtered 후보 최대 1,000개에서 keyword·vector branch를 각각
-최대 100개까지 합치고, hybrid 결과 최대 200개를 Reasoner에 전달한다. Reranker를 켜면
-상위 100개를 전송하고 최종 후보도 최대 100개로 제한한다. 제공 인덱스에서
-집계표가 자회사·부문 chunk보다 낮게 검색되더라도 Reasoner가 현재기 표를 회수할 수 있게
-하기 위한 설정이며, 외부 LLM prompt는 별도로 축약된다.
+## NCP 배포 구조
 
-Reasoner 답변 생성은 질문과 관련된 Fact를 우선 전달한다. strict grounding client가 핵심
-수치 또는 citation ID를 포함하지 않은 답변을 반환하면 deterministic grounding fallback으로
-교체하여, lookup 답변에 기업·기간·기준·지표·값·출처 문서ID가 남도록 한다.
+![instance level architecture](img/instance_level_schema.drawio.png)
+
+단일 EC2 인스턴스 안에 agent app, vector DB, RDB가 함께 들어 있다. 자세한 절차는
+`NCP_DEPLOYMENT.md`를 참고한다.
