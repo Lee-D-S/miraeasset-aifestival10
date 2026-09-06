@@ -18,6 +18,14 @@ _PERIOD_RE = re.compile(
 )
 _NUMBER_RE = re.compile(r"(?:△|▲|\-)?\s*\d[\d,]*(?:\.\d+)?")
 _FOOTNOTE_MARKER_RE = re.compile(r"\(\s*주\s*\d+\s*\)")
+# A fiscal-period ordinal header, e.g. "제57기", "제 55 기", "제57(당)기".
+_ORDINAL_PERIOD_RE = re.compile(r"제\s*\d+\s*(?:\([^)]*\))?\s*기")
+# A period date or a date span, e.g. "2023년", "2023년 1월", "2023년 1월~12월",
+# "2023년 1월 1일 ~ 2023년 12월 31일". These are period labels, not amounts.
+_DATE_SPAN_RE = re.compile(
+    r"20\d{2}\s*년(?:\s*\d{1,2}\s*월)?(?:\s*\d{1,2}\s*일)?"
+    r"(?:\s*[~∼〜\-]\s*(?:20\d{2}\s*년\s*)?\d{1,2}\s*월(?:\s*\d{1,2}\s*일)?)?"
+)
 _CURRENCY_UNITS = ("조원", "십억원", "억원", "백만원", "천만원", "만원", "천원", "원")
 STRUCTURED_PARSER_VERSION = "structured-parser-v5"
 _MEASURE_LABELS = {"금액", "비중", "수량", "단가"}
@@ -41,6 +49,14 @@ def _has_numeric_value(value: str) -> bool:
 
     stripped = _FOOTNOTE_MARKER_RE.sub("", value).strip()
     if _PERIOD_RE.fullmatch(stripped):
+        return False
+    # "제57기" style ordinal headers carry a digit but are period labels. A
+    # 요약재무정보 grid heads every value column this way, so without this the
+    # header row is misread as data and the columns lose their period mapping.
+    if _ORDINAL_PERIOD_RE.fullmatch(stripped):
+        return False
+    # "2023년 1월~12월" style period-definition cells: a year digit, not an amount.
+    if _DATE_SPAN_RE.fullmatch(stripped):
         return False
     return bool(_NUMBER_RE.search(stripped))
 
@@ -108,6 +124,20 @@ class StructuredTable:
             if (match := re.search(r"제\s*(\d+)\s*기", label))
         ]
         current_period_number = max(period_numbers) if period_numbers else None
+        # A 요약재무정보 grid heads its value columns with fiscal ordinals
+        # ("제57기") and states the calendar year in a separate row
+        # ("제57기 | 2025년 1월~12월"). Map that row's year onto each column so the
+        # period is exact and does not depend on the chunk's own base_year.
+        column_year: dict[int, str] = {}
+        for row in self.rows:
+            year_cells = {
+                index: match.group(0)
+                for index, cell in enumerate(row)
+                if not _has_numeric_value(cell) and (match := re.search(r"20\d{2}", cell))
+            }
+            if len(year_cells) >= 2:
+                column_year = year_cells
+                break
         results: list[dict[str, Any]] = []
         for row_index, row in enumerate(self.rows):
             if header_index is not None and row_index <= header_index:
@@ -158,6 +188,7 @@ class StructuredTable:
                         "value": value,
                         "unit": unit,
                         "currency": currency,
+                        "period_year": column_year.get(column_index),
                         "unit_label": self.unit_label,
                         "basis_label": basis,
                         "basis": basis,

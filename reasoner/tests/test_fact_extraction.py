@@ -442,6 +442,48 @@ class FactExtractionTests(unittest.TestCase):
         op = [item for item in extract_facts(bundle.documents, intent) if item.metric == "operating_profit"]
         self.assertEqual({item.period: item.value for item in op}.get("2024"), 32_725_961.0)
 
+    def test_summary_table_maps_jenki_columns_to_calendar_years(self):
+        # 요약재무정보 grid: value columns are headed by fiscal ordinals
+        # (제57기/제56기/제55기) and a dedicated row states each column's calendar
+        # year ("제55기 | 2023년 1월~12월"). The parser must use that row so the
+        # period is exact even when the chunk's own base_year is wrong/missing.
+        intent = adapt_interpreter_intent({
+            "route": "ok",
+            "intent": "calc",
+            "question_type": "calculation",
+            "metric": "operating_profit",
+            "basis": "연결",
+            "time": {"years": [2023, 2024, 2025], "base_months": [12]},
+            "companies": ["삼성전자"],
+        })
+        raw_json = (
+            '[{"구 분": "자본총계", "제57기": "436,320,337",'
+            ' "제56기": "402,192,070", "제55기": "363,677,865"},'
+            ' {"구 분": "", "제57기": "2025년 1월~12월",'
+            ' "제56기": "2024년 1월~12월", "제55기": "2023년 1월~12월"},'
+            ' {"구 분": "영업이익", "제57기": "43,601,051",'
+            ' "제56기": "32,725,961", "제55기": "6,566,976"},'
+            ' {"구 분": "연결총당기순이익", "제57기": "45,206,805",'
+            ' "제56기": "34,451,351", "제55기": "15,487,100"}]'
+        )
+        bundle = adapt_retriever_bundle([{
+            "id": "20260310002820_365",
+            "source": "report.xml",
+            "text": "1. 요약재무정보",
+            "metadata": {
+                "corp_name": "삼성전자",
+                "base_year": 2099,  # deliberately wrong: period_year must win
+                "basis": "연결",
+                "raw_json_content": raw_json,
+            },
+        }])
+        op = [item for item in extract_facts(bundle.documents, intent) if item.metric == "operating_profit"]
+        by_year = {str(item.period): item for item in op}
+        self.assertEqual(by_year["2023"].value, 6_566_976.0)
+        self.assertEqual(by_year["2023"].unit, "백만원")
+        self.assertEqual(by_year["2024"].value, 32_725_961.0)
+        self.assertEqual(by_year["2025"].value, 43_601_051.0)
+
 
 if __name__ == "__main__":
     unittest.main()

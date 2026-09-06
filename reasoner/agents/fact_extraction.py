@@ -51,6 +51,13 @@ def _normalize_disclosure_spacing(value: str) -> str:
 
 
 def _period_from_table_context(context: dict, metadata: dict) -> str | None:
+    # A 요약재무정보 grid states each column's calendar year in a dedicated row
+    # ("제55기 | 2023년 1월~12월"); the parser maps it onto the cell as
+    # ``period_year``. It is ground truth, so it wins over the fiscal-offset
+    # math, which depends on the chunk's own base_year being correct.
+    period_year = re.sub(r"\s+", "", str(context.get("period_year") or ""))
+    if re.fullmatch(r"20\d{2}", period_year):
+        return period_year
     column_label = re.sub(r"\s+", "", str(context.get("column_label") or ""))
     # DART fiscal-year headers ("제56기(2024)", "제55기(2023)") carry the
     # actual year in parentheses. Read it directly instead of guessing from
