@@ -13,7 +13,12 @@ from stage4.semantic import deterministic_semantic_fallback, validate_semantics
 from stage3.adapters.stage1 import adapt_stage1_intent
 from stage3.contracts import Stage3Fact
 from stage3.deterministic.calculation_planner import validate_analysis_plan
-from stage3.grounding import matching_facts, requested_aggregation_scope, strict_grounding_enabled
+from stage3.grounding import (
+    matching_facts,
+    requested_aggregation_scope,
+    select_segment_facts,
+    strict_grounding_enabled,
+)
 
 
 def _missing_segment_facts(answer: str, facts: list[Stage3Fact]) -> list[str]:
@@ -29,6 +34,19 @@ def _missing_segment_facts(answer: str, facts: list[Stage3Fact]) -> list[str]:
         if not any(value in answer_digits for value in candidates):
             missing.append(str(fact.table_context.get("row_label") or fact.label or fact.document_id))
     return missing
+
+
+def _segment_facts_for_validation(facts: list[Stage3Fact]) -> list[Stage3Fact]:
+    """Use the table-backed segment candidates when available.
+
+    Stage3 deliberately prefers table-backed numeric rows for a segment
+    lookup.  Stage4 must apply the same boundary when checking that every
+    requested segment amount appears in the answer; otherwise an unrelated
+    narrative total classified as ``segment`` can make a valid breakdown
+    answer fail closed.
+    """
+
+    return select_segment_facts(facts)
 
 
 def _message(answer: str) -> Any:
@@ -262,7 +280,10 @@ def build_stage4_node(*, validator_client: Any | None = None, answer_client: Any
                     numeric.setdefault("errors", []).append("requested Fact gate failed")
                 grounded_facts = exact_facts
                 if requested_aggregation_scope(stage3_intent) == "segment":
-                    missing_segments = _missing_segment_facts(answer, exact_facts)
+                    missing_segments = _missing_segment_facts(
+                        answer,
+                        _segment_facts_for_validation(exact_facts),
+                    )
                     if missing_segments:
                         numeric["pass"] = False
                         numeric.setdefault("errors", []).append(

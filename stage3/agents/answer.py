@@ -8,7 +8,12 @@ from typing import Any
 
 from stage3.contracts import AgentResult, Stage3Fact, Stage3Intent
 from stage3.state import Stage3GraphState
-from stage3.grounding import matching_facts, period_matches, requested_aggregation_scope
+from stage3.grounding import (
+    matching_facts,
+    period_matches,
+    requested_aggregation_scope,
+    select_segment_facts,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -277,29 +282,13 @@ def _segment_lookup_facts(intent: Stage3Intent, facts: list[Stage3Fact]) -> list
     # narrative sentence containing an unrelated number.  Prefer numeric,
     # table-backed facts whenever they exist so the narrative cannot win just
     # because it happens to match the metric and scope words.
-    numeric_pool = [fact for fact in pool if fact.kind == "numeric"]
-    table_numeric_pool = [fact for fact in numeric_pool if fact.table_context]
-    if table_numeric_pool:
-        pool = table_numeric_pool
-    elif numeric_pool:
-        pool = numeric_pool
+    pool = select_segment_facts(
+        pool,
+        limit=_env_int("CLOVA_SEGMENT_FACT_LIMIT", 20),
+    )
     _log_fact_debug("segment_selected_pool", pool)
-    unique: dict[tuple[str, str, str], Stage3Fact] = {}
-    for fact in pool:
-        row_label = str(fact.table_context.get("row_label") or fact.label or "")
-        value = str(fact.normalized_value if fact.normalized_value is not None else fact.value)
-        key = (row_label, str(fact.period or ""), value)
-        unique.setdefault(key, fact)
-    selected = sorted(
-        unique.values(),
-        key=lambda fact: (
-            str(fact.table_context.get("row_label") or fact.label or ""),
-            str(fact.period or ""),
-            str(fact.document_id or ""),
-        ),
-    )[: _env_int("CLOVA_SEGMENT_FACT_LIMIT", 20)]
-    _log_fact_debug("segment_final", selected)
-    return selected
+    _log_fact_debug("segment_final", pool)
+    return pool
 
 
 def _segment_lookup_claim(
