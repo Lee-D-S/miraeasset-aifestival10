@@ -234,6 +234,49 @@ def _ensure_company_total_in_year(
     return selected[:limit]
 
 
+_SUMMARY_SECTION_CUES = ("요약재무", "경영진단", "재무상태", "영업실적")
+_TABLE_METRIC_METRICS = frozenset({"operating_profit", "net_income"})
+
+
+def _looks_like_summary_table(document: Mapping[str, Any]) -> bool:
+    """A 요약재무정보 / MD&A financial-results chunk that kept its per-row JSON.
+
+    Those tables list every amount metric for the last three fiscal years with
+    a ``제NN기`` header, so one chunk answers a "최근 3년 X 추이" question.
+    """
+
+    metadata = _metadata(document)
+    section = _text(metadata.get("section_name"))
+    if not any(cue in section for cue in _SUMMARY_SECTION_CUES):
+        return False
+    return bool(
+        _text(document.get("raw_json_content")) or _text(metadata.get("raw_json_content"))
+    )
+
+
+def _ensure_summary_table_in_year(
+    hits: Sequence[Mapping[str, Any]],
+    subset: Sequence[Mapping[str, Any]],
+    limit: int,
+) -> list[Mapping[str, Any]]:
+    selected = [dict(document) for document in hits][:limit]
+    if any(_looks_like_summary_table(document) for document in selected):
+        return selected
+    replacement = next(
+        (dict(document) for document in subset if _looks_like_summary_table(document)),
+        None,
+    )
+    if replacement is None:
+        return selected
+    if len(selected) < limit:
+        selected.append(replacement)
+    elif selected:
+        selected[-1] = replacement
+    else:
+        selected = [replacement]
+    return selected[:limit]
+
+
 def _diversify_by_year(
     documents: Sequence[Mapping[str, Any]],
     years: Sequence[str],
@@ -291,6 +334,7 @@ def _search_results_by_year(
         return list(search(query, candidates, limit))
     per_year = max(limit // len(years), 1)
     force_company_total = str(metric or "") == "revenue"
+    force_summary_table = str(metric or "") in _TABLE_METRIC_METRICS
     seen: set[str] = set()
     merged: list[Mapping[str, Any]] = []
     for year in years:
@@ -302,6 +346,11 @@ def _search_results_by_year(
             # Only the revenue question needs the "당사의 매출" company-total row
             # forced past investment-plan tables; other metrics keep the raw hits.
             hits = _ensure_company_total_in_year(hits, subset, per_year)
+        if force_summary_table:
+            # operating_profit / net_income totals live in the 요약재무정보 or
+            # MD&A financial-results table, not a prose sentence. Guarantee one
+            # such chunk per year so the per-year keyword cut cannot drop it.
+            hits = _ensure_summary_table_in_year(hits, subset, per_year)
         for document in hits:
             identifier = _document_id(document)
             if identifier and identifier not in seen:

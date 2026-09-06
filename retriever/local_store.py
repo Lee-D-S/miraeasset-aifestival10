@@ -53,6 +53,11 @@ _SCALAR_METADATA_COLUMNS = (
 # flattened markdown. Optional -- omitted when the index lacks the column.
 _EXTRA_PASSTHROUGH_COLUMNS = ("raw_json_content",)
 _MAX_VECTOR_CANDIDATES = 2_000
+# Sections that carry a company's multi-year metric tables (요약재무정보 and the
+# MD&A financial-results tables). A "최근 3년 X 추이" answer lives here for every
+# amount metric, but these chunks have high, lexicographically late ``id`` values
+# in a large 사업보고서, so the supplementary pass floats them ahead of ``id`` order.
+_SUMMARY_SECTION_LIKE = ("요약재무", "경영진단", "재무상태", "영업실적")
 _CHROMA_METADATA_SAMPLE = 1_000
 
 
@@ -505,9 +510,27 @@ class LocalHybridRetriever:
                     f"kw_{index}": f"%{term}%" for index, term in enumerate(effective_terms)
                 }
                 term_limit = max(min(limit // 2, 600), 1)
+                order_sql = "ORDER BY id ASC"
+                if "section_name" in self._table_columns:
+                    # Float 요약재무정보 / MD&A financial-results chunks to the
+                    # front of the supplementary pass so a late ``id`` cannot
+                    # drop them before the merge truncates at ``limit``.
+                    section_case = " OR ".join(
+                        "section_name LIKE :sec_" + str(index)
+                        for index in range(len(_SUMMARY_SECTION_LIKE))
+                    )
+                    term_params.update(
+                        {
+                            f"sec_{index}": f"%{cue}%"
+                            for index, cue in enumerate(_SUMMARY_SECTION_LIKE)
+                        }
+                    )
+                    order_sql = (
+                        f"ORDER BY (CASE WHEN {section_case} THEN 0 ELSE 1 END), id ASC"
+                    )
                 term_sql = (
                     f"SELECT {columns} FROM {self.table_name}"
-                    f"{where_sql} AND ({term_clause}) ORDER BY id ASC LIMIT :limit"
+                    f"{where_sql} AND ({term_clause}) {order_sql} LIMIT :limit"
                 )
                 term_rows = connection.execute(
                     text(term_sql), {**params, **term_params, "limit": term_limit}
