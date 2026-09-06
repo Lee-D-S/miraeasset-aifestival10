@@ -435,18 +435,12 @@ class AnswerWriter:
         elif calculations and calculations[0].get("status") == "ok":
             calculation = calculations[0]
             series = calculation.get("series", [])
-            if isinstance(series, list) and len(series) > 2:
-                trend_lines = "\n".join(
-                    f"- {item.get('period', '')}: {_format_amount_with_unit(item.get('value', ''), str(item.get('unit') or ''))}"
-                    for item in series
-                    if isinstance(item, dict)
-                )
-                if trend_lines:
-                    sections.append(f"추이\n{trend_lines}")
-            input_lines = []
-            for item in calculation.get("inputs") or []:
-                if isinstance(item, dict):
-                    input_lines.append(_format_calc_input(item))
+            year_items = (
+                [item for item in series if isinstance(item, dict)]
+                if isinstance(series, list) and len(series) > 2
+                else [item for item in (calculation.get("inputs") or []) if isinstance(item, dict)]
+            )
+            input_lines = [_format_calc_input(item) for item in year_items]
             result_line = f"{calculation['result']}{calculation.get('unit', '')}"
             if input_lines:
                 sections.append("결론\n" + "\n".join(input_lines) + f"\n증감률 {result_line}\n\n계산식\n{calculation.get('formula', '')}")

@@ -471,13 +471,13 @@ class ReasonerNodeTests(unittest.TestCase):
             ["2023-12", "2024-12", "2025-12"],
         )
         answer = update["answer"]
-        self.assertIn("2023", answer)
-        self.assertIn("2024", answer)
-        self.assertIn("2025", answer)
-        self.assertIn("258조 9,355억원", answer)
-        self.assertIn("300조 8,709억원", answer)
-        self.assertIn("333조 6,059억원", answer)
-        self.assertIn("추이", answer)
+        conclusion = answer.split("결론", 1)[-1].split("근거 공시", 1)[0]
+        self.assertIn("2023", conclusion)
+        self.assertIn("2024", conclusion)
+        self.assertIn("2025", conclusion)
+        self.assertIn("258조 9,355억원", conclusion)
+        self.assertIn("300조 8,709억원", conclusion)
+        self.assertIn("333조 6,059억원", conclusion)
         self.assertNotIn("억원원", answer)
 
     def test_multi_period_trend_uses_first_and_last_period_and_keeps_series(self):
