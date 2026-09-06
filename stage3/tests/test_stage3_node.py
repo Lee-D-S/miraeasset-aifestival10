@@ -391,6 +391,94 @@ class Stage3NodeTests(unittest.TestCase):
         self.assertIn("333조 6,059억원", update["answer"])
         self.assertIn("total-revenue-2024", answer)
         self.assertIn("total-revenue-2025", answer)
+        self.assertNotIn("억원원", update["answer"])
+
+    def test_analysis_plan_multi_year_trend_includes_middle_period_series(self):
+        from stage3.adapters.stage1 import adapt_stage1_intent
+        from stage3.deterministic.calculation_planner import build_analysis_plan
+
+        question = "삼성전자의 최근 3년 매출액 추이를 알려줘"
+        intent = adapt_stage1_intent({
+            "raw_question": question,
+            "normalized_question": question,
+            "route": "ok",
+            "intent": "calc",
+            "question_type": "calculation",
+            "calculation": {"operation": "percentage_change", "metric": "revenue"},
+            "metric": "revenue",
+            "basis": "연결",
+            "companies": ["삼성전자"],
+            "time": {"years": [2023, 2024, 2025], "base_months": [12]},
+            "manifest_filter": {"corp_names": ["삼성전자"]},
+        })
+        plan = build_analysis_plan(intent)
+        self.assertIsNotNone(plan)
+        state = _state(
+            question_type="calculation",
+            calculation={"operation": "percentage_change", "metric": "revenue"},
+        )
+        state["question"] = question
+        state["intent"]["raw_question"] = question
+        state["intent"]["normalized_question"] = question
+        state["intent"]["time"] = {"years": [2023, 2024, 2025], "base_months": [12]}
+        state["intent"]["basis"] = "연결"
+        state["intent"]["companies"] = ["삼성전자"]
+        state["intent"]["manifest_filter"] = {"corp_names": ["삼성전자"]}
+        state["analysis_plan"] = plan
+        state["stage2_result"]["documents"] = [
+            {
+                "id": "total-revenue-2023",
+                "source": "annual.md",
+                "text": "2023년 당사의 매출은 258조 9,355억원으로 전년 동기 대비 감소하였으며...",
+                "metadata": {
+                    "corp_name": "삼성전자",
+                    "base_year": 2023,
+                    "base_month": 12,
+                    "basis": "연결",
+                },
+            },
+            {
+                "id": "total-revenue-2024",
+                "source": "annual.md",
+                "text": "2024년 당사의 매출은 300조 8,709억원으로 전년 동기 대비 16.2% 증가하였으며...",
+                "metadata": {
+                    "corp_name": "삼성전자",
+                    "base_year": 2024,
+                    "base_month": 12,
+                    "basis": "연결",
+                },
+            },
+            {
+                "id": "total-revenue-2025",
+                "source": "annual.md",
+                "text": "2025년 당사의 매출은 333조 6,059억원으로 전년 동기 대비 10.9% 증가하였으며...",
+                "metadata": {
+                    "corp_name": "삼성전자",
+                    "base_year": 2025,
+                    "base_month": 12,
+                    "basis": "연결",
+                },
+            },
+        ]
+
+        update = build_stage3_node()(state)
+        result = update["stage3_result"]
+        self.assertIn("analysis_plan_executed", result["trace"])
+        self.assertEqual(result["status"], "success")
+        calculation = result["calculations"][0]
+        self.assertEqual(
+            [item["period"] for item in calculation["series"]],
+            ["2023-12", "2024-12", "2025-12"],
+        )
+        answer = update["answer"]
+        self.assertIn("2023", answer)
+        self.assertIn("2024", answer)
+        self.assertIn("2025", answer)
+        self.assertIn("258조 9,355억원", answer)
+        self.assertIn("300조 8,709억원", answer)
+        self.assertIn("333조 6,059억원", answer)
+        self.assertIn("추이", answer)
+        self.assertNotIn("억원원", answer)
 
     def test_multi_period_trend_uses_first_and_last_period_and_keeps_series(self):
         state = _state(

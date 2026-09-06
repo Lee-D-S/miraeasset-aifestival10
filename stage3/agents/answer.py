@@ -335,17 +335,22 @@ def _multi_period_lookup_claim(
     return f"결론\n{subject}의 {basis} {metric}\n" + "\n".join(lines) + source_line
 
 
-def _format_calc_input(item: dict[str, Any]) -> str:
-    period = item.get("period") or "기간 미상"
-    value = item.get("value")
-    unit = str(item.get("unit") or "")
+def _format_amount_with_unit(value: Any, unit: str) -> str:
     if isinstance(value, float) and value.is_integer():
         text = f"{int(value):,}"
     elif isinstance(value, (int, float)):
         text = f"{value:,.4f}".rstrip("0").rstrip(".")
     else:
         text = str(value)
-    return f"- {period}: {text}{unit}"
+    unit = str(unit or "")
+    if unit and unit not in text and not text.endswith(unit):
+        return f"{text}{unit}"
+    return text
+
+
+def _format_calc_input(item: dict[str, Any]) -> str:
+    period = item.get("period") or "기간 미상"
+    return f"- {period}: {_format_amount_with_unit(item.get('value'), str(item.get('unit') or ''))}"
 
 
 class AnswerWriter:
@@ -432,7 +437,7 @@ class AnswerWriter:
             series = calculation.get("series", [])
             if isinstance(series, list) and len(series) > 2:
                 trend_lines = "\n".join(
-                    f"- {item.get('period', '')}: {item.get('value', '')}{item.get('unit', '')}"
+                    f"- {item.get('period', '')}: {_format_amount_with_unit(item.get('value', ''), str(item.get('unit') or ''))}"
                     for item in series
                     if isinstance(item, dict)
                 )
