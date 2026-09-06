@@ -321,7 +321,13 @@ def _search_results_by_year(
 class RetrieverProtocol(Protocol):
     """Backend contract for metadata, keyword, and vector retrieval."""
 
-    def filter_candidates(self, manifest_filter: Mapping[str, Any], limit: int) -> list[Mapping[str, Any]]:
+    def filter_candidates(
+        self,
+        manifest_filter: Mapping[str, Any],
+        limit: int,
+        *,
+        query: str | None = None,
+    ) -> list[Mapping[str, Any]]:
         ...
 
     def keyword_search(self, query: str, candidates: Sequence[Mapping[str, Any]], limit: int) -> list[Mapping[str, Any]]:
@@ -375,7 +381,14 @@ class InMemoryRetriever:
     def _content(document: Mapping[str, Any]) -> str:
         return _text(document.get("text") or document.get("page_content") or document.get("text_content"))
 
-    def filter_candidates(self, manifest_filter: Mapping[str, Any], limit: int) -> list[Mapping[str, Any]]:
+    def filter_candidates(
+        self,
+        manifest_filter: Mapping[str, Any],
+        limit: int,
+        *,
+        query: str | None = None,
+    ) -> list[Mapping[str, Any]]:
+        del query  # in-memory backend ranks the full document set; no pre-filter narrowing
         years = [str(year) for year in _as_list(manifest_filter.get("base_years")) if str(year).strip()]
         if len(years) > 1 and limit > 0:
             per_year = max(limit // len(years), 1)

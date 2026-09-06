@@ -109,8 +109,9 @@ START → interpreter → supervisor → retriever → supervisor → reasoner �
 
 제공된 read-only 인덱스를 쓰는 `local` 모드만 지원한다.
 
-- `manifest_filter`를 SQLite `chunk_index`의 SQL `WHERE`절로 적용하고, 후보는
-  최신 공시 우선(`rcept_dt DESC, rcept_no DESC`)으로 정렬한다.
+- `manifest_filter`를 SQLite `chunk_index`의 SQL `WHERE`절로 적용해 후보를 뽑는다.
+  기본 후보는 `id` 순으로 자르므로, 질의어(지표명 등)를 담은 행이 후보 상한 밖으로
+  밀리지 않도록 `text LIKE` 보조 패스를 함께 돌려 병합한다.
 - Chroma persistent HNSW 파일은 query-only로 읽는다. 제공 인덱스는 legacy HNSW 형식이므로
   애플리케이션은 Chroma client를 열지 않고 `chroma.sqlite3`를 `mode=ro`로 읽으며 HNSW
   파일을 직접 검색한다.
@@ -138,6 +139,8 @@ Interpreter manifest_filter
   합치고, hybrid 결과 최대 200개를 Reasoner에 전달한다.
 - `CLOVA_RERANKER_ENABLED=true`일 때만 상위 100개를 Reranker에 보내고, 실패하면 전체
   merged 후보의 deterministic 순위로 fallback한다.
+- 표 chunk는 행 단위 markdown과 함께 원본 표의 행별 JSON(`raw_json_content`)을 갖는다.
+  Reasoner는 이 JSON이 있으면 이를 표 격자로 삼아 값을 추출한다(없으면 markdown 파싱).
 - Retriever·Reasoner는 pipeline마다 독립적인 bounded TTL/LRU 메모리 cache를 쓴다. 원본
   인덱스를 대체하지 않으며, cache hit/miss는 사용자 답변이나 `think_trace`에 노출하지 않는다.
   기본 TTL은 600초이고 `DIS164_CACHE_*`로 조정한다.

@@ -30,6 +30,15 @@ UNIT_PATTERN = r"조원|조|십억원|억원|백만원|천만원|만원|천원|�
 NUMBER_PATTERN = r"(?:△|▲|-)?\s*\d[\d,]*(?:\.\d+)?"
 DATE_PATTERN = re.compile(r"(?:20\d{2}년\s*\d{1,2}월\s*\d{1,2}일?|20\d{2}[-./]\s*\d{1,2}[-./]\s*\d{1,2}|20\d{2}년\s*(?:[1-4]분기|상반기|하반기|연간)|20\d{2}년(?!\s*\d{1,2}월))")
 _SPACED_HANGUL_RE = re.compile(r"(?<![가-힣])(?:[가-힣]\s+){2,}[가-힣](?![가-힣])")
+# 연결 영업이익 of the largest listed groups clears 30조 in strong years
+# (Samsung FY2024 연결 = 32,725,961 백만원). Keep a ceiling only high enough to
+# still reject a 매출액 mis-read (Samsung 매출 ~300조 = 300,000,000 백만원).
+_OPERATING_PROFIT_MAX_MW = 100_000_000  # 100조, expressed in 백만원
+# Period-over-period change / growth-rate columns: the cell value is a delta,
+# not the metric itself, so it must not be attached to the row's metric label.
+_DELTA_COLUMN_RE = re.compile(
+    r"증\s*감|증가율|감소율|전년\s*(?:대비|동기)|전기\s*대비|성장률|YoY", re.IGNORECASE
+)
 
 
 def _normalize_disclosure_spacing(value: str) -> str:
@@ -172,7 +181,7 @@ def _pick_operating_profit_literal(literals: list[str]) -> list[str]:
     plausible: list[tuple[float, str]] = []
     for raw_literal in literals:
         value = abs(_parse_numeric(raw_literal))
-        if 1e3 <= value <= 30_000_000:
+        if 1e3 <= value <= _OPERATING_PROFIT_MAX_MW:
             plausible.append((value, raw_literal))
     if plausible:
         plausible.sort()
@@ -303,6 +312,7 @@ def _extract_facts_uncached(
     for document in documents:
         structured = parse_structured_evidence(
             document.text or "",
+            raw_json_content=document.metadata.get("raw_json_content"),
             cache=structured_cache,
             document_id=document.id,
         )
@@ -314,6 +324,9 @@ def _extract_facts_uncached(
         # The latter can associate a footnote number (for example ``29``)
         # with the first metric on the row.
         numeric_sources: list[tuple[str, dict]] = [] if structured.has_structured_tables else [(text, {})]
+        has_period_columns = any(
+            cell.get("period_offset") is not None for cell in structured.numeric_cells
+        )
         for cell in structured.numeric_cells:
             # The column label is retained in ``context`` for period mapping.
             # Include it in the regex input only when it is itself the metric
@@ -322,6 +335,16 @@ def _extract_facts_uncached(
             # value instead of the amount in the cell.
             row_label = str(cell.get("row_label", ""))
             column_label = str(cell.get("column_label", ""))
+            # A 증감/증감률 column carries a period-over-period delta, not the
+            # metric value. Skip it when the table also has real period columns
+            # (otherwise a later period fallback tags the delta as this year's
+            # figure).
+            if (
+                has_period_columns
+                and cell.get("period_offset") is None
+                and _DELTA_COLUMN_RE.search(column_label)
+            ):
+                continue
             metric_label = column_label if any(label in column_label for label in labels) else ""
             cell_source = f"{row_label} {metric_label} | {cell.get('value', '')}"
             numeric_sources.append(
@@ -359,7 +382,7 @@ def _extract_facts_uncached(
                         intent.metric == "operating_profit"
                         and metric == "operating_profit"
                         and unit == "백만원"
-                        and abs(raw_value) > 30_000_000
+                        and abs(raw_value) > _OPERATING_PROFIT_MAX_MW
                     ):
                         continue
                     evidence = source_text.strip() if context else _evidence(text, match.start(), match.end())
