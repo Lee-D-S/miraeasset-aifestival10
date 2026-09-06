@@ -389,6 +389,59 @@ class FactExtractionTests(unittest.TestCase):
         self.assertNotIn(202.0, revenue_values)
         self.assertTrue(any(value > 1e12 for value in revenue_values))
 
+    def test_large_cap_consolidated_operating_profit_is_not_dropped(self):
+        # Samsung FY2024 연결 영업이익 = 32,725,961 백만원 (32.7조) clears the old
+        # 30조 백만원 ceiling; the correct figure was being filtered out.
+        intent = adapt_interpreter_intent({
+            "route": "ok",
+            "intent": "lookup",
+            "metric": "operating_profit",
+            "basis": "연결",
+            "time": {"years": [2024], "base_months": [12]},
+        })
+        bundle = adapt_retriever_bundle([{
+            "id": "samsung-mdna",
+            "text": (
+                "[삼성전자 | 사업보고서 (2024.12) | IV. 이사의 경영진단 및 분석의견]\n"
+                "| 구 분 | 제56기 | 제55기 | 증 감 | 증감률 |\n"
+                "| --- | --- | --- | --- | --- |\n"
+                "| 매출액 | 300,870,903 | 258,935,494 | 41,935,409 | 16.2% |\n"
+                "| 영업이익 | 32,725,961 | 6,566,976 | 26,158,985 | 398.3% |\n"
+            ),
+            "metadata": {"corp_name": "삼성전자", "base_year": 2024, "rcept_dt": "20250311", "basis": "연결"},
+        }])
+        op = [item for item in extract_facts(bundle.documents, intent) if item.metric == "operating_profit"]
+        by_period = {item.period: item.value for item in op}
+        self.assertEqual(by_period.get("2024"), 32_725_961.0)
+        self.assertEqual(by_period.get("2023"), 6_566_976.0)
+        # The 증 감 / 증감률 columns must not become 2024 operating_profit facts.
+        self.assertNotIn(26_158_985.0, {item.value for item in op})
+        self.assertNotIn(398.3, {item.value for item in op})
+
+    def test_json_table_replaces_mangled_markdown_grid(self):
+        # Same table via clean per-row JSON: even if the markdown grid were
+        # column-shifted, the JSON keeps 영업이익 -> 제56기 -> value aligned.
+        intent = adapt_interpreter_intent({
+            "route": "ok",
+            "intent": "lookup",
+            "metric": "operating_profit",
+            "basis": "연결",
+            "time": {"years": [2024], "base_months": [12]},
+        })
+        bundle = adapt_retriever_bundle([{
+            "id": "json-table",
+            "text": "[삼성전자 | 사업보고서 (2024.12) | 2-2. 연결 손익계산서]\n| 구분 | 제56기 |",
+            "metadata": {
+                "corp_name": "삼성전자", "base_year": 2024, "rcept_dt": "20250311", "basis": "연결",
+                "raw_json_content": (
+                    '[{"구 분": "매출액", "제56기": "300,870,903", "제55기": "258,935,494"},'
+                    ' {"구 분": "영업이익", "제56기": "32,725,961", "제55기": "6,566,976"}]'
+                ),
+            },
+        }])
+        op = [item for item in extract_facts(bundle.documents, intent) if item.metric == "operating_profit"]
+        self.assertEqual({item.period: item.value for item in op}.get("2024"), 32_725_961.0)
+
 
 if __name__ == "__main__":
     unittest.main()
