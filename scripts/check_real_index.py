@@ -20,11 +20,11 @@ from integration.graph import StageNodes
 from integration.readiness import PARTIAL_INDEX_ISSUES, raise_if_invalid
 from integration.service import StagePipeline
 from integration.testing import DeterministicAnswerWriter, DeterministicSemanticValidator
-from stage1 import build_stage1_node
-from stage2 import E5Embeddings, LocalHybridRetriever, RetrievalConfig, build_stage2_node
-from stage2.backends import local_chroma, readonly_sqlite_engine
-from stage3 import build_stage3_node
-from stage4 import build_stage4_node
+from interpreter import build_interpreter_node
+from retriever import E5Embeddings, LocalHybridRetriever, RetrievalConfig, build_retriever_node
+from retriever.backends import local_chroma, readonly_sqlite_engine
+from reasoner import build_reasoner_node
+from validator import build_validator_node
 
 
 REPRESENTATIVE_QUERIES = (
@@ -122,19 +122,19 @@ def _build_retriever(db_path: Path, chroma_path: Path) -> LocalHybridRetriever:
 
 
 def _check_pipeline(retriever: LocalHybridRetriever, corpus_dir: Path) -> list[dict[str, Any]]:
-    stage1 = build_stage1_node(
+    interpreter = build_interpreter_node(
         corpus_dir=corpus_dir,
         config_dir=corpus_dir / "config",
         use_llm=False,
     )
     nodes = StageNodes(
-        stage1=stage1,
-        stage2=build_stage2_node(
+        interpreter=interpreter,
+        retriever=build_retriever_node(
             retriever=retriever,
             config=RetrievalConfig(candidate_limit=1000, branch_limit=100, final_limit=200),
         ),
-        stage3=build_stage3_node(answer_writer=DeterministicAnswerWriter()),
-        stage4=build_stage4_node(validator_client=DeterministicSemanticValidator()),
+        reasoner=build_reasoner_node(answer_writer=DeterministicAnswerWriter()),
+        validator=build_validator_node(validator_client=DeterministicSemanticValidator()),
     )
     pipeline = StagePipeline(nodes)
     scenarios = (
@@ -155,9 +155,9 @@ def _check_pipeline(retriever: LocalHybridRetriever, corpus_dir: Path) -> list[d
         results.append({
             "id": question_id,
             "route": state.get("route"),
-            "stage2_status": (state.get("stage2_result") or {}).get("status"),
-            "stage3_status": (state.get("stage3_result") or {}).get("status"),
-            "stage4_status": (state.get("stage4_result") or {}).get("status"),
+            "retriever_status": (state.get("retriever_result") or {}).get("status"),
+            "reasoner_status": (state.get("reasoner_result") or {}).get("status"),
+            "validator_status": (state.get("validator_result") or {}).get("status"),
             "answer_length": len(response["answer"]),
         })
     return results

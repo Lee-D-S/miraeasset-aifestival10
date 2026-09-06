@@ -7,8 +7,8 @@ import pytest
 from langchain_core.embeddings import Embeddings
 from sqlalchemy import create_engine, text
 
-from stage2.backends import local_chroma, readonly_sqlite_engine
-from stage2.local_store import LocalHybridRetriever
+from retriever.backends import local_chroma, readonly_sqlite_engine
+from retriever.local_store import LocalHybridRetriever
 
 _VOCAB = ["삼성전자", "매출액", "영업이익", "다른", "기업"]
 
@@ -229,7 +229,7 @@ def test_vector_search_only_ranks_within_given_candidates(tmp_path):
 def test_accepts_an_injected_engine_and_vectorstore(tmp_path):
     """Proves the SQL/vector-search code is agnostic to where engine/vectorstore
     point -- the seam shared by the local SQLite engine and Chroma vector store
-    implementations (see stage2/backends.py's local factories)."""
+    implementations (see retriever/backends.py's local factories)."""
     repository = _repository(tmp_path)
     candidates = repository.filter_candidates({"corp_names": ["삼성전자"]}, limit=10)
     assert [row["id"] for row in candidates] == ["chunk-a"]

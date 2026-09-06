@@ -1,13 +1,13 @@
-from stage3.contracts import Stage3Fact
-from stage4.node import (
+from reasoner.contracts import ReasonerFact
+from validator.node import (
     _missing_segment_facts,
     _segment_facts_for_validation,
-    build_stage4_node,
+    build_validator_node,
 )
 
 
-def _fact(value: int, *, table: bool, row_label: str = "") -> Stage3Fact:
-    return Stage3Fact.from_dict(
+def _fact(value: int, *, table: bool, row_label: str = "") -> ReasonerFact:
+    return ReasonerFact.from_dict(
         {
             "kind": "numeric",
             "metric": "revenue",
@@ -56,19 +56,19 @@ class _PassingSemanticClient:
         }
 
 
-def test_stage4_accepts_breakdown_without_unrelated_narrative_total() -> None:
+def test_validator_accepts_breakdown_without_unrelated_narrative_total() -> None:
     facts = [
         _fact(4_213_400_000_000, table=False),
         _fact(109_041_330, table=True, row_label="vehicle"),
         _fact(7_573_182, table=True, row_label="other"),
     ]
-    stage3_result = {
+    reasoner_result = {
         "status": "success",
         "answer": "vehicle 109041330; other 7573182 [source:doc-1]",
         "facts": [fact.to_dict() for fact in facts],
         "citations": [{"document_id": "doc-1", "source": "source", "evidence": "evidence"}],
     }
-    update = build_stage4_node(validator_client=_PassingSemanticClient())(
+    update = build_validator_node(validator_client=_PassingSemanticClient())(
         {
             "route": "ok",
             "question": "Company A 2025 segment revenue",
@@ -79,9 +79,9 @@ def test_stage4_accepts_breakdown_without_unrelated_narrative_total() -> None:
                 "basis": "consolidated",
                 "time": {"years": [2025], "base_months": [9]},
             },
-            "answer": stage3_result["answer"],
-            "stage3_result": stage3_result,
+            "answer": reasoner_result["answer"],
+            "reasoner_result": reasoner_result,
         }
     )
 
-    assert update["stage4_result"]["status"] == "success"
+    assert update["validator_result"]["status"] == "success"

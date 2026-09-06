@@ -6,7 +6,7 @@ from typing import get_type_hints
 
 from langchain_core.messages import HumanMessage
 
-from stage3 import build_stage3_node
+from reasoner import build_reasoner_node
 from shared_state import (
     AgentState,
     AgentStateUpdate,
@@ -27,9 +27,9 @@ class SharedStateTests(unittest.TestCase):
                 "question",
                 "intent",
                 "route",
-                "stage2_result",
-                "stage3_result",
-                "stage4_result",
+                "retriever_result",
+                "reasoner_result",
+                "validator_result",
                 "answer",
                 "context",
                 "documents",
@@ -46,18 +46,18 @@ class SharedStateTests(unittest.TestCase):
         self.assertNotIn("question", get_type_hints(AgentStateUpdate))
 
     def test_stage_write_ownership_matches_the_shared_contract(self) -> None:
-        self.assertEqual(STAGE_WRITE_FIELDS["stage1"], {"intent", "route", "search_query"})
+        self.assertEqual(STAGE_WRITE_FIELDS["interpreter"], {"intent", "route", "search_query"})
         self.assertEqual(
-            STAGE_WRITE_FIELDS["stage2"],
-            {"stage2_result", "retry_num", "search_attempts", "documents", "search_query", "search_queries"},
+            STAGE_WRITE_FIELDS["retriever"],
+            {"retriever_result", "retry_num", "search_attempts", "documents", "search_query", "search_queries"},
         )
         self.assertEqual(
-            STAGE_WRITE_FIELDS["stage3"],
-            {"stage3_result", "answer", "context", "messages", "gen_retry_num", "facts"},
+            STAGE_WRITE_FIELDS["reasoner"],
+            {"reasoner_result", "answer", "context", "messages", "gen_retry_num", "facts"},
         )
         self.assertEqual(
-            STAGE_WRITE_FIELDS["stage4"],
-            {"stage4_result", "answer", "messages", "validation_attempts"},
+            STAGE_WRITE_FIELDS["validator"],
+            {"validator_result", "answer", "messages", "validation_attempts"},
         )
         self.assertEqual(
             STAGE_WRITE_FIELDS["planner"],
@@ -76,9 +76,9 @@ class SharedStateTests(unittest.TestCase):
         self.assertEqual(first["question"], "질문")
         self.assertEqual(first["retry_num"], 0)
         self.assertEqual(first["gen_retry_num"], 0)
-        self.assertIsNone(first["stage2_result"])
-        self.assertIsNone(first["stage3_result"])
-        self.assertIsNone(first["stage4_result"])
+        self.assertIsNone(first["retriever_result"])
+        self.assertIsNone(first["reasoner_result"])
+        self.assertIsNone(first["validator_result"])
         self.assertEqual(len(first["messages"]), 1)
         self.assertEqual(second["messages"], [])
 
@@ -89,18 +89,18 @@ class SharedStateTests(unittest.TestCase):
     def test_stage_updates_cannot_change_request_identity_or_original_question(self) -> None:
         state = make_initial_agent_state(question_id="Q-IMMUTABLE", question="question")
         with self.assertRaises(ValueError):
-            validate_node_update("stage1", state, {"question": "changed"})
+            validate_node_update("interpreter", state, {"question": "changed"})
         with self.assertRaises(ValueError):
-            validate_node_update("stage1", state, {"question_id": "Q-OTHER"})
+            validate_node_update("interpreter", state, {"question_id": "Q-OTHER"})
         with self.assertRaises(ValueError):
-            validate_node_update("stage1", state, {"original_question": "changed"})
+            validate_node_update("interpreter", state, {"original_question": "changed"})
 
     def test_stage_ownership_rejects_cross_stage_fields(self) -> None:
         state = make_initial_agent_state(question_id="Q-OWNER", question="question")
         with self.assertRaises(ValueError):
-            validate_node_update("stage1", state, {"stage2_result": {}})
+            validate_node_update("interpreter", state, {"retriever_result": {}})
         with self.assertRaises(ValueError):
-            validate_node_update("stage4", state, {"facts": []})
+            validate_node_update("validator", state, {"facts": []})
 
     def test_control_counters_are_independent(self) -> None:
         state = make_initial_agent_state(question_id="Q-COUNTERS", question="question")
@@ -114,7 +114,7 @@ class SharedStateTests(unittest.TestCase):
         self.assertEqual(state["regeneration_attempts"], 3)
         self.assertEqual(state["validation_attempts"], 4)
 
-    def test_stage3_node_accepts_full_state_and_returns_a_partial_update(self) -> None:
+    def test_reasoner_node_accepts_full_state_and_returns_a_partial_update(self) -> None:
         state = make_initial_agent_state(question_id="Q-003", question="질문")
         state["intent"] = {
             "raw_question": state["question"],
@@ -126,11 +126,11 @@ class SharedStateTests(unittest.TestCase):
         state["route"] = "need_clarify"
         original = copy.deepcopy(state)
 
-        update = build_stage3_node()(state)
+        update = build_reasoner_node()(state)
 
         self.assertEqual(state, original)
-        self.assertEqual(set(update), {"stage3_result"})
-        self.assertEqual(update["stage3_result"]["status"], "need_clarify")
+        self.assertEqual(set(update), {"reasoner_result"})
+        self.assertEqual(update["reasoner_result"]["status"], "need_clarify")
         self.assertNotIn("question_id", update)
         self.assertNotIn("question", update)
 

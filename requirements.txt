@@ -18,7 +18,7 @@ sqlalchemy>=2.0,<3
 chromadb==1.5.9
 langchain-chroma>=1.0,<2
 chroma-hnswlib==0.7.6            # backends.ReadOnlyHnswVectorStore — Chroma persistent-index 포맷 read
-# --- 임베딩 (기본: STAGE2_EMBEDDING=e5) ---
+# --- 임베딩 (기본: RETRIEVER_EMBEDDING=e5) ---
 # intfloat/multilingual-e5-large (1024-dim, non-instruct) via fastembed / ONNX.
 # torch / transformers / sentence-transformers 불필요.
 fastembed>=0.4,<1

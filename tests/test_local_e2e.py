@@ -4,7 +4,7 @@ from integration.api import to_submission_response
 from integration.testing import build_deterministic_pipeline
 
 
-def test_deterministic_pipeline_runs_stage1_to_stage4_without_external_services():
+def test_deterministic_pipeline_runs_interpreter_to_validator_without_external_services():
     pipeline = build_deterministic_pipeline(
         intent={
             "route": "ok",
@@ -34,8 +34,8 @@ def test_deterministic_pipeline_runs_stage1_to_stage4_without_external_services(
     state = pipeline.invoke(question_id="E2E-001", question="기업A 2025년 연결 매출액")
     response = to_submission_response(state)
 
-    assert state["stage2_result"]["cited_documents"]
-    assert state["stage3_result"]["status"] == "success"
-    assert state["stage4_result"]["status"] == "success", state["stage4_result"]
+    assert state["retriever_result"]["cited_documents"]
+    assert state["reasoner_result"]["status"] == "success"
+    assert state["validator_result"]["status"] == "success", state["validator_result"]
     assert set(response) == {"question_id", "question", "retrieved_context", "think_trace", "answer"}
     assert "deterministic" not in response["think_trace"] or response["answer"]

@@ -5,8 +5,8 @@ import sqlite3
 
 import numpy as np
 
-from stage2.backends import readonly_sqlite_engine
-from stage2.retrieval_experiments import (
+from retriever.backends import readonly_sqlite_engine
+from retriever.retrieval_experiments import (
     ExactVectorBackend,
     ExperimentHybridRetriever,
     Fts5KeywordBackend,

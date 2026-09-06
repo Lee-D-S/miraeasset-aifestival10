@@ -4,11 +4,11 @@ import json
 
 from integration.api import to_submission_response
 from integration.failure_response import MAX_FAILURE_ANSWER_CHARS, build_failure_response
-from stage4.node import build_stage4_node
+from validator.node import build_validator_node
 
 
 def test_out_of_corpus_period_explains_period_and_guidance():
-    update = build_stage4_node()({
+    update = build_validator_node()({
         "route": "unanswerable",
         "intent": {
             "route": "unanswerable",
@@ -20,7 +20,7 @@ def test_out_of_corpus_period_explains_period_and_guidance():
     assert update["answer"].startswith("제공된 공시 코퍼스에서 확인할 수 없는 질문입니다.")
     assert "2022년" in update["answer"]
     assert "2023년부터 2026년 1분기" in update["answer"]
-    assert update["stage4_result"]["failure_reason_code"] == "OUT_OF_CORPUS_PERIOD"
+    assert update["validator_result"]["failure_reason_code"] == "OUT_OF_CORPUS_PERIOD"
 
 
 def test_ambiguous_entity_does_not_echo_internal_rejection_reason():
@@ -50,12 +50,12 @@ def test_missing_slots_are_explained_without_an_extra_model_call():
     assert "기업명·기간·확인할 항목" in response.answer
 
 
-def test_missing_stage3_result_is_a_validation_failure_with_reason():
-    update = build_stage4_node()({"route": "ok", "question": "매출은?"})
+def test_missing_reasoner_result_is_a_validation_failure_with_reason():
+    update = build_validator_node()({"route": "ok", "question": "매출은?"})
 
-    assert update["stage4_result"]["status"] == "validation_failed"
-    assert update["stage4_result"]["failure_reason_code"] == "VALIDATION_FAILED"
-    assert "Stage3 분석 결과가 없습니다." in update["answer"]
+    assert update["validator_result"]["status"] == "validation_failed"
+    assert update["validator_result"]["failure_reason_code"] == "VALIDATION_FAILED"
+    assert "Reasoner 분석 결과가 없습니다." in update["answer"]
 
 
 def test_need_clarify_route_without_details_keeps_clarification_conclusion():
@@ -71,8 +71,8 @@ def test_no_retrieval_evidence_has_actionable_guidance():
         "route": "ok",
         "question": "삼성전자의 매출액은?",
         "intent": {"metric": "revenue"},
-        "stage2_result": {"documents": [], "cited_documents": []},
-        "stage3_result": {"status": "insufficient_evidence", "facts": [], "citations": []},
+        "retriever_result": {"documents": [], "cited_documents": []},
+        "reasoner_result": {"status": "insufficient_evidence", "facts": [], "citations": []},
     })
 
     assert response.reason_code.value == "NO_RETRIEVAL_EVIDENCE"
@@ -84,8 +84,8 @@ def test_no_retrieval_evidence_has_actionable_guidance():
 def test_calculation_failure_is_distinguished_from_no_documents():
     response = build_failure_response({
         "route": "ok",
-        "stage2_result": {"documents": [{"id": "doc-1"}]},
-        "stage3_result": {
+        "retriever_result": {"documents": [{"id": "doc-1"}]},
+        "reasoner_result": {
             "calculations": [{"status": "error"}],
             "facts": [],
         },
@@ -100,8 +100,8 @@ def test_semantic_validation_failure_explains_grounding_without_provider_details
     response = build_failure_response(
         {
             "route": "ok",
-            "stage2_result": {"documents": [{"id": "doc-1"}]},
-            "stage3_result": {"facts": [{"metric": "revenue"}], "citations": [{"document_id": "doc-1"}]},
+            "retriever_result": {"documents": [{"id": "doc-1"}]},
+            "reasoner_result": {"facts": [{"metric": "revenue"}], "citations": [{"document_id": "doc-1"}]},
         },
         numeric_check={"pass": True},
         citation_check={"pass": True},
@@ -122,14 +122,14 @@ def test_semantic_validation_failure_explains_grounding_without_provider_details
 def test_failure_answer_is_bounded_and_does_not_expose_provider_details():
     response = build_failure_response({
         "route": "ok",
-        "stage4_result": {
+        "validator_result": {
             "status": "validation_failed",
             "provider_status": {
                 "api_key": "secret-value",
                 "error": "HTTP 429 with full provider response",
             },
         },
-        "stage3_result": {"facts": [{"metric": "revenue"}]},
+        "reasoner_result": {"facts": [{"metric": "revenue"}]},
     })
 
     assert len(response.answer) <= MAX_FAILURE_ANSWER_CHARS
@@ -143,7 +143,7 @@ def test_trace_contains_reason_code_but_submission_schema_stays_at_five_strings(
         "question_id": "Q-FAIL-1",
         "question": "2022년 매출액은?",
         "answer": "제공된 공시 코퍼스에서 확인할 수 없는 질문입니다.\n\n이유: 요청하신 2022년은 제공된 공시 범위 밖입니다.",
-        "stage4_result": {
+        "validator_result": {
             "status": "unanswerable",
             "failure_reason_code": "OUT_OF_CORPUS_PERIOD",
             "warnings": [],
@@ -161,5 +161,5 @@ def test_trace_contains_reason_code_but_submission_schema_stays_at_five_strings(
         "answer",
     }
     assert all(isinstance(value, str) for value in response.values())
-    assert "OUT_OF_CORPUS_PERIOD" in json.loads(response["think_trace"])["stage4_result"]["failure_reason_code"]
+    assert "OUT_OF_CORPUS_PERIOD" in json.loads(response["think_trace"])["validator_result"]["failure_reason_code"]
     assert "failure_reason" not in response

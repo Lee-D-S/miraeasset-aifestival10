@@ -1,12 +1,12 @@
-from stage3.adapters.stage1 import adapt_stage1_intent
-from stage3.agents.answer import AnswerWriter
-from stage3.contracts import Stage3Fact
-from stage3.deterministic.normalization import normalize_number
-from stage4.numeric import validate_numeric_answer
+from reasoner.adapters.interpreter import adapt_interpreter_intent
+from reasoner.agents.answer import AnswerWriter
+from reasoner.contracts import ReasonerFact
+from reasoner.deterministic.normalization import normalize_number
+from validator.numeric import validate_numeric_answer
 
 
-def _segment_fact(row_label: str, value: int) -> Stage3Fact:
-    return Stage3Fact.from_dict(
+def _segment_fact(row_label: str, value: int) -> ReasonerFact:
+    return ReasonerFact.from_dict(
         {
             "metric": "revenue",
             "label": "매출액",
@@ -30,7 +30,7 @@ def _segment_fact(row_label: str, value: int) -> Stage3Fact:
 
 def test_segment_fallback_answer_is_numeric_validator_safe() -> None:
     question = "현대자동차 2025년 3분기 사업부문별 매출을 알려주세요."
-    intent = adapt_stage1_intent(
+    intent = adapt_interpreter_intent(
         {
             "raw_question": question,
             "normalized_question": question,

@@ -29,10 +29,10 @@ def build_stub_graph():
 
     return build_graph(
         StageNodes(
-            stage1=_noop_stage,
-            stage2=_noop_stage,
-            stage3=_noop_stage,
-            stage4=_noop_stage,
+            interpreter=_noop_stage,
+            retriever=_noop_stage,
+            reasoner=_noop_stage,
+            validator=_noop_stage,
         )
     )
 

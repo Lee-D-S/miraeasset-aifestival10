@@ -7,16 +7,16 @@ import pytest
 import config
 from integration.readiness import validate_environment
 
-_STAGE2_ENV = (
-    "STAGE2_MODE",
-    "STAGE2_INDEX_PATH",
-    "STAGE2_CHROMA_PATH",
-    "STAGE2_CHROMA_COLLECTION",
-    "STAGE2_SQL_TABLE",
-    "STAGE2_EMBEDDING",
-    "STAGE2_ALLOW_PARTIAL_INDEX",
+_RETRIEVER_ENV = (
+    "RETRIEVER_MODE",
+    "RETRIEVER_INDEX_PATH",
+    "RETRIEVER_CHROMA_PATH",
+    "RETRIEVER_CHROMA_COLLECTION",
+    "RETRIEVER_SQL_TABLE",
+    "RETRIEVER_EMBEDDING",
+    "RETRIEVER_ALLOW_PARTIAL_INDEX",
     "CLOVA_LLM_ENABLED",
-    "STAGE1_USE_LLM",
+    "INTERPRETER_USE_LLM",
     "QUERY_PLANNER_LLM_ENABLED",
     "CLOVA_RERANKER_ENABLED",
     "CORPUS_DIR",
@@ -24,8 +24,8 @@ _STAGE2_ENV = (
 
 
 @pytest.fixture(autouse=True)
-def _clean_stage2_env(monkeypatch):
-    for name in _STAGE2_ENV:
+def _clean_retriever_env(monkeypatch):
+    for name in _RETRIEVER_ENV:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("CLOVA_API_KEY", "test-key")
 
@@ -42,30 +42,30 @@ def test_resolve_path_keeps_absolute_and_falls_back_to_default(tmp_path):
 
 
 def test_mode_defaults_to_local():
-    assert config.resolve_stage2_mode() == "local"
+    assert config.resolve_retriever_mode() == "local"
 
 
-def test_stage2_mode_container_is_rejected(monkeypatch):
-    monkeypatch.setenv("STAGE2_MODE", "container")
-    assert config.resolve_stage2_mode() == "container"
-    assert any("STAGE2_MODE" in issue for issue in validate_environment("container"))
+def test_retriever_mode_container_is_rejected(monkeypatch):
+    monkeypatch.setenv("RETRIEVER_MODE", "container")
+    assert config.resolve_retriever_mode() == "container"
+    assert any("RETRIEVER_MODE" in issue for issue in validate_environment("container"))
 
 
 def test_settings_resolve_paths_and_sqlite_url(monkeypatch):
-    monkeypatch.setenv("STAGE2_MODE", "local")
-    monkeypatch.setenv("STAGE2_INDEX_PATH", "data/test_index/custom.db")
-    settings = config.Stage2Settings.from_env()
+    monkeypatch.setenv("RETRIEVER_MODE", "local")
+    monkeypatch.setenv("RETRIEVER_INDEX_PATH", "data/test_index/custom.db")
+    settings = config.RetrieverSettings.from_env()
     assert settings.mode == "local"
     assert settings.sqlite_path == config.PROJECT_ROOT / "data/test_index/custom.db"
     assert settings.sqlite_url == f"sqlite:///{settings.sqlite_path}"
     assert settings.chroma_collection == "chunk_vectors"
     assert settings.sqlite_table == "chunk_index"
-    assert settings.embedding == config.DEFAULT_STAGE2_EMBEDDING
+    assert settings.embedding == config.DEFAULT_RETRIEVER_EMBEDDING
 
 
 def test_validate_environment_flags_unknown_mode(monkeypatch):
     assert validate_environment("local") == []
-    assert any("STAGE2_MODE" in issue for issue in validate_environment("sqlite"))
+    assert any("RETRIEVER_MODE" in issue for issue in validate_environment("sqlite"))
 
 
 def test_validate_environment_requires_key_only_for_live_llm(monkeypatch):
@@ -75,37 +75,37 @@ def test_validate_environment_requires_key_only_for_live_llm(monkeypatch):
     assert any("CLOVA_API_KEY" in issue for issue in validate_environment("local"))
 
 
-@pytest.mark.parametrize("flag", ["STAGE1_USE_LLM", "QUERY_PLANNER_LLM_ENABLED", "CLOVA_RERANKER_ENABLED"])
+@pytest.mark.parametrize("flag", ["INTERPRETER_USE_LLM", "QUERY_PLANNER_LLM_ENABLED", "CLOVA_RERANKER_ENABLED"])
 def test_validate_environment_requires_key_for_each_clova_capability(monkeypatch, flag):
     monkeypatch.delenv("CLOVA_API_KEY", raising=False)
-    monkeypatch.setenv(flag, "1" if flag in {"STAGE1_USE_LLM", "QUERY_PLANNER_LLM_ENABLED"} else "true")
+    monkeypatch.setenv(flag, "1" if flag in {"INTERPRETER_USE_LLM", "QUERY_PLANNER_LLM_ENABLED"} else "true")
     assert any("CLOVA_API_KEY" in issue for issue in validate_environment("local"))
 
 
 def test_validate_environment_rejects_unknown_embedding_and_table(monkeypatch):
-    monkeypatch.setenv("STAGE2_EMBEDDING", "unknown")
-    monkeypatch.setenv("STAGE2_SQL_TABLE", "unknown")
+    monkeypatch.setenv("RETRIEVER_EMBEDDING", "unknown")
+    monkeypatch.setenv("RETRIEVER_SQL_TABLE", "unknown")
     issues = validate_environment("local")
-    assert any("STAGE2_EMBEDDING" in issue for issue in issues)
-    assert any("STAGE2_SQL_TABLE" in issue for issue in issues)
+    assert any("RETRIEVER_EMBEDDING" in issue for issue in issues)
+    assert any("RETRIEVER_SQL_TABLE" in issue for issue in issues)
 
 
 # Only the supplied-index embedding alias is valid; model names and legacy
 # instruct aliases must be rejected at the configuration boundary.
 @pytest.mark.parametrize("embedding", ["clova", "multilingual-e5-large", "e5-instruct"])
 def test_validate_environment_rejects_legacy_embedding_aliases(monkeypatch, embedding):
-    monkeypatch.setenv("STAGE2_EMBEDDING", embedding)
-    assert any("STAGE2_EMBEDDING" in issue for issue in validate_environment("local"))
+    monkeypatch.setenv("RETRIEVER_EMBEDDING", embedding)
+    assert any("RETRIEVER_EMBEDDING" in issue for issue in validate_environment("local"))
 
 
 @pytest.mark.parametrize("embedding", ["e5"])
 def test_validate_environment_accepts_supported_embeddings(monkeypatch, embedding):
-    monkeypatch.setenv("STAGE2_EMBEDDING", embedding)
+    monkeypatch.setenv("RETRIEVER_EMBEDDING", embedding)
     assert not any(
-        "STAGE2_EMBEDDING" in issue for issue in validate_environment("local")
+        "RETRIEVER_EMBEDDING" in issue for issue in validate_environment("local")
     )
 
 
 def test_validate_environment_rejects_fixture_mode(monkeypatch):
-    monkeypatch.setenv("STAGE2_MODE", "fixture")
-    assert any("STAGE2_MODE" in issue for issue in validate_environment("fixture"))
+    monkeypatch.setenv("RETRIEVER_MODE", "fixture")
+    assert any("RETRIEVER_MODE" in issue for issue in validate_environment("fixture"))

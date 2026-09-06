@@ -1,4 +1,4 @@
-from stage3.parsing.structured import StructuredTable
+from reasoner.parsing.structured import StructuredTable
 
 
 def test_numeric_cells_infer_period_offsets_from_grouped_columns() -> None:

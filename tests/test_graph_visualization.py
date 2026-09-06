@@ -6,10 +6,10 @@ from integration import StageNodes, build_graph
 def test_supervisor_graph_can_render_mermaid() -> None:
     graph = build_graph(
         StageNodes(
-            stage1=lambda _state: {"route": "ok", "intent": {"intent": "lookup", "route": "ok"}},
-            stage2=lambda _state: {"stage2_result": {"status": "ok", "cited_documents": [{"id": "d"}]}},
-            stage3=lambda _state: {"stage3_result": {"status": "success"}},
-            stage4=lambda _state: {"stage4_result": {"status": "success"}},
+            interpreter=lambda _state: {"route": "ok", "intent": {"intent": "lookup", "route": "ok"}},
+            retriever=lambda _state: {"retriever_result": {"status": "ok", "cited_documents": [{"id": "d"}]}},
+            reasoner=lambda _state: {"reasoner_result": {"status": "success"}},
+            validator=lambda _state: {"validator_result": {"status": "success"}},
         )
     )
 

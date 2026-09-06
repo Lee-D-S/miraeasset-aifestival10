@@ -7,19 +7,19 @@ from integration.api import create_app, to_submission_response
 from integration.rate_limit import RateLimitBlocked
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from stage2.retrieval import matches_manifest_filter
+from retriever.retrieval import matches_manifest_filter
 
 
-def _stage1(state):
+def _interpreter(state):
     return {
         "intent": {"intent": "lookup", "route": "ok"},
         "route": "ok",
     }
 
 
-def _stage2(state):
+def _retriever(state):
     return {
-        "stage2_result": {
+        "retriever_result": {
             "status": "ok",
             "documents": [{"id": "doc-1", "text": "evidence"}],
             "cited_documents": [{"id": "doc-1", "text": "evidence"}],
@@ -29,9 +29,9 @@ def _stage2(state):
     }
 
 
-def _stage3(state):
+def _reasoner(state):
     return {
-        "stage3_result": {"status": "insufficient_evidence", "citations": [], "warnings": [], "trace": []},
+        "reasoner_result": {"status": "insufficient_evidence", "citations": [], "warnings": [], "trace": []},
         "answer": "근거가 부족합니다.",
         "context": "",
         "messages": [],
@@ -39,9 +39,9 @@ def _stage3(state):
     }
 
 
-def _stage4(state):
+def _validator(state):
     return {
-        "stage4_result": {"status": "success", "warnings": [], "trace": []},
+        "validator_result": {"status": "success", "warnings": [], "trace": []},
         "answer": state["answer"],
     }
 
@@ -65,12 +65,12 @@ class IntegrationSkeletonTests(unittest.TestCase):
         self.assertEqual(context.exception.status_code, 503)
         self.assertEqual(calls, ["factory"])
 
-    def test_stage2_honors_excluded_corp_names(self) -> None:
+    def test_retriever_honors_excluded_corp_names(self) -> None:
         document = {"metadata": {"corp_name": "삼성전자"}}
         manifest_filter = {"exclude_corp_names": ["삼성전자"]}
         self.assertFalse(matches_manifest_filter(document, manifest_filter))
 
-    def test_submission_trace_includes_stage1_think_trace(self) -> None:
+    def test_submission_trace_includes_interpreter_think_trace(self) -> None:
         response = to_submission_response(
             {
                 "question_id": "Q-TRACE",
@@ -78,14 +78,14 @@ class IntegrationSkeletonTests(unittest.TestCase):
                 "intent": {"think_trace": "intent=lookup | 제외=삼성전자"},
             }
         )
-        self.assertIn("stage1_think_trace", response["think_trace"])
+        self.assertIn("interpreter_think_trace", response["think_trace"])
 
     def test_submission_trace_is_redacted_and_lists_subquery_statuses(self) -> None:
         response = to_submission_response({
             "question_id": "Q-TRACE-2",
             "question": "비공개 질문",
             "intent": {"think_trace": "intent=lookup"},
-            "stage3_result": {
+            "reasoner_result": {
                 "status": "partial_success",
                 "subresults": [
                     {"subquery_id": "subquery-1", "status": "success"},
@@ -98,38 +98,38 @@ class IntegrationSkeletonTests(unittest.TestCase):
         assert "should-not-appear" not in response["think_trace"]
 
     def test_processable_route_runs_all_four_nodes(self) -> None:
-        pipeline = StagePipeline(StageNodes(_stage1, _stage2, _stage3, _stage4))
+        pipeline = StagePipeline(StageNodes(_interpreter, _retriever, _reasoner, _validator))
         state = pipeline.invoke(question_id="Q-001", question="질문")
 
         self.assertEqual(state["question_id"], "Q-001")
         self.assertEqual(state["answer"], "근거가 부족합니다.")
-        self.assertEqual(state["stage4_result"]["status"], "success")
+        self.assertEqual(state["validator_result"]["status"], "success")
 
-    def test_blocked_route_skips_stage2_and_stage3_but_reaches_stage4(self) -> None:
+    def test_blocked_route_skips_retriever_and_reasoner_but_reaches_validator(self) -> None:
         calls = []
 
-        def stage1(_state):
-            calls.append("stage1")
+        def interpreter(_state):
+            calls.append("interpreter")
             return {"intent": {"intent": "unknown", "route": "unsafe"}, "route": "unsafe"}
 
-        def stage2(_state):
-            calls.append("stage2")
-            raise AssertionError("blocked route must skip Stage2")
+        def retriever(_state):
+            calls.append("retriever")
+            raise AssertionError("blocked route must skip Retriever")
 
-        def stage3(_state):
-            calls.append("stage3")
-            raise AssertionError("blocked route must skip Stage3")
+        def reasoner(_state):
+            calls.append("reasoner")
+            raise AssertionError("blocked route must skip Reasoner")
 
-        def stage4(state):
-            calls.append("stage4")
-            return {"stage4_result": {"status": "success"}, "answer": "차단되었습니다."}
+        def validator(state):
+            calls.append("validator")
+            return {"validator_result": {"status": "success"}, "answer": "차단되었습니다."}
 
-        state = StagePipeline(StageNodes(stage1, stage2, stage3, stage4)).invoke(
+        state = StagePipeline(StageNodes(interpreter, retriever, reasoner, validator)).invoke(
             question_id="Q-002",
             question="위험한 질문",
         )
 
-        self.assertEqual(calls, ["stage1", "stage4"])
+        self.assertEqual(calls, ["interpreter", "validator"])
         self.assertEqual(state["answer"], "차단되었습니다.")
 
     def test_submission_response_has_five_string_fields(self) -> None:
@@ -137,7 +137,7 @@ class IntegrationSkeletonTests(unittest.TestCase):
             "question_id": "Q-003",
             "question": "질문",
             "answer": "답변",
-            "stage3_result": {"citations": []},
+            "reasoner_result": {"citations": []},
         }
 
         response = to_submission_response(state)
@@ -149,7 +149,7 @@ class IntegrationSkeletonTests(unittest.TestCase):
         self.assertTrue(all(isinstance(value, str) for value in response.values()))
 
     def test_http_answer_preserves_decoded_query_and_response_contract(self) -> None:
-        pipeline = StagePipeline(StageNodes(_stage1, _stage2, _stage3, _stage4))
+        pipeline = StagePipeline(StageNodes(_interpreter, _retriever, _reasoner, _validator))
         client = TestClient(create_app(pipeline=pipeline))
 
         response = client.get("/answer", params={"question_id": "Q-HTTP", "question": "삼성전자 매출액"})

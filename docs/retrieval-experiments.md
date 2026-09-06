@@ -71,7 +71,7 @@ and backend fallback statistics.
 Run FAISS profiles separately with nprobe values 8, 32, and 128. Do not run
 candidate profiles concurrently.
 
-To include deterministic Stage1 to Stage4 and the five-string response check,
+To include deterministic Interpreter to Validator and the five-string response check,
 add a corpus directory:
 
 ~~~powershell
@@ -110,7 +110,7 @@ The answer endpoint keeps these five string fields:
 - think_trace
 - answer
 
-Stage3 and Stage4 are deterministic by default. Set EXPERIMENT_LIVE_LLM=true
+Reasoner and Validator are deterministic by default. Set EXPERIMENT_LIVE_LLM=true
 only for the final live validation.
 
 ## Limitations

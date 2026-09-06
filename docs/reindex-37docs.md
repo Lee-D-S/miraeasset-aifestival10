@@ -50,7 +50,7 @@
   2. 정규화: `reindex_work/corpus37/` 아래 모든 파일·폴더 이름을
      `unicodedata.normalize("NFC", ...)`로 rename. 이후 37건 전부 경로 해석됨.
 - 빌드 venv: `/home/user/contest/team-feature2/.venv`
-  (`requirements.txt` + `requirements-langgraph.txt` + `stage2/ingestion/dart/requirements.txt`
+  (`requirements.txt` + `requirements-langgraph.txt` + `retriever/ingestion/dart/requirements.txt`
   설치 완료. 추가로 `sentence-transformers` 설치.)
 
 ## 임베딩 공간 (중요)

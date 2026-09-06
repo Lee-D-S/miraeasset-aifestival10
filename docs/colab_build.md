@@ -23,7 +23,7 @@ repo 를 clone/import 하지 않는다(파싱·청킹 코드는 `# vendored` 로
 | `CORPUS_DIR` | `/content/drive/MyDrive/corpus` | 코퍼스 경로. 대량이면 로컬(`/content`)로 복사 후 지정 — Drive(FUSE) 직접 파싱은 파일 stat 지연으로 매우 느림 |
 | `OUT_DIR` | `/content/drive/MyDrive/team-feature2_build` | 재개 스냅샷 보관처(Drive). **빌드 자체는 로컬** `/content/_chunk_index_build` |
 | `SELECTION` | `""` | `""`=전체 / `selected_documents.json` 경로 |
-| `COLLECTION` | `chunk_vectors` | Chroma 컬렉션명. 서빙 `STAGE2_CHROMA_COLLECTION` 과 일치해야 함 |
+| `COLLECTION` | `chunk_vectors` | Chroma 컬렉션명. 서빙 `RETRIEVER_CHROMA_COLLECTION` 과 일치해야 함 |
 | `MAX_CHUNK_LEN` | `1000` | 청크 최대 글자수 |
 | `E5_BATCH_SIZE` | `128` | 임베딩 배치. A100 이면 128~256 |
 | `FP16` | `True` | GPU half precision (A100 ~2배, 검색 품질 차이 무시 가능) |
@@ -55,11 +55,11 @@ repo 를 clone/import 하지 않는다(파싱·청킹 코드는 `# vendored` 로
 ## 산출물로 서빙
 
 ```
-STAGE2_MODE=local
-STAGE2_EMBEDDING=e5
-STAGE2_INDEX_PATH=<unzip>/chunk_index.db
-STAGE2_CHROMA_PATH=<unzip>/chunk_index_chroma
-STAGE2_CHROMA_COLLECTION=<COLLECTION 과 동일>
+RETRIEVER_MODE=local
+RETRIEVER_EMBEDDING=e5
+RETRIEVER_INDEX_PATH=<unzip>/chunk_index.db
+RETRIEVER_CHROMA_PATH=<unzip>/chunk_index_chroma
+RETRIEVER_CHROMA_COLLECTION=<COLLECTION 과 동일>
 ```
 
 임베딩 공간: 문서 측은 `"passage: "` 프리픽스 + mean pooling + L2 정규화(sentence-transformers).
@@ -67,6 +67,6 @@ STAGE2_CHROMA_COLLECTION=<COLLECTION 과 동일>
 
 ## 벤더링 사본 유지
 
-`# vendored` 구역은 `stage2/ingestion/dart/*.py` 손복사본. 원본 파싱·청킹 로직을 바꾸면
+`# vendored` 구역은 `retriever/ingestion/dart/*.py` 손복사본. 원본 파싱·청킹 로직을 바꾸면
 같이 고치고 `pytest tests/test_colab_cell.py` 로 두 쪽 결과가 같은지 확인한다.
 로컬 빌드는 `scripts/build_chunk_index.py` (`--workers`, `--embedding e5|clova`).

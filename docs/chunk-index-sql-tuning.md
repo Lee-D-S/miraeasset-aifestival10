@@ -1,13 +1,13 @@
 # chunk_index SQL 인덱스 추가 (2026-09-04)
 
-Stage2 검색의 메타데이터 필터(`filter_candidates`)가 매 질의마다 5.55M행·21GB
+Retriever 검색의 메타데이터 필터(`filter_candidates`)가 매 질의마다 5.55M행·21GB
 `chunk_index` 테이블을 전체 스캔하던 문제를 인덱스로 해결한 기록.
 
 ## 배경
 
-`scripts/bench_stage2.py` 측정 결과:
+`scripts/bench_retriever.py` 측정 결과:
 
-- 전체 `/answer` 실행 시간의 **93~100%가 Stage2 검색**이었다.
+- 전체 `/answer` 실행 시간의 **93~100%가 Retriever 검색**이었다.
 - 그 검색 시간의 대부분은 `keyword_search`/`vector_search`가 아니라
   **`filter_candidates`의 SQL 한 줄**이었다.
   - SQL 필터: median 57,615ms, 콜드 p90 167,682ms
@@ -56,11 +56,11 @@ SEARCH chunk_index USING INDEX ix_ci_corp_year_group_sub (corp_name=? AND base_y
 
 ## 코드 수정 — `corp_name` 정확 일치 (적용 완료)
 
-`stage2/local_store.py`의 `build_manifest_where_and_params`에서 `corp_name`을
+`retriever/local_store.py`의 `build_manifest_where_and_params`에서 `corp_name`을
 `LIKE '%이름%'` → `= :key` 로 바꿨다. 앞뒤 와일드카드는 어떤 인덱스도 못 쓴다.
 
 ```python
-# 변경 전 (stage2/local_store.py:83 부근)
+# 변경 전 (retriever/local_store.py:83 부근)
 ors.append(f"corp_name LIKE :{key}")
 params[key] = f"%{name}%"
 
@@ -69,11 +69,11 @@ ors.append(f"corp_name = :{key}")
 params[key] = name
 ```
 
-- Stage1의 `manifest_filter.corp_names`에는 이미 정규화된 정확한 회사명이 들어온다
+- Interpreter의 `manifest_filter.corp_names`에는 이미 정규화된 정확한 회사명이 들어온다
   (예: "현대차" → "현대자동차", "KT" → "케이티", "엔씨소프트" → "NC").
 - `EXPLAIN QUERY PLAN` 확인: `SEARCH chunk_index USING INDEX ix_ci_corp_year_group_sub (corp_name=? AND base_year=? AND doc_group=?)`.
 - 실측: `카카오 2025` (`doc_subtype` 없음) 약 21,000ms → **28ms**.
-- `tests/test_local_store.py`, `tests/test_stage2.py` 통과.
+- `tests/test_local_store.py`, `tests/test_retriever.py` 통과.
 - `sector`, `report_nm`의 `LIKE`는 그대로 둔다(부분 매칭이 의도로 보임).
 
 ## 서버 적용 절차
@@ -113,7 +113,7 @@ DROP INDEX IF EXISTS ix_ci_corp_year_group_sub;
 
 ## 참고 — 문서/코드 불일치
 
-`stage2/local_store.py:346`은 `ORDER BY id ASC`인데, CLAUDE.md에는
+`retriever/local_store.py:346`은 `ORDER BY id ASC`인데, CLAUDE.md에는
 "candidates are ordered latest-disclosure-first (`rcept_dt DESC, rcept_no DESC`)"로
 적혀 있다. 어느 쪽이 의도인지 확인 필요. `id ASC`가 맞다면 `ix_ci_rcept`는
 범위 조건용으로만 쓰인다.

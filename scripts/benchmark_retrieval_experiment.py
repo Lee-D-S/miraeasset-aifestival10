@@ -23,23 +23,23 @@ from integration.testing import (
     DeterministicAnswerWriter,
     DeterministicSemanticValidator,
 )
-from stage1 import build_stage1_node
-from stage2.backends import readonly_sqlite_engine
-from stage2.embedding import E5Embeddings
-from stage2.node import build_stage2_node
-from stage2.query_instruction_eval import (
+from interpreter import build_interpreter_node
+from retriever.backends import readonly_sqlite_engine
+from retriever.embedding import E5Embeddings
+from retriever.node import build_retriever_node
+from retriever.query_instruction_eval import (
     GoldQuery,
     load_gold_queries,
     summarize_results,
 )
-from stage2.retrieval import RetrievalConfig, retrieve
-from stage2.retrieval_experiments import (
+from retriever.retrieval import RetrievalConfig, retrieve
+from retriever.retrieval_experiments import (
     EXPERIMENT_PROFILES,
     build_experiment_retriever,
     resolve_index_paths,
 )
-from stage3 import build_stage3_node
-from stage4 import build_stage4_node
+from reasoner import build_reasoner_node
+from validator import build_validator_node
 
 
 def _rss_bytes() -> int | None:
@@ -56,10 +56,10 @@ def _artifact_size(root: Path) -> int:
 
 def _pipeline_safety_result(state: dict[str, Any]) -> dict[str, Any]:
     intent = state.get("intent") or {}
-    stage3 = state.get("stage3_result") or {}
-    stage4 = state.get("stage4_result") or {}
-    numeric = stage4.get("numeric_check") or {}
-    semantic = stage4.get("semantic_check") or {}
+    reasoner = state.get("reasoner_result") or {}
+    validator = state.get("validator_result") or {}
+    numeric = validator.get("numeric_check") or {}
+    semantic = validator.get("semantic_check") or {}
     numeric_pass = numeric.get("pass") if isinstance(numeric, dict) else None
     unsupported_claims = semantic.get("unsupported_claims", [])
     if not isinstance(unsupported_claims, list):
@@ -67,22 +67,22 @@ def _pipeline_safety_result(state: dict[str, Any]) -> dict[str, Any]:
     route = str(state.get("route") or "")
     metric = str(intent.get("metric") or "").strip()
     question_type = str(intent.get("question_type") or "").strip()
-    stage3_status = str(stage3.get("status") or "")
-    stage4_status = str(stage4.get("status") or "")
+    reasoner_status = str(reasoner.get("status") or "")
+    validator_status = str(validator.get("status") or "")
     blocked = (
         route != "ok"
         or not metric
         or question_type in {"", "text", "unknown"}
-        or stage3_status in {"insufficient_evidence", "error", "empty", "blocked"}
-        or stage4_status in {"unanswerable", "unsafe", "validation_failed", "blocked"}
+        or reasoner_status in {"insufficient_evidence", "error", "empty", "blocked"}
+        or validator_status in {"unanswerable", "unsafe", "validation_failed", "blocked"}
     )
     return {
         "safe": bool(blocked and numeric_pass is not True and not unsupported_claims),
         "route": route,
         "metric": metric,
         "question_type": question_type,
-        "stage3_status": stage3_status,
-        "stage4_status": stage4_status,
+        "reasoner_status": reasoner_status,
+        "validator_status": validator_status,
         "numeric_pass": numeric_pass,
         "unsupported_claim_count": len(unsupported_claims),
     }
@@ -95,15 +95,15 @@ def _run_pipeline_benchmark(
     corpus_dir: str | Path,
 ) -> dict[str, Any]:
     corpus = Path(corpus_dir).expanduser().resolve()
-    stage1 = build_stage1_node(
+    interpreter = build_interpreter_node(
         corpus_dir=corpus,
         config_dir=corpus / "config",
         use_llm=False,
     )
     pipeline = StagePipeline(
         StageNodes(
-            stage1=stage1,
-            stage2=build_stage2_node(
+            interpreter=interpreter,
+            retriever=build_retriever_node(
                 retriever=retriever,
                 config=RetrievalConfig(
                     candidate_limit=1000,
@@ -111,10 +111,10 @@ def _run_pipeline_benchmark(
                     final_limit=200,
                 ),
             ),
-            stage3=build_stage3_node(
+            reasoner=build_reasoner_node(
                 answer_writer=DeterministicAnswerWriter()
             ),
-            stage4=build_stage4_node(
+            validator=build_validator_node(
                 validator_client=DeterministicSemanticValidator()
             ),
         )
@@ -131,21 +131,21 @@ def _run_pipeline_benchmark(
         state = pipeline.invoke(question_id=query.id, question=query.question)
         response = to_submission_response(state)
         safety = _pipeline_safety_result(state)
-        stage4 = state.get("stage4_result") or {}
-        numeric = stage4.get("numeric_check") or {}
-        citation = stage4.get("citation_check") or {}
-        semantic = stage4.get("semantic_check") or {}
+        validator = state.get("validator_result") or {}
+        numeric = validator.get("numeric_check") or {}
+        citation = validator.get("citation_check") or {}
+        semantic = validator.get("semantic_check") or {}
         rows[query.id] = {
             "response_contract": set(response) == expected_keys
             and all(isinstance(value, str) for value in response.values()),
             "route": str(state.get("route") or ""),
-            "stage2_status": str(
-                (state.get("stage2_result") or {}).get("status") or ""
+            "retriever_status": str(
+                (state.get("retriever_result") or {}).get("status") or ""
             ),
-            "stage3_status": str(
-                (state.get("stage3_result") or {}).get("status") or ""
+            "reasoner_status": str(
+                (state.get("reasoner_result") or {}).get("status") or ""
             ),
-            "stage4_status": str(stage4.get("status") or ""),
+            "validator_status": str(validator.get("status") or ""),
             "numeric_pass": numeric.get("pass"),
             "citation_pass": citation.get("pass"),
             "semantic_pass": semantic.get("pass"),
@@ -166,8 +166,8 @@ def _run_pipeline_benchmark(
             bool(row["response_contract"]) for row in rows.values()
         ),
         "answerable_count": len(answerable),
-        "answerable_stage4_success_count": sum(
-            rows[query.id]["stage4_status"] in {"success", "regenerated"}
+        "answerable_validator_success_count": sum(
+            rows[query.id]["validator_status"] in {"success", "regenerated"}
             for query in answerable
         ),
         "fail_closed_count": sum(bool(row["safe"]) for row in safety_rows),
@@ -308,8 +308,8 @@ def main() -> int:
     parser.add_argument(
         "--pipeline-corpus-dir",
         help=(
-            "also run the same gold queries through deterministic Stage1 to "
-            "Stage4; requires a corpus with universe.csv and manifest.jsonl"
+            "also run the same gold queries through deterministic Interpreter to "
+            "Validator; requires a corpus with universe.csv and manifest.jsonl"
         ),
     )
     parser.add_argument("--output")

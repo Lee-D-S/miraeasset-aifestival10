@@ -15,7 +15,7 @@ from langgraph.graph import MessagesState, add_messages
 
 
 Route = Literal["ok", "need_clarify", "unanswerable", "unsafe"]
-SupervisorPhase = Literal["after_stage1", "after_stage2", "after_stage3", "after_stage4"]
+SupervisorPhase = Literal["after_interpreter", "after_retriever", "after_reasoner", "after_validator"]
 TerminationReason = Literal[
     "unsafe",
     "unanswerable",
@@ -28,16 +28,16 @@ TerminationReason = Literal[
 ]
 
 
-class Stage1CalculationPlan(TypedDict, total=False):
-    """Canonical calculation plan optionally produced by Stage1."""
+class InterpreterCalculationPlan(TypedDict, total=False):
+    """Canonical calculation plan optionally produced by Interpreter."""
 
     operation: str
     metric: str
     denominator_metric: str
 
 
-class Stage1Intent(TypedDict, total=False):
-    """JSON-compatible Stage1 Intent payload stored in ``AgentState``."""
+class InterpreterIntent(TypedDict, total=False):
+    """JSON-compatible Interpreter Intent payload stored in ``AgentState``."""
 
     raw_question: str
     normalized_question: str
@@ -55,7 +55,7 @@ class Stage1Intent(TypedDict, total=False):
     metric_confidence: str
     basis: str
     time: dict[str, Any]
-    calculation: Stage1CalculationPlan
+    calculation: InterpreterCalculationPlan
     correction_mode: str
     allow_pdf_html: bool
     manifest_filter: dict[str, Any]
@@ -71,8 +71,8 @@ class Stage1Intent(TypedDict, total=False):
     query_plan: list[dict[str, Any]]
 
 
-class Stage2Document(TypedDict, total=False):
-    """Minimum structured evidence document passed from Stage2."""
+class RetrieverDocument(TypedDict, total=False):
+    """Minimum structured evidence document passed from Retriever."""
 
     id: str
     doc_id: str
@@ -84,12 +84,12 @@ class Stage2Document(TypedDict, total=False):
     evidence_spans: list[dict[str, Any]]
 
 
-class Stage2Result(TypedDict, total=False):
-    """Structured Stage2 handoff consumed by Stage3."""
+class RetrieverResult(TypedDict, total=False):
+    """Structured Retriever handoff consumed by Reasoner."""
 
     query_id: str
-    documents: list[Stage2Document]
-    cited_documents: list[Stage2Document]
+    documents: list[RetrieverDocument]
+    cited_documents: list[RetrieverDocument]
     retrieval_trace: list[Any]
     status: str
     subresults: list[dict[str, Any]]
@@ -98,7 +98,7 @@ class Stage2Result(TypedDict, total=False):
     provider_status: dict[str, Any]
 
 
-class Stage3Result(TypedDict, total=False):
+class ReasonerResult(TypedDict, total=False):
     """Structured Fact, calculation, citation, and answer draft result."""
 
     status: str
@@ -113,8 +113,8 @@ class Stage3Result(TypedDict, total=False):
     subresults: list[dict[str, Any]]
 
 
-class Stage4Result(TypedDict, total=False):
-    """Structured validation and regeneration result produced by Stage4."""
+class ValidatorResult(TypedDict, total=False):
+    """Structured validation and regeneration result produced by Validator."""
 
     status: str
     answer: str
@@ -129,7 +129,7 @@ class Stage4Result(TypedDict, total=False):
 
 
 class AgentState(MessagesState):
-    """Full State shared by the external Stage1~Stage4 integration graph.
+    """Full State shared by the external Interpreter~Validator integration graph.
 
     ``question_id`` and ``question`` are required at the public execution
     boundary and immutable after initialization.  The remaining fields are
@@ -144,7 +144,7 @@ class AgentState(MessagesState):
     answer: str | None
     context: str | None
 
-    # Stage1
+    # Interpreter
     intent: dict[str, Any] | None
     route: Route | None
     analysis_plan: dict[str, Any] | None
@@ -152,17 +152,17 @@ class AgentState(MessagesState):
     plan_failure_reason: str | None
     plan_trace: list[str]
 
-    # Stage2
-    stage2_result: dict[str, Any] | None
+    # Retriever
+    retriever_result: dict[str, Any] | None
     documents: list[dict[str, Any]] | None
     search_queries: dict[str, str]
 
-    # Stage3
-    stage3_result: dict[str, Any] | None
+    # Reasoner
+    reasoner_result: dict[str, Any] | None
     facts: list[dict[str, Any]] | None
 
-    # Stage4
-    stage4_result: dict[str, Any] | None
+    # Validator
+    validator_result: dict[str, Any] | None
 
     # Control counters
     retry_num: int
@@ -202,12 +202,12 @@ class AgentStateUpdate(TypedDict, total=False):
     plan_status: str | None
     plan_failure_reason: str | None
     plan_trace: list[str]
-    stage2_result: dict[str, Any] | None
+    retriever_result: dict[str, Any] | None
     documents: list[dict[str, Any]] | None
     search_queries: dict[str, str]
-    stage3_result: dict[str, Any] | None
+    reasoner_result: dict[str, Any] | None
     facts: list[dict[str, Any]] | None
-    stage4_result: dict[str, Any] | None
+    validator_result: dict[str, Any] | None
     retry_num: int
     gen_retry_num: int
     supervisor_steps: int
@@ -230,10 +230,10 @@ class AgentStateUpdate(TypedDict, total=False):
 IMMUTABLE_STATE_FIELDS = frozenset({"question_id", "question"})
 
 STAGE_WRITE_FIELDS: Mapping[str, frozenset[str]] = {
-    "stage1": frozenset({"intent", "route", "search_query"}),
-    "stage2": frozenset({"stage2_result", "retry_num", "search_attempts", "documents", "search_query", "search_queries"}),
-    "stage3": frozenset({"stage3_result", "answer", "context", "messages", "gen_retry_num", "facts"}),
-    "stage4": frozenset({"stage4_result", "answer", "messages", "validation_attempts"}),
+    "interpreter": frozenset({"intent", "route", "search_query"}),
+    "retriever": frozenset({"retriever_result", "retry_num", "search_attempts", "documents", "search_query", "search_queries"}),
+    "reasoner": frozenset({"reasoner_result", "answer", "context", "messages", "gen_retry_num", "facts"}),
+    "validator": frozenset({"validator_result", "answer", "messages", "validation_attempts"}),
     "planner": frozenset({
         "analysis_plan", "plan_status", "plan_failure_reason", "plan_trace",
         "planner_retry_num", "planner_attempts",
@@ -299,12 +299,12 @@ def make_initial_agent_state(
         "plan_status": None,
         "plan_failure_reason": None,
         "plan_trace": [],
-        "stage2_result": None,
+        "retriever_result": None,
         "documents": None,
         "search_queries": {},
-        "stage3_result": None,
+        "reasoner_result": None,
         "facts": None,
-        "stage4_result": None,
+        "validator_result": None,
         "retry_num": 0,
         "gen_retry_num": 0,
         "supervisor_steps": 0,
@@ -330,12 +330,12 @@ __all__ = [
     "AgentStateUpdate",
     "IMMUTABLE_STATE_FIELDS",
     "STAGE_WRITE_FIELDS",
-    "Stage1CalculationPlan",
-    "Stage1Intent",
-    "Stage2Document",
-    "Stage2Result",
-    "Stage3Result",
-    "Stage4Result",
+    "InterpreterCalculationPlan",
+    "InterpreterIntent",
+    "RetrieverDocument",
+    "RetrieverResult",
+    "ReasonerResult",
+    "ValidatorResult",
     "Route",
     "SupervisorPhase",
     "TerminationReason",

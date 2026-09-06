@@ -3,7 +3,7 @@
 이 문서 하나만 따라 하면 dis-164 공시 Agent를 **네이버클라우드(NCP) 서버 1대에 Docker 컨테이너로**
 띄우고, 평가용 `/answer` 엔드포인트를 외부에 노출할 수 있습니다.
 
-- 대상: `STAGE2_MODE=local` (단일 컨테이너, 인덱스는 볼륨 마운트) — 대회 라이브 엔드포인트용 기본 구성
+- 대상: `RETRIEVER_MODE=local` (단일 컨테이너, 인덱스는 볼륨 마운트) — 대회 라이브 엔드포인트용 기본 구성
 - 관련 문서: [`deployment-design.md`](./deployment-design.md)(설계 배경), [`sync-chunk-index.md`](./sync-chunk-index.md)(인덱스 동기화), `../NCP_DEPLOYMENT.md`(환경변수 상세)
 
 ---
@@ -165,18 +165,18 @@ CLOVA_API_KEY=<실제 키>
 CLOVA_API_HOST=clovastudio.stream.ntruss.com
 CLOVA_LLM_ENABLED=true
 CLOVA_CHAT_MODEL=HCX-DASH-002
-STAGE1_USE_LLM=0
+INTERPRETER_USE_LLM=0
 QUERY_PLANNER_LLM_ENABLED=false
 CLOVA_RERANKER_ENABLED=false
 CLOVA_RERANKER_CANDIDATE_LIMIT=100
 
-STAGE2_MODE=local
-STAGE2_EMBEDDING=e5
-STAGE2_ALLOW_PARTIAL_INDEX=true
+RETRIEVER_MODE=local
+RETRIEVER_EMBEDDING=e5
+RETRIEVER_ALLOW_PARTIAL_INDEX=true
 ```
 
 > `.env` 는 `.gitignore` 에 있어 커밋되지 않습니다. **키를 커밋하지 마세요.**
-> 경로(`STAGE2_INDEX_PATH` 등)는 아래 compose 파일이 컨테이너 기준으로 이미 넣어주므로 `.env`에서 비워둬도 됩니다.
+> 경로(`RETRIEVER_INDEX_PATH` 등)는 아래 compose 파일이 컨테이너 기준으로 이미 넣어주므로 `.env`에서 비워둬도 됩니다.
 
 ---
 
@@ -211,7 +211,7 @@ docker compose logs -f
 
 - 이미지 `dis164-agent:local` 실행, 포트 `8000:8000`
 - `/data/local_db` → 컨테이너 `/app/data/local_db` **읽기 전용** 마운트
-- `STAGE2_MODE=local`, `STAGE2_EMBEDDING=e5`, `STAGE2_CHROMA_COLLECTION=chunk_vectors`, `STAGE2_SQL_TABLE=chunk_index` 주입
+- `RETRIEVER_MODE=local`, `RETRIEVER_EMBEDDING=e5`, `RETRIEVER_CHROMA_COLLECTION=chunk_vectors`, `RETRIEVER_SQL_TABLE=chunk_index` 주입
 - `.env` 의 `CLOVA_*` 를 그대로 전달
 - `CLOVA_RERANKER_ENABLED=true`일 때만 production Reranker를 활성화하며, 실패 시 deterministic 검색 결과로 fallback
 - Docker runtime의 `HF_HUB_OFFLINE=1`로 E5 모델의 런타임 다운로드를 차단
@@ -275,7 +275,7 @@ curl -s "http://<서버_공인_IP>:8000/answer?question_id=SMOKE-2&question=..."
 |---|---|
 | `/ready` 가 계속 503 | 로그 확인(`docker compose logs app`). 대개 (a) 인덱스 경로/마운트 문제 (b) `chunk_index.db` 손상 (c) CLOVA 키 누락. `docker compose exec app python scripts/check_deployment.py` 로 원인 출력 |
 | `rust/sqlite/src/db.rs ... panicked` | chromadb 버전 문제. 이미지가 `chromadb==1.5.9` 로 빌드됐는지 확인(`requirements.txt`). 다른 버전이면 재빌드 |
-| 검색 결과가 엉뚱함 / 근거 없음 | 임베딩 모델 불일치. `STAGE2_EMBEDDING=e5` 인지, 이미지가 `intfloat/multilingual-e5-large`(non-instruct)를 캐시했는지 확인 |
+| 검색 결과가 엉뚱함 / 근거 없음 | 임베딩 모델 불일치. `RETRIEVER_EMBEDDING=e5` 인지, 이미지가 `intfloat/multilingual-e5-large`(non-instruct)를 캐시했는지 확인 |
 | 컨테이너가 OOM 으로 죽음 | RAM 부족. 서버 타입을 RAM 큰 것으로 (32GB→64GB). worker는 1 유지 |
 | 첫 요청이 아주 느림 | HNSW/모델 예열. 기동 후 스모크 질의 1~2회로 예열한 뒤 평가 트래픽을 받게 함 |
 | 외부에서 접속 안 됨 | NCP **ACG 인바운드에 TCP 8000** 규칙이 있는지, 컨테이너가 `0.0.0.0:8000` 바인딩인지(`docker compose ps` 포트 표시) 확인 |
