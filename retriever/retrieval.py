@@ -487,7 +487,9 @@ def retrieve(
 
     query = _text(search_query) or build_search_query(question, intent)
     metric = _text(intent.get("metric"))
-    candidates = retriever.filter_candidates(manifest_filter, config.candidate_limit)
+    candidates = retriever.filter_candidates(
+        manifest_filter, config.candidate_limit, query=query
+    )
     years = _requested_years(intent)
     keyword_results = _search_results_by_year(
         retriever.keyword_search, query, candidates, years, config.branch_limit, metric=metric,
