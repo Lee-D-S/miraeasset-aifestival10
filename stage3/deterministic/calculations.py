@@ -556,6 +556,22 @@ def _execute_plan_step(operation: str, inputs: list[list[dict[str, Any]]], step:
                 unit="%",
                 formula="(new-old)/abs(old)*100" if operation == "percentage_change" else "(new/old)^(1/years)-1*100",
             ))
+            if len(ordered) > 2:
+                series = []
+                evidence_ids: list[str] = []
+                for item in ordered:
+                    payload = item.get("input") if isinstance(item.get("input"), dict) else {}
+                    evidence_id = next((str(value) for value in item.get("evidence_ids") or [] if value), "")
+                    if evidence_id:
+                        evidence_ids.append(evidence_id)
+                    series.append({
+                        "period": item.get("period"),
+                        "value": payload.get("value", item.get("value")),
+                        "unit": payload.get("unit") or item.get("unit"),
+                        "document_id": evidence_id,
+                    })
+                results[-1]["series"] = series
+                results[-1]["evidence_ids"] = list(dict.fromkeys(evidence_ids))
         return results
     if operation == "rank":
         records = [record for record in inputs[0] if _record_value(record) is not None]
@@ -706,7 +722,7 @@ def execute_analysis_plan(
         elif values:
             if len(values) == 1:
                 record = values[0]
-                calculations.append({
+                calc = {
                     "status": "ok",
                     "operation": operation,
                     "inputs": record.get("inputs", []),
@@ -715,7 +731,10 @@ def execute_analysis_plan(
                     "unit": record.get("unit", ""),
                     "evidence_ids": record.get("evidence_ids", []),
                     "plan_step_id": identifier,
-                })
+                }
+                if record.get("series"):
+                    calc["series"] = list(record["series"])
+                calculations.append(calc)
             else:
                 calculations.append({
                     "status": "derived",
