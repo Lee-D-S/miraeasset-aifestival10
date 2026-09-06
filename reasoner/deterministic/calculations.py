@@ -61,15 +61,19 @@ def _amount_selection_rank(
     plan_table = any(cue in text for cue in _PLAN_TABLE_CUES)
     amount_unit = 1 if unit in _AMOUNT_UNITS else 0
     if str(metric or "") != "revenue":
-        # The 조-scale / 백만원-table / "당사의 매출" cues below are tuned for the
-        # revenue company-total sentence. For operating_profit and net_income the
-        # authoritative number is the 백만원 income-statement cell, so keep the
-        # plain ordering: prefer amount units, then confidence, then magnitude.
+        # The "당사의 매출" narrative-total cue below is tuned for the revenue
+        # company-total sentence. For operating_profit and net_income the
+        # authoritative number is the precise 백만원 income-statement / 요약재무정보
+        # cell, so demote 조-scale prose and prefer the 백만원 cell before
+        # magnitude — a rounded "44조원" sentence must not outrank the
+        # 43,601,051 백만원 cell when their confidence ties.
+        million_table = unit == "백만원"
+        jo_scale_prose = unit in {"조원", "조", "억원"} or ("조" in text and unit != "백만원")
         return (
             not_percent,
             int(not plan_table),
-            0,
-            0,
+            int(not jo_scale_prose),
+            int(million_table),
             0,
             amount_unit,
             1,
