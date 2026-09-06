@@ -543,6 +543,42 @@ def _best_records_by_year(records: list[dict[str, Any]]) -> list[dict[str, Any]]
     return chosen
 
 
+# A year-over-year swing never spans this factor for revenue / operating_profit /
+# net_income. A gap this large across a series means one point carries the wrong
+# unit (원 vs 백만원 vs 조원 is 1e6x) or was parsed from the wrong cell -- keeping
+# it produces an absurd percentage_change (e.g. 145,965,067%).
+_SERIES_SCALE_TOLERANCE = 1000.0
+
+
+def _drop_scale_outliers(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop a series point whose magnitude is off by a unit-scale factor.
+
+    Only acts when there are at least three valued points and at least two
+    survive within tolerance of the median; otherwise the input is returned
+    unchanged so normal series keep their exact behavior.
+    """
+
+    valued = [
+        (record, abs(value))
+        for record in records
+        if (value := _record_value(record)) is not None and value != 0.0
+    ]
+    if len(valued) < 3:
+        return records
+    magnitudes = sorted(magnitude for _, magnitude in valued)
+    median = magnitudes[len(magnitudes) // 2]
+    if median <= 0:
+        return records
+    kept = [
+        record
+        for record, magnitude in valued
+        if median / _SERIES_SCALE_TOLERANCE <= magnitude <= median * _SERIES_SCALE_TOLERANCE
+    ]
+    if len(kept) < 2 or len(kept) == len(valued):
+        return records
+    return kept
+
+
 def _pair_records(left: list[dict[str, Any]], right: list[dict[str, Any]]) -> list[tuple[dict[str, Any], dict[str, Any]]]:
     index: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     for record in right:
@@ -617,7 +653,7 @@ def _execute_plan_step(operation: str, inputs: list[list[dict[str, Any]]], step:
             grouped[str(record.get("company", "미상"))].append(record)
         results = []
         for company, records in grouped.items():
-            ordered = _best_records_by_year(records)
+            ordered = _drop_scale_outliers(_best_records_by_year(records))
             if len(ordered) < 2:
                 continue
             old, new = ordered[0], ordered[-1]
