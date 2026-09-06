@@ -90,6 +90,49 @@ class FactExtractionTests(unittest.TestCase):
             self.assertEqual(fact.aggregation_scope, "not_total")
         self.assertEqual({fact.period for fact in facts}, {"2024", "2023"})
 
+    def test_forward_plan_table_is_not_company_revenue_total(self):
+        from reasoner.grounding import aggregation_scope_for_context, matching_facts
+
+        scope = aggregation_scope_for_context(
+            label="매출액",
+            evidence="|  | 2025년(당기 이행연도) | 잔여 계획기간 합계 | 합계 구간  합계 |",
+            table_context={"column_label": "2025년(당기 이행연도)", "row_label": "매출액"},
+        )
+        self.assertEqual(scope, "not_total")
+
+        bundle = adapt_retriever_bundle([
+            {
+                "id": "plan-2025",
+                "source": "annual.md",
+                "text": (
+                    "|  | 2025년(당기 이행연도) | 잔여 계획기간 합계 |\n"
+                    "| --- | --- | --- |\n"
+                    "| 매출액 | 100 | 합계 구간  합계 |"
+                ),
+                "metadata": {"corp_name": "삼성전자", "base_year": 2025, "base_month": 12, "basis": "연결"},
+            },
+            {
+                "id": "total-2025",
+                "source": "annual.md",
+                "text": "2025년 당사의 매출은 333조 6,059억원으로 전년 동기 대비 증가하였으며...",
+                "metadata": {"corp_name": "삼성전자", "base_year": 2025, "base_month": 12, "basis": "연결"},
+            },
+        ])
+        intent = adapt_interpreter_intent({
+            "raw_question": "삼성전자의 최근 3년 매출액 추이를 알려줘",
+            "normalized_question": "삼성전자의 최근 3년 매출액 추이를 알려줘",
+            "route": "ok",
+            "intent": "calc",
+            "metric": "revenue",
+            "basis": "연결",
+            "companies": ["삼성전자"],
+            "time": {"years": [2025], "base_months": [12]},
+        })
+        facts = [item for item in extract_facts(bundle.documents, intent) if item.metric == "revenue"]
+        matched = matching_facts(facts, intent, require_scope=True)
+        self.assertTrue(any(item.document_id == "total-2025" for item in matched))
+        self.assertFalse(any(item.document_id == "plan-2025" for item in matched))
+
     def test_table_header_scope_is_preserved_for_segment_rows(self):
         bundle = adapt_retriever_bundle([{
             "id": "segment-table",

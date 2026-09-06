@@ -128,6 +128,11 @@ _INTERPRETER_METRIC_LABELS = {
     "net_income": ("당기순이익", "순이익"),
     "total_assets": ("자산총계", "부채비율", "자기자본비율"),
 }
+_METRIC_NARRATIVE_TERMS = {
+    "revenue": ("당사의 매출",),
+}
+_PLAN_TABLE_CUES = ("잔여 계획기간", "계획기간", "합계 구간", "당기 이행연도")
+_COMPANY_TOTAL_CUES = ("당사의 매출", "매출액은")
 
 
 def _metric_query_terms(question: str, metric: str) -> list[str]:
@@ -145,11 +150,20 @@ def _metric_query_terms(question: str, metric: str) -> list[str]:
 
 def _requested_years(intent: Mapping[str, Any]) -> list[str]:
     time = intent.get("time") if isinstance(intent.get("time"), Mapping) else {}
-    years = [str(year) for year in _as_list(time.get("years")) if str(year).strip()]
+    years = [_year_token(year) for year in _as_list(time.get("years"))]
+    years = [year for year in years if year]
     if years:
         return list(dict.fromkeys(years))
     manifest = intent.get("manifest_filter") if isinstance(intent.get("manifest_filter"), Mapping) else {}
-    return list(dict.fromkeys(str(year) for year in _as_list(manifest.get("base_years")) if str(year).strip()))
+    return list(dict.fromkeys(
+        year for value in _as_list(manifest.get("base_years"))
+        if (year := _year_token(value))
+    ))
+
+
+def _year_token(value: Any) -> str:
+    text = _text(value)
+    return text[:4] if len(text) >= 4 and text[:4].isdigit() else ""
 
 
 def _document_year(document: Mapping[str, Any]) -> str:
@@ -177,7 +191,47 @@ def build_search_query(question: str, intent: Mapping[str, Any]) -> str:
     for year in _requested_years(intent):
         if year not in " ".join(parts):
             parts.append(year)
+    for term in _METRIC_NARRATIVE_TERMS.get(metric, ()):
+        if term and term not in compact and term not in " ".join(parts):
+            parts.append(term)
     return " ".join(part for part in parts if part)
+
+
+def _looks_like_plan_table(document: Mapping[str, Any]) -> bool:
+    return any(cue in _text(document.get("text")) for cue in _PLAN_TABLE_CUES)
+
+
+def _looks_like_company_total(document: Mapping[str, Any]) -> bool:
+    return any(cue in _text(document.get("text")) for cue in _COMPANY_TOTAL_CUES)
+
+
+def _company_total_rank(document: Mapping[str, Any]) -> tuple:
+    score = float(document.get("hybrid_score") or document.get("score") or 0.0)
+    return (_looks_like_plan_table(document), not _looks_like_company_total(document), -score)
+
+
+def _ensure_company_total_in_year(
+    hits: Sequence[Mapping[str, Any]],
+    subset: Sequence[Mapping[str, Any]],
+    limit: int,
+) -> list[Mapping[str, Any]]:
+    selected = [dict(document) for document in hits][:limit]
+    if any(_looks_like_company_total(document) for document in selected):
+        return selected
+    replacement = next((dict(document) for document in subset if _looks_like_company_total(document)), None)
+    if replacement is None:
+        return selected
+    for index, document in enumerate(selected):
+        if _looks_like_plan_table(document):
+            selected[index] = replacement
+            return selected[:limit]
+    if len(selected) < limit:
+        selected.append(replacement)
+    elif selected:
+        selected[-1] = replacement
+    else:
+        selected = [replacement]
+    return selected[:limit]
 
 
 def _diversify_by_year(
@@ -190,19 +244,23 @@ def _diversify_by_year(
     ranked = [dict(document) for document in documents]
     if limit <= 0:
         return []
-    if len(years) <= 1 or len(ranked) <= limit:
+    if len(years) <= 1:
         return ranked[:limit]
     picked: list[Mapping[str, Any]] = []
     used: set[str] = set()
     for year in years:
-        for document in ranked:
-            identifier = _document_id(document)
-            if identifier in used:
-                continue
-            if _document_year(document) == str(year):
-                picked.append(document)
-                used.add(identifier)
-                break
+        year_docs = [
+            document
+            for document in ranked
+            if _document_id(document) not in used and _document_year(document) == str(year)
+        ]
+        if not year_docs:
+            continue
+        chosen = min(year_docs, key=_company_total_rank)
+        picked.append(chosen)
+        used.add(_document_id(chosen))
+    rank_index = {_document_id(document): index for index, document in enumerate(ranked)}
+    picked.sort(key=lambda document: rank_index.get(_document_id(document), len(ranked)))
     for document in ranked:
         if len(picked) >= limit:
             break
@@ -211,6 +269,45 @@ def _diversify_by_year(
             picked.append(document)
             used.add(identifier)
     return picked[:limit]
+
+
+def _search_results_by_year(
+    search,
+    query: str,
+    candidates: Sequence[Mapping[str, Any]],
+    years: Sequence[str],
+    limit: int,
+) -> list[Mapping[str, Any]]:
+    if limit <= 0:
+        return []
+    if len(years) <= 1:
+        return list(search(query, candidates, limit))
+    per_year = max(limit // len(years), 1)
+    seen: set[str] = set()
+    merged: list[Mapping[str, Any]] = []
+    for year in years:
+        subset = [document for document in candidates if _document_year(document) == str(year)]
+        if not subset:
+            continue
+        hits = _ensure_company_total_in_year(
+            search(query, subset, per_year),
+            subset,
+            per_year,
+        )
+        for document in hits:
+            identifier = _document_id(document)
+            if identifier and identifier not in seen:
+                seen.add(identifier)
+                merged.append(document)
+    if len(merged) < limit:
+        for document in search(query, candidates, limit):
+            identifier = _document_id(document)
+            if identifier and identifier not in seen:
+                seen.add(identifier)
+                merged.append(document)
+            if len(merged) >= limit:
+                break
+    return merged[:limit]
 
 
 class RetrieverProtocol(Protocol):
@@ -369,9 +466,14 @@ def retrieve(
 
     query = _text(search_query) or build_search_query(question, intent)
     candidates = retriever.filter_candidates(manifest_filter, config.candidate_limit)
-    keyword_results = retriever.keyword_search(query, candidates, config.branch_limit)
+    years = _requested_years(intent)
+    keyword_results = _search_results_by_year(
+        retriever.keyword_search, query, candidates, years, config.branch_limit,
+    )
     try:
-        vector_results = retriever.vector_search(query, candidates, config.branch_limit)
+        vector_results = _search_results_by_year(
+            retriever.vector_search, query, candidates, years, config.branch_limit,
+        )
     except Exception as error:  # provider/backend boundary; never fake semantic success
         provider_status = {}
         if is_rate_limit_error(error):
