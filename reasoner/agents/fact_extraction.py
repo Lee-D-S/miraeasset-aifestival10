@@ -282,7 +282,7 @@ def _text_fact(
     )
 
 
-FACT_EXTRACTOR_VERSION = "fact-extractor-v2"
+FACT_EXTRACTOR_VERSION = "fact-extractor-v3"
 
 
 def _extract_facts_uncached(
@@ -494,7 +494,7 @@ def _extract_facts_uncached(
                 span_start=match.start(),
                 span_end=match.end(),
                 confidence=0.85,
-                kind="date",
+                kind="field",
             ))
     return facts
 
@@ -527,6 +527,8 @@ def extract_facts(
     """Extract facts, reusing only compatible document/profile results."""
 
     document_list = list(documents)
+    from reasoner.deterministic.corrections import select_fact_documents
+    document_list = select_fact_documents(document_list, intent.correction_mode or "latest_only")
     if cache is None:
         return _extract_facts_uncached(document_list, intent)
 

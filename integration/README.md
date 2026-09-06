@@ -68,7 +68,25 @@ print(compiled_graph.get_graph().draw_mermaid())
 deterministic compiler가 먼저 실행되며, 미해결 계산만
 `QUERY_PLANNER_LLM_ENABLED=true`일 때 Clova JSON proposal을 제한적으로 사용한다.
 LLM 출력은 등록된 metric/operation, 참조, depth/node/map/reduce 한도를 검증한 뒤
-실행한다. 기본값은 false이며 API 제출 응답의 5-field contract는 변하지 않는다.
+실행한다. 라이브러리 기본값은 false이며 Compose와 `.env.example`은 1로 활성화한다.
+API 제출 응답의 5-field contract는 변하지 않는다. Planner JSON 응답 예산은
+`CLOVA_PLANNER_MAX_TOKENS`(기본 2048)로 semantic validation 예산과 분리한다.
+
+## 해석 및 근거 복구
+
+Interpreter의 미해결 의미 검토는 `need_clarify`로 종료한다. Reasoner까지 진행한
+질문이 `insufficient_evidence`이고 해석 불확실성 또는 미해결 슬롯이 남은 경우에는
+Interpreter LLM이 활성화돼 있을 때 `reinterpret_question`을 최대 1회 수행한다.
+이때 원 질문은 유지하고 이전 계획·검색·분석 결과를 비운 뒤 다시 검색한다.
+해석이 명확한 질문의 단순 근거 부족에는 재해석을 반복하지 않는다.
+
+결정론적 Fact 추출이 요청 조건에 맞는 근거를 찾지 못하면 답변용 Chat client가
+주입된 경우 Reasoner 실행당 최대 1회 `fact_recovery` JSON 호출을 시도한다.
+`CLOVA_FACT_RECOVERY_MAX_TOKENS` 기본값은 1024다. 모델은 제공 문서의 원문 구절과
+값만 선택하며, 코드가 원문 포함 여부·등록 지표·Fact 종류·수치·기간·재무 기준을
+검증한다. 실패하거나 근거가 없으면 기존 근거 부족 경로를 유지한다.
+날짜 Fact는 `kind=field`, `metric=date`이며 기존 `kind=date` 입력은 정규화한다.
+상세 수정과 검증 기록은 [enum fallback 수정 보고서](../docs/enum-fallback-resolution.md)를 참조한다.
 
 ## Process-local cache
 

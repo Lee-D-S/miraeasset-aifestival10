@@ -27,6 +27,7 @@ def build_interpreter_node(
             index,
             use_llm=use_llm,
             llm_client=llm_client,
+            force_llm=bool(state.get("reinterpretation_attempts")),
         )
         return {"intent": intent.to_dict(), "route": intent.route}
 

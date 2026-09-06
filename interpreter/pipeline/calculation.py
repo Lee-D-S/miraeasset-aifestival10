@@ -72,6 +72,9 @@ def operation_for(
         if metric == "operating_profit" and _has(text, "영업이익률", "마진"):
             return "margin"
         return None
+    # An explicit amount operation is more specific than a generic '대비'.
+    if _has(text, "차액", "차이", "차감", "뺀", "감소액", "증가액"):
+        return "subtract"
     if _has(text, "연평균성장률", "cagr"):
         return "cagr"
     if _has(text, "영업이익률", "마진"):
@@ -97,6 +100,10 @@ def operation_for(
     if _has(text, "몇배", "배수", "나누기"):
         return "divide"
     return None
+
+
+def has_calculation_cue(question: str) -> bool:
+    return operation_for(question, intent="calc", metric=None) is not None
 
 
 def infer_denominator_metric(

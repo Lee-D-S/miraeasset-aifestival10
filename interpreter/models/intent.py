@@ -110,6 +110,7 @@ class Intent:
     metric: Optional[str] = None
     metric_confidence: Optional[str] = None
     basis: Optional[str] = None
+    aggregation_scope: str = "unknown"
 
     time: TimeSpec = field(default_factory=TimeSpec)
     correction_mode: CorrectionMode = "latest_only"
@@ -127,6 +128,8 @@ class Intent:
     reject_reason: Optional[str] = None
     clarify_message: Optional[str] = None
     llm_used: bool = False
+    llm_status: str = "not_called"
+    interpretation_uncertain: bool = False
     # trace_summary()와 같은 문자열. state에는 Intent dict만 실려서 3·4단계가
     # 메서드를 호출할 수 없으므로 직렬화된 값으로도 남긴다.
     think_trace: str = ""

@@ -1,0 +1,1646 @@
+{
+  "mode": "empty_response_probe",
+  "questions": [
+    {
+      "id": "complete",
+      "question": "삼성전자 2025년 매출액은?",
+      "calls": [],
+      "intent": "lookup",
+      "question_type": "lookup",
+      "route": "ok",
+      "metric": "revenue",
+      "calculation": {},
+      "time": {
+        "mode": "fiscal",
+        "years": [
+          2025
+        ],
+        "doc_subtype": "annual",
+        "base_months": [
+          12
+        ],
+        "prefer_latest": false,
+        "relative_terms": [],
+        "out_of_range_years": []
+      },
+      "basis": "연결",
+      "correction_mode": "latest_only",
+      "llm_used": false,
+      "missing_slots": [],
+      "assumptions": [
+        "보고서 종류가 명시되지 않아 사업보고서를 기준으로 봅니다.",
+        "연결/별도 기준이 명시되지 않아 연결기준으로 봅니다."
+      ],
+      "scope": "total",
+      "filter": {
+        "corp_names": [
+          "삼성전자"
+        ],
+        "exclude_corp_names": [],
+        "sector": null,
+        "doc_group": "periodic",
+        "doc_group_candidates": [],
+        "doc_subtype": "annual",
+        "doc_subtype_candidates": [],
+        "base_years": [
+          2025
+        ],
+        "base_months": [
+          12
+        ],
+        "rcept_from": null,
+        "rcept_to": null,
+        "is_correction": null,
+        "report_nm_contains": []
+      },
+      "next_action": "run_retriever"
+    },
+    {
+      "id": "missing_metric",
+      "question": "삼성전자 2025년 외형 규모는?",
+      "calls": [
+        "interpreter_slot_fill"
+      ],
+      "intent": "lookup",
+      "question_type": "lookup",
+      "route": "need_clarify",
+      "metric": null,
+      "calculation": {},
+      "time": {
+        "mode": "fiscal",
+        "years": [
+          2025
+        ],
+        "doc_subtype": "annual",
+        "base_months": [
+          12
+        ],
+        "prefer_latest": false,
+        "relative_terms": [],
+        "out_of_range_years": []
+      },
+      "basis": null,
+      "correction_mode": "latest_only",
+      "llm_used": false,
+      "missing_slots": [
+        "metric"
+      ],
+      "assumptions": [
+        "보고서 종류가 명시되지 않아 사업보고서를 기준으로 봅니다."
+      ],
+      "scope": "total",
+      "filter": {
+        "corp_names": [],
+        "exclude_corp_names": [],
+        "sector": null,
+        "doc_group": null,
+        "doc_group_candidates": [],
+        "doc_subtype": null,
+        "doc_subtype_candidates": [],
+        "base_years": [],
+        "base_months": [],
+        "rcept_from": null,
+        "rcept_to": null,
+        "is_correction": false,
+        "report_nm_contains": []
+      },
+      "next_action": "request_clarification"
+    },
+    {
+      "id": "unknown_metric",
+      "question": "삼성전자 2025년 고객 이탈률은?",
+      "calls": [
+        "interpreter_slot_fill"
+      ],
+      "intent": "lookup",
+      "question_type": "lookup",
+      "route": "need_clarify",
+      "metric": null,
+      "calculation": {},
+      "time": {
+        "mode": "fiscal",
+        "years": [
+          2025
+        ],
+        "doc_subtype": "annual",
+        "base_months": [
+          12
+        ],
+        "prefer_latest": false,
+        "relative_terms": [],
+        "out_of_range_years": []
+      },
+      "basis": null,
+      "correction_mode": "latest_only",
+      "llm_used": false,
+      "missing_slots": [
+        "metric"
+      ],
+      "assumptions": [
+        "보고서 종류가 명시되지 않아 사업보고서를 기준으로 봅니다."
+      ],
+      "scope": "total",
+      "filter": {
+        "corp_names": [],
+        "exclude_corp_names": [],
+        "sector": null,
+        "doc_group": null,
+        "doc_group_candidates": [],
+        "doc_subtype": null,
+        "doc_subtype_candidates": [],
+        "base_years": [],
+        "base_months": [],
+        "rcept_from": null,
+        "rcept_to": null,
+        "is_correction": false,
+        "report_nm_contains": []
+      },
+      "next_action": "request_clarification"
+    },
+    {
+      "id": "missing_year",
+      "question": "삼성전자 이천이십오년 매출액은?",
+      "calls": [
+        "interpreter_slot_fill"
+      ],
+      "intent": "lookup",
+      "question_type": "lookup",
+      "route": "need_clarify",
+      "metric": "revenue",
+      "calculation": {},
+      "time": {
+        "mode": "fiscal",
+        "years": [],
+        "doc_subtype": null,
+        "base_months": [],
+        "prefer_latest": false,
+        "relative_terms": [],
+        "out_of_range_years": []
+      },
+      "basis": "연결",
+      "correction_mode": "latest_only",
+      "llm_used": false,
+      "missing_slots": [
+        "time"
+      ],
+      "assumptions": [
+        "연결/별도 기준이 명시되지 않아 연결기준으로 봅니다."
+      ],
+      "scope": "total",
+      "filter": {
+        "corp_names": [],
+        "exclude_corp_names": [],
+        "sector": null,
+        "doc_group": null,
+        "doc_group_candidates": [],
+        "doc_subtype": null,
+        "doc_subtype_candidates": [],
+        "base_years": [],
+        "base_months": [],
+        "rcept_from": null,
+        "rcept_to": null,
+        "is_correction": false,
+        "report_nm_contains": []
+      },
+      "next_action": "request_clarification"
+    },
+    {
+      "id": "no_time",
+      "question": "삼성전자 매출액은?",
+      "calls": [
+        "interpreter_slot_fill"
+      ],
+      "intent": "lookup",
+      "question_type": "lookup",
+      "route": "ok",
+      "metric": "revenue",
+      "calculation": {},
+      "time": {
+        "mode": "fiscal",
+        "years": [],
+        "doc_subtype": null,
+        "base_months": [],
+        "prefer_latest": false,
+        "relative_terms": [],
+        "out_of_range_years": []
+      },
+      "basis": "연결",
+      "correction_mode": "latest_only",
+      "llm_used": false,
+      "missing_slots": [
+        "time"
+      ],
+      "assumptions": [
+        "연결/별도 기준이 명시되지 않아 연결기준으로 봅니다."
+      ],
+      "scope": "total",
+      "filter": {
+        "corp_names": [
+          "삼성전자"
+        ],
+        "exclude_corp_names": [],
+        "sector": null,
+        "doc_group": "periodic",
+        "doc_group_candidates": [],
+        "doc_subtype": null,
+        "doc_subtype_candidates": [],
+        "base_years": [],
+        "base_months": [],
+        "rcept_from": null,
+        "rcept_to": null,
+        "is_correction": null,
+        "report_nm_contains": []
+      },
+      "next_action": "run_retriever"
+    },
+    {
+      "id": "no_company",
+      "question": "2025년 매출액은?",
+      "calls": [
+        "interpreter_slot_fill"
+      ],
+      "intent": "unknown",
+      "question_type": "text",
+      "route": "need_clarify",
+      "metric": "revenue",
+      "calculation": {},
+      "time": {
+        "mode": "fiscal",
+        "years": [
+          2025
+        ],
+        "doc_subtype": "annual",
+        "base_months": [
+          12
+        ],
+        "prefer_latest": false,
+        "relative_terms": [],
+        "out_of_range_years": []
+      },
+      "basis": "연결",
+      "correction_mode": "latest_only",
+      "llm_used": false,
+      "missing_slots": [
+        "corp_or_sector"
+      ],
+      "assumptions": [
+        "보고서 종류가 명시되지 않아 사업보고서를 기준으로 봅니다.",
+        "연결/별도 기준이 명시되지 않아 연결기준으로 봅니다."
+      ],
+      "scope": "total",
+      "filter": {
+        "corp_names": [],
+        "exclude_corp_names": [],
+        "sector": null,
+        "doc_group": null,
+        "doc_group_candidates": [],
+        "doc_subtype": null,
+        "doc_subtype_candidates": [],
+        "base_years": [],
+        "base_months": [],
+        "rcept_from": null,
+        "rcept_to": null,
+        "is_correction": false,
+        "report_nm_contains": []
+      },
+      "next_action": "request_clarification"
+    },
+    {
+      "id": "ambiguous_company",
+      "question": "삼성 2025년 매출액은?",
+      "calls": [
+        "interpreter_slot_fill"
+      ],
+      "intent": "unknown",
+      "question_type": "text",
+      "route": "need_clarify",
+      "metric": "revenue",
+      "calculation": {},
+      "time": {
+        "mode": "fiscal",
+        "years": [
+          2025
+        ],
+        "doc_subtype": "annual",
+        "base_months": [
+          12
+        ],
+        "prefer_latest": false,
+        "relative_terms": [],
+        "out_of_range_years": []
+      },
+      "basis": "연결",
+      "correction_mode": "latest_only",
+      "llm_used": false,
+      "missing_slots": [],
+      "assumptions": [
+        "보고서 종류가 명시되지 않아 사업보고서를 기준으로 봅니다.",
+        "연결/별도 기준이 명시되지 않아 연결기준으로 봅니다."
+      ],
+      "scope": "total",
+      "filter": {
+        "corp_names": [],
+        "exclude_corp_names": [],
+        "sector": null,
+        "doc_group": null,
+        "doc_group_candidates": [],
+        "doc_subtype": null,
+        "doc_subtype_candidates": [],
+        "base_years": [],
+        "base_months": [],
+        "rcept_from": null,
+        "rcept_to": null,
+        "is_correction": false,
+        "report_nm_contains": []
+      },
+      "next_action": "request_clarification"
+    },
+    {
+      "id": "add",
+      "question": "삼성전자 2024년과 2025년 매출액을 더한 값은?",
+      "calls": [],
+      "intent": "calc",
+      "question_type": "calculation",
+      "route": "ok",
+      "metric": "revenue",
+      "calculation": {
+        "operation": "add",
+        "metric": "revenue"
+      },
+      "time": {
+        "mode": "fiscal",
+        "years": [
+          2024,
+          2025
+        ],
+        "doc_subtype": "annual",
+        "base_months": [
+          12
+        ],
+        "prefer_latest": false,
+        "relative_terms": [],
+        "out_of_range_years": []
+      },
+      "basis": "연결",
+      "correction_mode": "latest_only",
+      "llm_used": false,
+      "missing_slots": [],
+      "assumptions": [
+        "보고서 종류가 명시되지 않아 사업보고서를 기준으로 봅니다.",
+        "연결/별도 기준이 명시되지 않아 연결기준으로 봅니다."
+      ],
+      "scope": "total",
+      "filter": {
+        "corp_names": [
+          "삼성전자"
+        ],
+        "exclude_corp_names": [],
+        "sector": null,
+        "doc_group": "periodic",
+        "doc_group_candidates": [],
+        "doc_subtype": "annual",
+        "doc_subtype_candidates": [],
+        "base_years": [
+          2024,
+          2025
+        ],
+        "base_months": [
+          12
+        ],
+        "rcept_from": null,
+        "rcept_to": null,
+        "is_correction": null,
+        "report_nm_contains": []
+      },
+      "next_action": "run_calculation_planner"
+    },
+    {
+      "id": "average",
+      "question": "삼성전자 2024년과 2025년 매출액의 평균은?",
+      "calls": [],
+      "intent": "calc",
+      "question_type": "calculation",
+      "route": "ok",
+      "metric": "revenue",
+      "calculation": {
+        "operation": "average",
+        "metric": "revenue"
+      },
+      "time": {
+        "mode": "fiscal",
+        "years": [
+          2024,
+          2025
+        ],
+        "doc_subtype": "annual",
+        "base_months": [
+          12
+        ],
+        "prefer_latest": false,
+        "relative_terms": [],
+        "out_of_range_years": []
+      },
+      "basis": "연결",
+      "correction_mode": "latest_only",
+      "llm_used": false,
+      "missing_slots": [],
+      "assumptions": [
+        "보고서 종류가 명시되지 않아 사업보고서를 기준으로 봅니다.",
+        "연결/별도 기준이 명시되지 않아 연결기준으로 봅니다."
+      ],
+      "scope": "total",
+      "filter": {
+        "corp_names": [
+          "삼성전자"
+        ],
+        "exclude_corp_names": [],
+        "sector": null,
+        "doc_group": "periodic",
+        "doc_group_candidates": [],
+        "doc_subtype": "annual",
+        "doc_subtype_candidates": [],
+        "base_years": [
+          2024,
+          2025
+        ],
+        "base_months": [
+          12
+        ],
+        "rcept_from": null,
+        "rcept_to": null,
+        "is_correction": null,
+        "report_nm_contains": []
+      },
+      "next_action": "run_calculation_planner"
+    },
+    {
+      "id": "missing_operation",
+      "question": "삼성전자 2024년 대비 2025년 매출액의 차액은?",
+      "calls": [],
+      "intent": "calc",
+      "question_type": "calculation",
+      "route": "ok",
+      "metric": "revenue",
+      "calculation": {
+        "operation": "subtract",
+        "metric": "revenue"
+      },
+      "time": {
+        "mode": "fiscal",
+        "years": [
+          2024,
+          2025
+        ],
+        "doc_subtype": "annual",
+        "base_months": [
+          12
+        ],
+        "prefer_latest": false,
+        "relative_terms": [],
+        "out_of_range_years": []
+      },
+      "basis": "연결",
+      "correction_mode": "latest_only",
+      "llm_used": false,
+      "missing_slots": [],
+      "assumptions": [
+        "보고서 종류가 명시되지 않아 사업보고서를 기준으로 봅니다.",
+        "연결/별도 기준이 명시되지 않아 연결기준으로 봅니다."
+      ],
+      "scope": "total",
+      "filter": {
+        "corp_names": [
+          "삼성전자"
+        ],
+        "exclude_corp_names": [],
+        "sector": null,
+        "doc_group": "periodic",
+        "doc_group_candidates": [],
+        "doc_subtype": "annual",
+        "doc_subtype_candidates": [],
+        "base_years": [
+          2024,
+          2025
+        ],
+        "base_months": [
+          12
+        ],
+        "rcept_from": null,
+        "rcept_to": null,
+        "is_correction": null,
+        "report_nm_contains": []
+      },
+      "next_action": "run_calculation_planner"
+    },
+    {
+      "id": "annual_default",
+      "question": "삼성전자 2025년 매출액은?",
+      "calls": [],
+      "intent": "lookup",
+      "question_type": "lookup",
+      "route": "ok",
+      "metric": "revenue",
+      "calculation": {},
+      "time": {
+        "mode": "fiscal",
+        "years": [
+          2025
+        ],
+        "doc_subtype": "annual",
+        "base_months": [
+          12
+        ],
+        "prefer_latest": false,
+        "relative_terms": [],
+        "out_of_range_years": []
+      },
+      "basis": "연결",
+      "correction_mode": "latest_only",
+      "llm_used": false,
+      "missing_slots": [],
+      "assumptions": [
+        "보고서 종류가 명시되지 않아 사업보고서를 기준으로 봅니다.",
+        "연결/별도 기준이 명시되지 않아 연결기준으로 봅니다."
+      ],
+      "scope": "total",
+      "filter": {
+        "corp_names": [
+          "삼성전자"
+        ],
+        "exclude_corp_names": [],
+        "sector": null,
+        "doc_group": "periodic",
+        "doc_group_candidates": [],
+        "doc_subtype": "annual",
+        "doc_subtype_candidates": [],
+        "base_years": [
+          2025
+        ],
+        "base_months": [
+          12
+        ],
+        "rcept_from": null,
+        "rcept_to": null,
+        "is_correction": null,
+        "report_nm_contains": []
+      },
+      "next_action": "run_retriever"
+    },
+    {
+      "id": "half_paraphrase",
+      "question": "삼성전자 2025년 첫 여섯 달 매출액은?",
+      "calls": [],
+      "intent": "lookup",
+      "question_type": "lookup",
+      "route": "ok",
+      "metric": "revenue",
+      "calculation": {},
+      "time": {
+        "mode": "fiscal",
+        "years": [
+          2025
+        ],
+        "doc_subtype": "half",
+        "base_months": [
+          6
+        ],
+        "prefer_latest": false,
+        "relative_terms": [],
+        "out_of_range_years": []
+      },
+      "basis": "연결",
+      "correction_mode": "latest_only",
+      "llm_used": false,
+      "missing_slots": [],
+      "assumptions": [
+        "연결/별도 기준이 명시되지 않아 연결기준으로 봅니다."
+      ],
+      "scope": "total",
+      "filter": {
+        "corp_names": [
+          "삼성전자"
+        ],
+        "exclude_corp_names": [],
+        "sector": null,
+        "doc_group": "periodic",
+        "doc_group_candidates": [],
+        "doc_subtype": "half",
+        "doc_subtype_candidates": [],
+        "base_years": [
+          2025
+        ],
+        "base_months": [
+          6
+        ],
+        "rcept_from": null,
+        "rcept_to": null,
+        "is_correction": null,
+        "report_nm_contains": []
+      },
+      "next_action": "run_retriever"
+    },
+    {
+      "id": "llm_half",
+      "question": "삼성전자 이천이십오년 상반기 매출액은?",
+      "calls": [
+        "interpreter_slot_fill"
+      ],
+      "intent": "lookup",
+      "question_type": "lookup",
+      "route": "need_clarify",
+      "metric": "revenue",
+      "calculation": {},
+      "time": {
+        "mode": "fiscal",
+        "years": [],
+        "doc_subtype": "half",
+        "base_months": [
+          6
+        ],
+        "prefer_latest": false,
+        "relative_terms": [],
+        "out_of_range_years": []
+      },
+      "basis": "연결",
+      "correction_mode": "latest_only",
+      "llm_used": false,
+      "missing_slots": [
+        "time"
+      ],
+      "assumptions": [
+        "연결/별도 기준이 명시되지 않아 연결기준으로 봅니다."
+      ],
+      "scope": "total",
+      "filter": {
+        "corp_names": [],
+        "exclude_corp_names": [],
+        "sector": null,
+        "doc_group": null,
+        "doc_group_candidates": [],
+        "doc_subtype": null,
+        "doc_subtype_candidates": [],
+        "base_years": [],
+        "base_months": [],
+        "rcept_from": null,
+        "rcept_to": null,
+        "is_correction": false,
+        "report_nm_contains": []
+      },
+      "next_action": "request_clarification"
+    },
+    {
+      "id": "disclosure_time",
+      "question": "삼성전자가 2025년에 제출한 사업보고서 매출액은?",
+      "calls": [],
+      "intent": "lookup",
+      "question_type": "lookup",
+      "route": "ok",
+      "metric": "revenue",
+      "calculation": {},
+      "time": {
+        "mode": "disclosure",
+        "years": [
+          2025
+        ],
+        "doc_subtype": "annual",
+        "base_months": [
+          12
+        ],
+        "prefer_latest": false,
+        "relative_terms": [],
+        "out_of_range_years": []
+      },
+      "basis": "연결",
+      "correction_mode": "latest_only",
+      "llm_used": false,
+      "missing_slots": [],
+      "assumptions": [
+        "연결/별도 기준이 명시되지 않아 연결기준으로 봅니다."
+      ],
+      "scope": "total",
+      "filter": {
+        "corp_names": [
+          "삼성전자"
+        ],
+        "exclude_corp_names": [],
+        "sector": null,
+        "doc_group": "periodic",
+        "doc_group_candidates": [],
+        "doc_subtype": "annual",
+        "doc_subtype_candidates": [],
+        "base_years": [],
+        "base_months": [
+          12
+        ],
+        "rcept_from": "20250101",
+        "rcept_to": "20251231",
+        "is_correction": null,
+        "report_nm_contains": []
+      },
+      "next_action": "run_retriever"
+    },
+    {
+      "id": "original_only",
+      "question": "삼성전자 2025년 공급계약 정정본을 제외하고 원공시만 알려줘",
+      "calls": [
+        "interpreter_slot_fill"
+      ],
+      "intent": "lookup",
+      "question_type": "lookup",
+      "route": "need_clarify",
+      "metric": "supply_contract",
+      "calculation": {},
+      "time": {
+        "mode": "disclosure",
+        "years": [
+          2025
+        ],
+        "doc_subtype": null,
+        "base_months": [],
+        "prefer_latest": false,
+        "relative_terms": [],
+        "out_of_range_years": []
+      },
+      "basis": null,
+      "correction_mode": "original_only",
+      "llm_used": false,
+      "missing_slots": [],
+      "assumptions": [],
+      "scope": "total",
+      "filter": {
+        "corp_names": [],
+        "exclude_corp_names": [],
+        "sector": null,
+        "doc_group": null,
+        "doc_group_candidates": [],
+        "doc_subtype": null,
+        "doc_subtype_candidates": [],
+        "base_years": [],
+        "base_months": [],
+        "rcept_from": null,
+        "rcept_to": null,
+        "is_correction": false,
+        "report_nm_contains": []
+      },
+      "next_action": "request_clarification"
+    },
+    {
+      "id": "latest_only",
+      "question": "삼성전자 2025년 공급계약 정정 후 최종 내용만 알려줘",
+      "calls": [],
+      "intent": "lookup",
+      "question_type": "lookup",
+      "route": "ok",
+      "metric": "supply_contract",
+      "calculation": {},
+      "time": {
+        "mode": "disclosure",
+        "years": [
+          2025
+        ],
+        "doc_subtype": null,
+        "base_months": [],
+        "prefer_latest": false,
+        "relative_terms": [],
+        "out_of_range_years": []
+      },
+      "basis": null,
+      "correction_mode": "latest_only",
+      "llm_used": false,
+      "missing_slots": [],
+      "assumptions": [],
+      "scope": "total",
+      "filter": {
+        "corp_names": [
+          "삼성전자"
+        ],
+        "exclude_corp_names": [],
+        "sector": null,
+        "doc_group": "exchange",
+        "doc_group_candidates": [],
+        "doc_subtype": null,
+        "doc_subtype_candidates": [
+          "단일판매공급계약체결"
+        ],
+        "base_years": [],
+        "base_months": [],
+        "rcept_from": "20250101",
+        "rcept_to": "20251231",
+        "is_correction": null,
+        "report_nm_contains": []
+      },
+      "next_action": "run_retriever"
+    },
+    {
+      "id": "scope_paraphrase",
+      "question": "삼성전자 2025년 국내와 해외로 나눈 매출액은?",
+      "calls": [],
+      "intent": "lookup",
+      "question_type": "lookup",
+      "route": "ok",
+      "metric": "revenue",
+      "calculation": {},
+      "time": {
+        "mode": "fiscal",
+        "years": [
+          2025
+        ],
+        "doc_subtype": "annual",
+        "base_months": [
+          12
+        ],
+        "prefer_latest": false,
+        "relative_terms": [],
+        "out_of_range_years": []
+      },
+      "basis": "연결",
+      "correction_mode": "latest_only",
+      "llm_used": false,
+      "missing_slots": [],
+      "assumptions": [
+        "보고서 종류가 명시되지 않아 사업보고서를 기준으로 봅니다.",
+        "연결/별도 기준이 명시되지 않아 연결기준으로 봅니다."
+      ],
+      "scope": "region",
+      "filter": {
+        "corp_names": [
+          "삼성전자"
+        ],
+        "exclude_corp_names": [],
+        "sector": null,
+        "doc_group": "periodic",
+        "doc_group_candidates": [],
+        "doc_subtype": "annual",
+        "doc_subtype_candidates": [],
+        "base_years": [
+          2025
+        ],
+        "base_months": [
+          12
+        ],
+        "rcept_from": null,
+        "rcept_to": null,
+        "is_correction": null,
+        "report_nm_contains": []
+      },
+      "next_action": "run_retriever"
+    },
+    {
+      "id": "scope_explicit",
+      "question": "삼성전자 2025년 지역별 매출액은?",
+      "calls": [],
+      "intent": "lookup",
+      "question_type": "lookup",
+      "route": "ok",
+      "metric": "revenue",
+      "calculation": {},
+      "time": {
+        "mode": "fiscal",
+        "years": [
+          2025
+        ],
+        "doc_subtype": "annual",
+        "base_months": [
+          12
+        ],
+        "prefer_latest": false,
+        "relative_terms": [],
+        "out_of_range_years": []
+      },
+      "basis": "연결",
+      "correction_mode": "latest_only",
+      "llm_used": false,
+      "missing_slots": [],
+      "assumptions": [
+        "보고서 종류가 명시되지 않아 사업보고서를 기준으로 봅니다.",
+        "연결/별도 기준이 명시되지 않아 연결기준으로 봅니다."
+      ],
+      "scope": "region",
+      "filter": {
+        "corp_names": [
+          "삼성전자"
+        ],
+        "exclude_corp_names": [],
+        "sector": null,
+        "doc_group": "periodic",
+        "doc_group_candidates": [],
+        "doc_subtype": "annual",
+        "doc_subtype_candidates": [],
+        "base_years": [
+          2025
+        ],
+        "base_months": [
+          12
+        ],
+        "rcept_from": null,
+        "rcept_to": null,
+        "is_correction": null,
+        "report_nm_contains": []
+      },
+      "next_action": "run_retriever"
+    },
+    {
+      "id": "basis_paraphrase",
+      "question": "삼성전자 2025년 자회사를 빼고 본사만의 매출액은?",
+      "calls": [],
+      "intent": "lookup",
+      "question_type": "lookup",
+      "route": "ok",
+      "metric": "revenue",
+      "calculation": {},
+      "time": {
+        "mode": "fiscal",
+        "years": [
+          2025
+        ],
+        "doc_subtype": "annual",
+        "base_months": [
+          12
+        ],
+        "prefer_latest": false,
+        "relative_terms": [],
+        "out_of_range_years": []
+      },
+      "basis": "별도",
+      "correction_mode": "latest_only",
+      "llm_used": false,
+      "missing_slots": [],
+      "assumptions": [
+        "보고서 종류가 명시되지 않아 사업보고서를 기준으로 봅니다."
+      ],
+      "scope": "total",
+      "filter": {
+        "corp_names": [
+          "삼성전자"
+        ],
+        "exclude_corp_names": [],
+        "sector": null,
+        "doc_group": "periodic",
+        "doc_group_candidates": [],
+        "doc_subtype": "annual",
+        "doc_subtype_candidates": [],
+        "base_years": [
+          2025
+        ],
+        "base_months": [
+          12
+        ],
+        "rcept_from": null,
+        "rcept_to": null,
+        "is_correction": null,
+        "report_nm_contains": []
+      },
+      "next_action": "run_retriever"
+    },
+    {
+      "id": "basis_explicit",
+      "question": "삼성전자 2025년 별도기준 매출액은?",
+      "calls": [],
+      "intent": "lookup",
+      "question_type": "lookup",
+      "route": "ok",
+      "metric": "revenue",
+      "calculation": {},
+      "time": {
+        "mode": "fiscal",
+        "years": [
+          2025
+        ],
+        "doc_subtype": "annual",
+        "base_months": [
+          12
+        ],
+        "prefer_latest": false,
+        "relative_terms": [],
+        "out_of_range_years": []
+      },
+      "basis": "별도",
+      "correction_mode": "latest_only",
+      "llm_used": false,
+      "missing_slots": [],
+      "assumptions": [
+        "보고서 종류가 명시되지 않아 사업보고서를 기준으로 봅니다."
+      ],
+      "scope": "total",
+      "filter": {
+        "corp_names": [
+          "삼성전자"
+        ],
+        "exclude_corp_names": [],
+        "sector": null,
+        "doc_group": "periodic",
+        "doc_group_candidates": [],
+        "doc_subtype": "annual",
+        "doc_subtype_candidates": [],
+        "base_years": [
+          2025
+        ],
+        "base_months": [
+          12
+        ],
+        "rcept_from": null,
+        "rcept_to": null,
+        "is_correction": null,
+        "report_nm_contains": []
+      },
+      "next_action": "run_retriever"
+    },
+    {
+      "id": "unsafe",
+      "question": "삼성전자 지금 사도 되나?",
+      "calls": [],
+      "intent": "unknown",
+      "question_type": "text",
+      "route": "unsafe",
+      "metric": null,
+      "calculation": {},
+      "time": {
+        "mode": "fiscal",
+        "years": [],
+        "doc_subtype": null,
+        "base_months": [],
+        "prefer_latest": false,
+        "relative_terms": [],
+        "out_of_range_years": []
+      },
+      "basis": null,
+      "correction_mode": "latest_only",
+      "llm_used": false,
+      "missing_slots": [],
+      "assumptions": [],
+      "scope": "total",
+      "filter": {
+        "corp_names": [],
+        "exclude_corp_names": [],
+        "sector": null,
+        "doc_group": null,
+        "doc_group_candidates": [],
+        "doc_subtype": null,
+        "doc_subtype_candidates": [],
+        "base_years": [],
+        "base_months": [],
+        "rcept_from": null,
+        "rcept_to": null,
+        "is_correction": false,
+        "report_nm_contains": []
+      },
+      "next_action": "fail_closed"
+    },
+    {
+      "id": "outside_corpus",
+      "question": "삼성전자 2030년 매출액은?",
+      "calls": [],
+      "intent": "lookup",
+      "question_type": "lookup",
+      "route": "unanswerable",
+      "metric": "revenue",
+      "calculation": {},
+      "time": {
+        "mode": "fiscal",
+        "years": [
+          2030
+        ],
+        "doc_subtype": "annual",
+        "base_months": [
+          12
+        ],
+        "prefer_latest": false,
+        "relative_terms": [],
+        "out_of_range_years": [
+          2030
+        ]
+      },
+      "basis": "연결",
+      "correction_mode": "latest_only",
+      "llm_used": false,
+      "missing_slots": [],
+      "assumptions": [
+        "보고서 종류가 명시되지 않아 사업보고서를 기준으로 봅니다.",
+        "연결/별도 기준이 명시되지 않아 연결기준으로 봅니다."
+      ],
+      "scope": "total",
+      "filter": {
+        "corp_names": [],
+        "exclude_corp_names": [],
+        "sector": null,
+        "doc_group": null,
+        "doc_group_candidates": [],
+        "doc_subtype": null,
+        "doc_subtype_candidates": [],
+        "base_years": [],
+        "base_months": [],
+        "rcept_from": null,
+        "rcept_to": null,
+        "is_correction": false,
+        "report_nm_contains": []
+      },
+      "next_action": "unanswerable"
+    }
+  ],
+  "accepted_metrics": [
+    "revenue",
+    "operating_profit",
+    "net_income",
+    "total_assets",
+    "capex",
+    "supply_contract",
+    "contract_termination",
+    "facility_investment",
+    "mgmt_judgement",
+    "fundraising",
+    "treasury_stock",
+    "restructuring",
+    "major_shareholding",
+    "business_overview",
+    "investment_plan",
+    "rnd",
+    "dividend",
+    "employees",
+    "shareholders",
+    "litigation"
+  ],
+  "accepted_operations": [
+    "add",
+    "average",
+    "cagr",
+    "divide",
+    "margin",
+    "max",
+    "min",
+    "multiply",
+    "percentage_change",
+    "rank",
+    "ratio_percent",
+    "subtract",
+    "sum"
+  ],
+  "enum_probes": {
+    "intent": [
+      {
+        "input": "lookup",
+        "output": "lookup",
+        "changed": true
+      },
+      {
+        "input": "calc",
+        "output": "calc",
+        "changed": true
+      },
+      {
+        "input": "compare",
+        "output": "compare",
+        "changed": true
+      },
+      {
+        "input": "list",
+        "output": "list",
+        "changed": true
+      },
+      {
+        "input": "change",
+        "output": "change",
+        "changed": true
+      },
+      {
+        "input": "exists",
+        "output": "exists",
+        "changed": true
+      },
+      {
+        "input": "unknown",
+        "output": "unknown",
+        "changed": false
+      },
+      {
+        "input": "invalid",
+        "output": "unknown",
+        "changed": false
+      }
+    ],
+    "doc_group": [
+      {
+        "input": "periodic",
+        "output": "periodic",
+        "changed": true
+      },
+      {
+        "input": "major",
+        "output": "major",
+        "changed": true
+      },
+      {
+        "input": "exchange",
+        "output": "exchange",
+        "changed": true
+      },
+      {
+        "input": "holding",
+        "output": "holding",
+        "changed": true
+      },
+      {
+        "input": "invalid",
+        "output": null,
+        "changed": false
+      }
+    ],
+    "doc_subtype": [
+      {
+        "input": "annual",
+        "output": "annual",
+        "changed": true
+      },
+      {
+        "input": "half",
+        "output": "half",
+        "changed": true
+      },
+      {
+        "input": "quarter",
+        "output": "quarter",
+        "changed": true
+      },
+      {
+        "input": "invalid",
+        "output": null,
+        "changed": false
+      }
+    ]
+  },
+  "plan_operation_validation": {
+    "add": "accepted",
+    "average": "accepted",
+    "cagr": "accepted",
+    "divide": "accepted",
+    "margin": "accepted",
+    "max": "accepted",
+    "min": "accepted",
+    "multiply": "accepted",
+    "percentage_change": "accepted",
+    "percentage_point_change": "accepted",
+    "rank": "accepted",
+    "ratio_percent": "accepted",
+    "subtract": "accepted",
+    "sum": "accepted",
+    "median": "rejected"
+  },
+  "failure_probes": [
+    {
+      "id": "invalid_enum",
+      "result": {
+        "raw_question": "삼성전자 2025년 미등록항목",
+        "normalized_question": "삼성전자 2025년 미등록항목",
+        "intent": "lookup",
+        "route": "need_clarify",
+        "question_type": "lookup",
+        "calculation": {},
+        "corps": [
+          {
+            "corp_name": "삼성전자",
+            "corp_code": "00126380",
+            "stock_code": "005930",
+            "listed_name": "삼성전자",
+            "sector": "반도체·전자부품",
+            "listing_date": "1975-06-11",
+            "matched_text": "삼성전자",
+            "match_source": "alias"
+          }
+        ],
+        "excluded_corps": [],
+        "sector": null,
+        "sector_members": [],
+        "ambiguous_mentions": [],
+        "unknown_entities": [],
+        "related_entities": [],
+        "metric": null,
+        "metric_confidence": null,
+        "basis": null,
+        "aggregation_scope": "unknown",
+        "time": {
+          "mode": "fiscal",
+          "years": [
+            2025
+          ],
+          "doc_subtype": "annual",
+          "base_months": [
+            12
+          ],
+          "prefer_latest": false,
+          "relative_terms": [],
+          "out_of_range_years": []
+        },
+        "correction_mode": "latest_only",
+        "allow_pdf_html": true,
+        "manifest_filter": {
+          "corp_names": [],
+          "exclude_corp_names": [],
+          "sector": null,
+          "doc_group": null,
+          "doc_group_candidates": [],
+          "doc_subtype": null,
+          "doc_subtype_candidates": [],
+          "base_years": [],
+          "base_months": [],
+          "rcept_from": null,
+          "rcept_to": null,
+          "is_correction": false,
+          "report_nm_contains": []
+        },
+        "query_plan": [],
+        "doc_count": null,
+        "availability": "not_searched",
+        "assumptions": [
+          "보고서 종류가 명시되지 않아 사업보고서를 기준으로 봅니다."
+        ],
+        "warnings": [],
+        "missing_slots": [
+          "metric"
+        ],
+        "reject_reason": "unresolved_interpretation",
+        "clarify_message": "확인하려는 지표·기간·조건을 구체적으로 알려주세요.",
+        "llm_used": false,
+        "llm_status": "invalid",
+        "interpretation_uncertain": true,
+        "think_trace": "intent=lookup | route=need_clarify | 기업=삼성전자 | 연도=2025 | 가정=보고서 종류가 명시되지 않아 사업보고서를 기준으로 봅니다."
+      }
+    },
+    {
+      "id": "provider_error",
+      "result": {
+        "raw_question": "삼성전자 2025년 미등록항목",
+        "normalized_question": "삼성전자 2025년 미등록항목",
+        "intent": "lookup",
+        "route": "need_clarify",
+        "question_type": "lookup",
+        "calculation": {},
+        "corps": [
+          {
+            "corp_name": "삼성전자",
+            "corp_code": "00126380",
+            "stock_code": "005930",
+            "listed_name": "삼성전자",
+            "sector": "반도체·전자부품",
+            "listing_date": "1975-06-11",
+            "matched_text": "삼성전자",
+            "match_source": "alias"
+          }
+        ],
+        "excluded_corps": [],
+        "sector": null,
+        "sector_members": [],
+        "ambiguous_mentions": [],
+        "unknown_entities": [],
+        "related_entities": [],
+        "metric": null,
+        "metric_confidence": null,
+        "basis": null,
+        "aggregation_scope": "unknown",
+        "time": {
+          "mode": "fiscal",
+          "years": [
+            2025
+          ],
+          "doc_subtype": "annual",
+          "base_months": [
+            12
+          ],
+          "prefer_latest": false,
+          "relative_terms": [],
+          "out_of_range_years": []
+        },
+        "correction_mode": "latest_only",
+        "allow_pdf_html": true,
+        "manifest_filter": {
+          "corp_names": [],
+          "exclude_corp_names": [],
+          "sector": null,
+          "doc_group": null,
+          "doc_group_candidates": [],
+          "doc_subtype": null,
+          "doc_subtype_candidates": [],
+          "base_years": [],
+          "base_months": [],
+          "rcept_from": null,
+          "rcept_to": null,
+          "is_correction": false,
+          "report_nm_contains": []
+        },
+        "query_plan": [],
+        "doc_count": null,
+        "availability": "not_searched",
+        "assumptions": [
+          "보고서 종류가 명시되지 않아 사업보고서를 기준으로 봅니다.",
+          "LLM 슬롯 보완 실패: RuntimeError"
+        ],
+        "warnings": [],
+        "missing_slots": [
+          "metric"
+        ],
+        "reject_reason": "unresolved_interpretation",
+        "clarify_message": "확인하려는 지표·기간·조건을 구체적으로 알려주세요.",
+        "llm_used": false,
+        "llm_status": "failed",
+        "interpretation_uncertain": true,
+        "think_trace": "intent=lookup | route=need_clarify | 기업=삼성전자 | 연도=2025 | 가정=보고서 종류가 명시되지 않아 사업보고서를 기준으로 봅니다. / LLM 슬롯 보완 실패: RuntimeError"
+      }
+    },
+    {
+      "id": "ignored_fields",
+      "result": {
+        "raw_question": "삼성전자 2025년 미등록항목",
+        "normalized_question": "삼성전자 2025년 미등록항목",
+        "intent": "lookup",
+        "route": "need_clarify",
+        "question_type": "lookup",
+        "calculation": {},
+        "corps": [
+          {
+            "corp_name": "삼성전자",
+            "corp_code": "00126380",
+            "stock_code": "005930",
+            "listed_name": "삼성전자",
+            "sector": "반도체·전자부품",
+            "listing_date": "1975-06-11",
+            "matched_text": "삼성전자",
+            "match_source": "alias"
+          }
+        ],
+        "excluded_corps": [],
+        "sector": null,
+        "sector_members": [],
+        "ambiguous_mentions": [],
+        "unknown_entities": [],
+        "related_entities": [],
+        "metric": null,
+        "metric_confidence": null,
+        "basis": "별도",
+        "aggregation_scope": "region",
+        "time": {
+          "mode": "disclosure",
+          "years": [
+            2025
+          ],
+          "doc_subtype": null,
+          "base_months": [],
+          "prefer_latest": false,
+          "relative_terms": [],
+          "out_of_range_years": []
+        },
+        "correction_mode": "original_only",
+        "allow_pdf_html": true,
+        "manifest_filter": {
+          "corp_names": [],
+          "exclude_corp_names": [],
+          "sector": null,
+          "doc_group": null,
+          "doc_group_candidates": [],
+          "doc_subtype": null,
+          "doc_subtype_candidates": [],
+          "base_years": [],
+          "base_months": [],
+          "rcept_from": null,
+          "rcept_to": null,
+          "is_correction": false,
+          "report_nm_contains": []
+        },
+        "query_plan": [],
+        "doc_count": null,
+        "availability": "not_searched",
+        "assumptions": [],
+        "warnings": [],
+        "missing_slots": [
+          "metric"
+        ],
+        "reject_reason": "unresolved_interpretation",
+        "clarify_message": "확인하려는 지표·기간·조건을 구체적으로 알려주세요.",
+        "llm_used": true,
+        "llm_status": "validated",
+        "interpretation_uncertain": false,
+        "think_trace": "intent=lookup | route=need_clarify | 기업=삼성전자 | 연도=2025 | 기준=별도"
+      }
+    }
+  ],
+  "llm_half_period": {
+    "raw_question": "삼성전자 이천이십육년 첫 여섯 달 외형",
+    "normalized_question": "삼성전자 이천이십육년 첫 여섯 달 외형",
+    "intent": "lookup",
+    "route": "unanswerable",
+    "question_type": "lookup",
+    "calculation": {},
+    "corps": [
+      {
+        "corp_name": "삼성전자",
+        "corp_code": "00126380",
+        "stock_code": "005930",
+        "listed_name": "삼성전자",
+        "sector": "반도체·전자부품",
+        "listing_date": "1975-06-11",
+        "matched_text": "삼성전자",
+        "match_source": "alias"
+      }
+    ],
+    "excluded_corps": [],
+    "sector": null,
+    "sector_members": [],
+    "ambiguous_mentions": [],
+    "unknown_entities": [],
+    "related_entities": [],
+    "metric": "revenue",
+    "metric_confidence": "llm",
+    "basis": "연결",
+    "aggregation_scope": "unknown",
+    "time": {
+      "mode": "fiscal",
+      "years": [
+        2026
+      ],
+      "doc_subtype": "half",
+      "base_months": [
+        6
+      ],
+      "prefer_latest": false,
+      "relative_terms": [],
+      "out_of_range_years": []
+    },
+    "correction_mode": "latest_only",
+    "allow_pdf_html": true,
+    "manifest_filter": {
+      "corp_names": [],
+      "exclude_corp_names": [],
+      "sector": null,
+      "doc_group": null,
+      "doc_group_candidates": [],
+      "doc_subtype": null,
+      "doc_subtype_candidates": [],
+      "base_years": [],
+      "base_months": [],
+      "rcept_from": null,
+      "rcept_to": null,
+      "is_correction": false,
+      "report_nm_contains": []
+    },
+    "query_plan": [],
+    "doc_count": null,
+    "availability": "not_searched",
+    "assumptions": [
+      "연결/별도 기준이 명시되지 않아 연결기준으로 봅니다."
+    ],
+    "warnings": [],
+    "missing_slots": [],
+    "reject_reason": "out_of_corpus_period",
+    "clarify_message": "2026년 반기보고서는 제공된 공시에 포함되지 않아 확인할 수 없습니다.",
+    "llm_used": true,
+    "llm_status": "validated",
+    "interpretation_uncertain": false,
+    "think_trace": "intent=lookup | route=unanswerable | 기업=삼성전자 | 연도=2026 | 지표=revenue | 기준=연결 | 가정=연결/별도 기준이 명시되지 않아 연결기준으로 봅니다."
+  },
+  "planner_probes": [
+    {
+      "enabled": false,
+      "calls": [],
+      "analysis_plan": {},
+      "plan_status": "unavailable",
+      "plan_failure_reason": "deterministic_plan_unavailable",
+      "plan_trace": [
+        "planner=unavailable"
+      ]
+    },
+    {
+      "enabled": true,
+      "calls": [
+        "calculation_planning"
+      ],
+      "analysis_plan": {},
+      "plan_status": "unavailable",
+      "plan_failure_reason": "llm_plan_invalid",
+      "plan_trace": [
+        "planner=llm",
+        "planner_failed"
+      ]
+    }
+  ],
+  "route_probes": {
+    "ok": "run_retriever",
+    "need_clarify": "request_clarification",
+    "unanswerable": "unanswerable",
+    "unsafe": "fail_closed",
+    "bogus": "fail_closed",
+    "": "fail_closed"
+  },
+  "back_probes": {
+    "search_empty_first": "retry_search",
+    "search_empty_after_retry": "unanswerable",
+    "insufficient_evidence": "fail_closed"
+  },
+  "fact_probes": {
+    "invalid_kind_accepted": false,
+    "extracted_kinds": [
+      "date"
+    ]
+  },
+  "settings": {
+    "INTERPRETER_USE_LLM": "1",
+    "QUERY_PLANNER_LLM_ENABLED": "1",
+    "CLOVA_SEMANTIC_MAX_TOKENS": "256"
+  }
+}

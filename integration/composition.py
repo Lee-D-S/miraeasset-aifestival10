@@ -216,6 +216,7 @@ def build_pipeline() -> StagePipeline:
 
     return StagePipeline(StageNodes(
         interpreter=interpreter,
+        reinterpreter=interpreter if interpreter_use_llm else None,
         # Keep all metadata-filtered chunks available so Reasoner can recover
         # aggregate rows that rank below subsidiary or segment rows in the
         # hybrid score. Retrieval prompt compaction still bounds what is sent

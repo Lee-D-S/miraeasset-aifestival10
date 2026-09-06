@@ -13,6 +13,7 @@ from reasoner.agents.answer import AnswerWriter
 from reasoner.agents.comparison import compare_facts
 from reasoner.agents.event_linker import link_events
 from reasoner.agents.fact_extraction import extract_facts
+from reasoner.agents.fact_recovery import FactRecovery
 from reasoner.contracts import ReasonerFact, ReasonerIntent, ReasonerResult
 from reasoner.deterministic.calculation_planner import (
     SUPPORTED_OPERATIONS,
@@ -182,6 +183,7 @@ def _execute_analysis_plan_reasoner(
     retriever_result: Any,
     writer: AnswerWriter,
     cache: Any | None = None,
+    recovery: FactRecovery | None = None,
 ) -> ReasonerResult:
     try:
         plan = validate_analysis_plan(intent.analysis_plan)
@@ -203,6 +205,8 @@ def _execute_analysis_plan_reasoner(
         sub_documents = _plan_documents(retriever_result, requirement_id, documents)
         sub_intent = _plan_sub_intent(intent, requirement)
         extracted = extract_facts(sub_documents, sub_intent, cache=cache)
+        if recovery is not None:
+            extracted = recovery.recover(sub_documents, sub_intent, extracted)
         normalized, normalization_warnings = normalize_facts(extracted, sub_intent)
         warnings.extend(f"{requirement_id}: {warning}" for warning in normalization_warnings)
         for fact in normalized:
@@ -296,6 +300,7 @@ def _execute_reasoner(
     writer: AnswerWriter,
     write_answer: bool = True,
     cache: Any | None = None,
+    recovery: FactRecovery | None = None,
 ) -> ReasonerResult:
     if not intent.is_processable:
         return ReasonerResult(
@@ -311,6 +316,7 @@ def _execute_reasoner(
             retriever_result=retriever_result,
             writer=writer,
             cache=cache,
+            recovery=recovery,
         )
 
     if len(intent.query_plan) > 1:
@@ -320,6 +326,7 @@ def _execute_reasoner(
             retriever_result=retriever_result,
             writer=writer,
             cache=cache,
+            recovery=recovery,
         )
 
     bundle = adapt_retriever_bundle(retriever_result)
@@ -338,6 +345,8 @@ def _execute_reasoner(
             warnings.append(f"{document.id}: pdf_text_required")
 
     raw_facts = extract_facts(documents, intent, cache=cache)
+    if recovery is not None:
+        raw_facts = recovery.recover(documents, intent, raw_facts)
     facts, normalization_warnings = normalize_facts(raw_facts, intent)
     warnings.extend(normalization_warnings)
 
@@ -473,6 +482,7 @@ def _execute_multi_query_reasoner(
     retriever_result: Any,
     writer: AnswerWriter,
     cache: Any | None = None,
+    recovery: FactRecovery | None = None,
 ) -> ReasonerResult:
     raw_subresults = retriever_result.get("subresults", []) if isinstance(retriever_result, Mapping) else []
     by_id = {
@@ -496,6 +506,7 @@ def _execute_multi_query_reasoner(
             writer=writer,
             write_answer=False,
             cache=cache,
+            recovery=recovery,
         )
         sub_dict = subresult.to_dict()
         sub_dict["subquery_id"] = subquery_id
@@ -632,6 +643,7 @@ def build_reasoner_node(
     def reasoner_node(state: Mapping[str, Any]) -> ReasonerNodeOutput:
         intent = _intent_from_state(state)
         question = str(state.get("question", intent.question))
+        recovery = FactRecovery(writer.client)
         try:
             result = _execute_reasoner(
                 question=question,
@@ -639,6 +651,7 @@ def build_reasoner_node(
                 retriever_result=state.get("retriever_result", {}),
                 writer=writer,
                 cache=cache,
+                recovery=recovery,
             )
         except Exception as error:  # noqa: BLE001 - node boundary must reach Validator
             result = ReasonerResult(
@@ -648,6 +661,7 @@ def build_reasoner_node(
                 trace=["reasoner_failed"],
             )
 
+        result = replace(result, trace=[*result.trace, *recovery.trace])
         update: ReasonerNodeOutput = {"reasoner_result": result.to_dict()}
         if not intent.is_processable:
             return update

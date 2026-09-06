@@ -169,7 +169,7 @@ class ReasonerFact:
             span_start=value.get("span_start"),
             span_end=value.get("span_end"),
             confidence=float(value.get("confidence", 0.0)),
-            kind=str(value.get("kind", "numeric")),
+            kind="field" if value.get("kind") == "date" else str(value.get("kind", "numeric")),
             currency=str(value["currency"]) if value.get("currency") is not None else None,
             table_context=dict(value.get("table_context", {})),
             aggregation_scope=str(value.get("aggregation_scope", "unknown")),
@@ -271,6 +271,7 @@ class ReasonerIntent:
     metric: str | None = None
     basis: str | None = None
     time: dict[str, Any] = field(default_factory=dict)
+    aggregation_scope: str = "unknown"
     correction_mode: str | None = None
     manifest_filter: dict[str, Any] = field(default_factory=dict)
     query_plan: list[dict[str, Any]] = field(default_factory=list)
@@ -314,6 +315,7 @@ class ReasonerIntent:
             "metric": self.metric,
             "basis": self.basis,
             "time": dict(self.time),
+            "aggregation_scope": self.aggregation_scope,
             "correction_mode": self.correction_mode,
             "manifest_filter": dict(self.manifest_filter),
             "query_plan": [dict(item) for item in self.query_plan],
@@ -414,6 +416,7 @@ def adapt_interpreter_intent(intent: Mapping[str, Any], *, question: str | None 
         calculation=calculation,
         metric=str(metric).strip() if metric is not None and str(metric).strip() else None,
         basis=str(basis).strip() if basis is not None and str(basis).strip() else None,
+        aggregation_scope=str(source.get("aggregation_scope", "unknown")),
         time=_mapping(source.get("time")),
         correction_mode=str(source["correction_mode"]) if source.get("correction_mode") is not None else None,
         manifest_filter=_mapping(source.get("manifest_filter")),

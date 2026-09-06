@@ -188,6 +188,9 @@ def build_search_query(question: str, intent: Mapping[str, Any]) -> str:
     basis = _text(intent.get("basis"))
     if basis and basis not in normalized:
         parts.append(basis)
+    scope_term = {"segment": "사업부문별", "product": "제품별", "region": "지역별"}.get(intent.get("aggregation_scope"))
+    if scope_term and scope_term not in normalized:
+        parts.append(scope_term)
     for year in _requested_years(intent):
         if year not in " ".join(parts):
             parts.append(year)

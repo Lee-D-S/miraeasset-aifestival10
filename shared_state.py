@@ -67,6 +67,9 @@ class InterpreterIntent(TypedDict, total=False):
     reject_reason: str | None
     clarify_message: str | None
     llm_used: bool
+    llm_status: str
+    interpretation_uncertain: bool
+    aggregation_scope: str
     think_trace: str
     query_plan: list[dict[str, Any]]
 
@@ -179,6 +182,7 @@ class AgentState(MessagesState):
     search_attempts: int
     planner_attempts: int
     regeneration_attempts: int
+    reinterpretation_attempts: int
     validation_attempts: int
     termination_reason: str | None
     original_question: str
@@ -221,6 +225,7 @@ class AgentStateUpdate(TypedDict, total=False):
     search_attempts: int
     planner_attempts: int
     regeneration_attempts: int
+    reinterpretation_attempts: int
     validation_attempts: int
     termination_reason: str | None
     original_question: str
@@ -318,6 +323,7 @@ def make_initial_agent_state(
         "search_attempts": 0,
         "planner_attempts": 0,
         "regeneration_attempts": 0,
+        "reinterpretation_attempts": 0,
         "validation_attempts": 0,
         "termination_reason": None,
         "original_question": question,

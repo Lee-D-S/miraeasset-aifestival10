@@ -32,6 +32,8 @@ def numeric_facts(facts: Iterable[ReasonerFact], *, metric: str | None = None) -
 
 def _requested_periods(intent: ReasonerIntent) -> list[str]:
     time = intent.time or {}
+    if time.get("mode") == "disclosure":
+        return []
     years = [str(year) for year in time.get("years") or []]
     months = [int(month) for month in time.get("base_months") or [] if str(month).isdigit()]
     if len(months) == len(years) and years:

@@ -80,7 +80,9 @@ def build(
         flt.is_correction = None
         result.assumptions.append("정정 이력 질의로 보고 원본과 정정본을 함께 조회합니다.")
     else:
-        flt.is_correction = bool(defaults.get("is_correction", False))
+        # Latest corrections must survive retrieval; Reasoner selects the
+        # latest revision using document identity before extracting Facts.
+        flt.is_correction = False if slots.correction_mode == "original_only" else None
 
     _apply_basis(slots, flt, result, defaults)
     _check_listing_dates(entities, flt, result, index)

@@ -91,6 +91,8 @@ def _compact(value: Any) -> str:
 
 def _requested_periods(intent: ReasonerIntent, question: str) -> list[str]:
     raw_time = intent.time if isinstance(intent.time, Mapping) else {}
+    if raw_time.get("mode") == "disclosure":
+        return []
     years: list[int] = []
     for value in raw_time.get("years", []):
         try:

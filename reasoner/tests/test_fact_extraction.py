@@ -30,7 +30,7 @@ class FactExtractionTests(unittest.TestCase):
         }])
         facts = extract_facts(bundle.documents, self.intent)
         numeric = next(item for item in facts if item.metric == "revenue")
-        date = next(item for item in facts if item.kind == "date" and "3월" in str(item.value))
+        date = next(item for item in facts if item.kind == "field" and item.metric == "date" and "3월" in str(item.value))
         self.assertEqual(numeric.value, 1000.0)
         self.assertEqual(numeric.unit, "억원")
         self.assertEqual(numeric.normalized_value, 100000000000.0)

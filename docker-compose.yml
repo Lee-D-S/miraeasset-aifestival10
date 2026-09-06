@@ -24,6 +24,8 @@ services:
       # 둔다 -- 이 environment: 블록의 값이 env_file: (.env)의 값보다 우선하므로, .env에서
       # 값을 빠뜨리거나 false로 둬도 항상 true로 시작한다.
       CLOVA_LLM_ENABLED: "true"
+      INTERPRETER_USE_LLM: "${INTERPRETER_USE_LLM:-1}"
+      QUERY_PLANNER_LLM_ENABLED: "${QUERY_PLANNER_LLM_ENABLED:-1}"
       # 답변 생성·semantic validation 챗 모델. .env보다 우선한다.
       CLOVA_CHAT_MODEL: "HCX-005"
       RETRIEVER_MODE: local

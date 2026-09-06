@@ -99,7 +99,11 @@ def aggregation_scope_for_context(
 def requested_aggregation_scope(intent: ReasonerIntent) -> str:
     """Resolve the scope explicitly requested by a question."""
 
+    if intent.aggregation_scope in AGGREGATION_SCOPES - {"unknown"}:
+        return intent.aggregation_scope
     text = _text(f"{intent.question} {intent.normalized_question}")
+    if "국내" in text and "해외" in text:
+        return "region"
     if any(cue in text for cue in _PRODUCT_CUES):
         return "product"
     if any(cue in text for cue in _REGION_CUES):
@@ -111,6 +115,8 @@ def requested_aggregation_scope(intent: ReasonerIntent) -> str:
 
 def requested_periods(intent: ReasonerIntent) -> list[str]:
     time = intent.time or {}
+    if time.get("mode") == "disclosure":
+        return []  # Receipt years are not the fiscal years of the Facts.
     years = [str(year) for year in time.get("years") or []]
     months = [int(month) for month in time.get("base_months") or [] if str(month).isdigit()]
     if len(months) == len(years) and years:

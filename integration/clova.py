@@ -175,7 +175,15 @@ class ClovaChatClient:
             "",
             self._request(
                 prompt,
-                max_tokens=_env_int("CLOVA_SEMANTIC_MAX_TOKENS", 128),
+                max_tokens=(
+                    _env_int("CLOVA_INTERPRETER_MAX_TOKENS", 1024)
+                    if operation == "interpreter_slot_fill"
+                    else _env_int("CLOVA_PLANNER_MAX_TOKENS", 2048)
+                    if operation == "calculation_planning"
+                    else _env_int("CLOVA_FACT_MAX_TOKENS", 1024)
+                    if operation == "fact_recovery"
+                    else _env_int("CLOVA_SEMANTIC_MAX_TOKENS", 128)
+                ),
                 operation=operation,
             ),
             flags=re.IGNORECASE | re.DOTALL,

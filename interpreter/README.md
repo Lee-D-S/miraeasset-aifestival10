@@ -58,10 +58,29 @@ subquery를 생성한다. 기존 `metric`·`manifest_filter`는 호환성을 위
 
 ## 규칙 기반·LLM 동작
 
-기본 동작은 규칙 기반이다. `use_llm=True`이고 unresolved slot이 있을 때만
-주입된 HyperCLOVA X 클라이언트의 `generate_json(messages, schema=...)`을
+먼저 규칙으로 해석하고, `use_llm=True`이고 unresolved slot이 있을 때만
+주입된 HyperCLOVA X 클라이언트의 `generate_json(messages, schema=..., operation="interpreter_slot_fill")`을
 호출한다. 모델이 반환한 기업·분류·공시 유형·계산 연산은 universe와 허용
 enum을 통과한 값만 반영하며, 호출 실패 시 규칙 결과를 유지한다.
+
+Compose 및 `.env.example`은 `INTERPRETER_USE_LLM=1`로 슬롯 보완을 활성화한다.
+명시적으로 `0`을 설정하면 비활성화한다. 라이브러리에서 플래그를 생략하면 기존처럼
+환경변수를 따른다. `CLOVA_LLM_ENABLED`와는 독립적인 스위치다.
+기업·지표·의도 누락, 모호한 기업, 기간 누락(최신 요청 제외), 계산 연산·비중 분모
+누락 시 보완을 시도한다. 단서 없는 기업·기간을 추측하도록 허용하지 않는다.
+선택된 기업으로 해소된 모호 표시를 제거하고, 보완 지표의 공시 필터·시간 기준과
+계산계획을 갱신한다. 기본 lookup으로 분류됐더라도 규칙이 설명하지 못한 표현이
+남으면 의미 검토를 호출한다. 반환값에는 재무 기준·집계 범위·정정 모드·시간 기준과
+반기/분기 기준월도 포함된다. 명시적으로 추출한 조건은 보존한다.
+LLM 시도 후에도 지표나 조건이 미해결이거나 의미 검토가 실패하면 `need_clarify`로
+넘긴다. 기간 자체를 생략한 일반 질문은 최신 자료를 사용한다는 가정을 기록한다.
+슬롯 응답은 `CLOVA_INTERPRETER_MAX_TOKENS`(기본 1024)를 사용하며 semantic validation의
+토큰 한도와 분리된다. 실패는 로그와 Intent notes에 예외 종류를 기록한다.
+`llm_used`는 호출 여부가 아니라 반환값이 실제 반영되었는지를 뜻한다.
+호출·응답 상태는 별도 `llm_status`에 기록한다. `question_type`과 `route`는 모델의
+임의 값을 받지 않고 검증된 슬롯으로부터 코드가 결정한다.
+`latest_only` 검색은 정정본도 포함하고, Fact 추출 전에 식별 가능한 동일 공시의
+최신 접수본을 선택한다. 원공시만 요청한 경우에만 `is_correction=False`를 적용한다.
 
 ## 검증
 

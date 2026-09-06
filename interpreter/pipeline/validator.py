@@ -45,6 +45,7 @@ def finalize(
         metric=slots.metric,
         metric_confidence=slots.metric_confidence,
         basis=slots.basis,
+        aggregation_scope=slots.aggregation_scope,
         time=TimeSpec(
             mode=slots.time_mode,
             years=list(slots.years),
@@ -63,6 +64,8 @@ def finalize(
         reject_reason=decision.reject_reason,
         clarify_message=decision.clarify_message,
         llm_used=llm_used,
+        llm_status=slots.llm_status,
+        interpretation_uncertain=bool(slots.semantic_review and slots.llm_status != "validated"),
     )
 
     if intent.route in _SEARCHABLE_ROUTES:

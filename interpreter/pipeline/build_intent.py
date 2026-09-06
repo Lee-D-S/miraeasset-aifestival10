@@ -22,6 +22,8 @@ def build_intent(
     index: CorpusIndex,
     use_llm: Optional[bool] = None,
     llm_client=None,
+    *,
+    force_llm: bool = False,
 ) -> Intent:
     pre = preprocess(question)
 
@@ -31,6 +33,8 @@ def build_intent(
 
     entities = link(pre, index)
     slots = slot_extractor.extract(pre, entities, index)
+    from .semantic_gaps import needs_semantic_review
+    slots.semantic_review = force_llm or needs_semantic_review(pre, entities, slots, index)
 
     llm_used = False
     if _should_call_llm(use_llm, entities, slots, llm_client):
@@ -38,16 +42,20 @@ def build_intent(
 
         llm_used = fill_slots(pre, entities, slots, index, client=llm_client)
 
+    if slots.llm_status != "not_called" and not slots.years and not slots.prefer_latest and not slots.semantic_review:
+        slots.prefer_latest = True
+        slots.notes.append("기간이 지정되지 않아 최신 공시를 우선하며 특정 연도를 추측하지 않습니다.")
+
     if slots.derived_lookup_only:
         slots.intent = "lookup"
     # LLM이 기업·연도를 새로 채웠을 수 있어 비교 축을 다시 정한다.
     slots.compare_axis = slot_extractor.resolve_compare_axis(slots, entities)
-    if not slots.calculation:
+    if llm_used or not slots.calculation:
         slots.calculation = build_calculation(
             slots.intent,
             pre.text,
             slots.metric,
-            denominator_metric=slots.derived_denominator,
+            denominator_metric=slots.derived_denominator or slots.calculation.get("denominator_metric"),
             metric_matches=slots.metric_matches,
             compare_axis=slots.compare_axis,
             operation_override=slots.derived_operation,
@@ -72,12 +80,21 @@ def _should_call_llm(use_llm: Optional[bool], entities, slots, client=None) -> b
         return False
     if use_llm is None and not llm_enabled():
         return False
+    if entities.unknown_entities:
+        return False
 
     unresolved = (
         not entities.corps
         and not entities.sector
         or slots.metric is None
         or slots.intent == "unknown"
+        or bool(entities.ambiguous)
+        or (not slots.years and not slots.prefer_latest)
+        or (slots.intent == "calc" and not slots.calculation.get("operation"))
+        or (slots.calculation.get("operation") == "ratio_percent"
+            and not slots.calculation.get("denominator_metric"))
+        or slots.semantic_review
+        or (slots.doc_group is None and not slots.doc_group_candidates)
     )
     return bool(unresolved)
 

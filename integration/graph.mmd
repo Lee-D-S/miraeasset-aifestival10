@@ -11,6 +11,7 @@ graph TD;
 	validator(validator)
 	calculation_planner(calculation_planner)
 	retry_search(retry_search)
+	reinterpret_question(reinterpret_question)
 	supervisor(supervisor)
 	answer_regeneration(answer_regeneration)
 	clarify(clarify)
@@ -26,6 +27,7 @@ graph TD;
 	reasoner --> supervisor;
 	retriever --> supervisor;
 	retry_search --> retriever;
+	reinterpret_question --> supervisor;
 	supervisor -.-> __end__;
 	supervisor -.-> answer_regeneration;
 	supervisor -.-> calculation_planner;
@@ -34,6 +36,7 @@ graph TD;
 	supervisor -.-> reasoner;
 	supervisor -.-> retriever;
 	supervisor -.-> retry_search;
+	supervisor -.-> reinterpret_question;
 	supervisor -.-> unanswerable;
 	supervisor -.-> validator;
 	unanswerable --> validator;

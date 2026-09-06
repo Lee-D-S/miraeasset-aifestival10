@@ -13,7 +13,22 @@
 허용 doc_subtype(periodic): {periodic_subtypes}
 허용 doc_subtype(exchange): {exchange_subtypes}
 허용 metric: {metrics}
+지표 의미 사전: {metric_catalog}
+사전 표현과 의미가 같은 자연어는 허용 metric으로 정규화한다. 출력 metric은 영어 키만 쓴다.
 허용 intent: {intents}
+허용 operation: {operations}
+상대 기간 해석 기준일: {reference_date}
+기업이 여러 후보 중 특정되지 않으면 corp_names를 비워 둔다. 단서 없이 기업을 선택하지 않는다.
+operation은 질문이 계산을 요구할 때만 채우고 denominator_metric은 허용 metric 중에서만 고른다.
+질문에 없는 기간·재무 기준·집계 범위·정정 조건은 추측하지 말고 null로 둔다.
+time_mode: 회계연도/실적기간은 fiscal, 제출/접수/공시한 연도는 disclosure.
+basis: 자회사를 포함하면 연결, 모회사 단독은 별도.
+aggregation_scope: 전체 total, 사업부문 segment, 제품 product, 지역 region, 그 외 부분 not_total.
+correction_mode: 최신 정정 반영 latest_only, 이력/전후 비교 include_chain, 원본만 original_only.
+base_months: 1분기 [3], 반기 [6], 3분기 [9], 연간 [12]. quarter만 있고 분기가 특정되지 않으면 [3,9].
+질문이 요구한 조건을 허용값으로 특정할 수 없으면 unresolved_slots에 해당 필드명을 넣는다.
+지원하지 않는 지표는 metric, 지원하지 않는 계산은 operation을 unresolved_slots에 넣는다.
+생략된 선택 조건을 unresolved_slots에 넣지 않는다. 단순 조회를 calc로 바꾸지 않는다.
 
 출력 형식
 {{
@@ -23,7 +38,15 @@
   "doc_group": null,
   "doc_subtype": null,
   "metric": null,
-  "intent": null
+  "intent": null,
+  "operation": null,
+  "denominator_metric": null,
+  "base_months": [],
+  "time_mode": null,
+  "basis": null,
+  "aggregation_scope": null,
+  "correction_mode": null,
+  "unresolved_slots": []
 }}
 
 질의: {question}

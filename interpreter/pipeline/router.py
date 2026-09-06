@@ -165,6 +165,18 @@ def decide(
         return decision
 
     decision.missing_slots = _missing_slots(entities, slots, build)
+    for slot in slots.unresolved_slots:
+        if slot not in decision.missing_slots:
+            decision.missing_slots.append(slot)
+    # A failed semantic review must not silently become a default lookup.
+    # Offline rule-only callers retain their configured clarification policy.
+    if slots.llm_status != "not_called":
+        needs_metric = not slots.metric and slots.intent not in {"list", "exists", "change"}
+        if needs_metric or slots.unresolved_slots or (slots.semantic_review and slots.llm_status != "validated"):
+            decision.route = "need_clarify"
+            decision.reject_reason = "unresolved_interpretation"
+            decision.clarify_message = "확인하려는 지표·기간·조건을 구체적으로 알려주세요."
+            return decision
     _apply_minimal_policy(decision, policy)
     return decision
 

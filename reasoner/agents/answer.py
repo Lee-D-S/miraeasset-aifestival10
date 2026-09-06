@@ -165,12 +165,12 @@ def _relevant_facts(intent: ReasonerIntent, facts: list[ReasonerFact], limit: in
             points += 25
         elif requested_scope != "unknown":
             points -= 1_000
-        if fact.kind != "date":
+        if fact.metric != "date":
             points += 5
         if re.search(r"\d", value):
             points += 5
         try:
-            magnitude = abs(float(fact.value)) if fact.kind != "date" else 0.0
+            magnitude = abs(float(fact.value)) if fact.metric != "date" else 0.0
         except (TypeError, ValueError):
             magnitude = 0.0
         if requested_metric in {"revenue", "operating_profit", "net_income", "assets", "liabilities", "equity"}:
@@ -186,7 +186,7 @@ def _relevant_facts(intent: ReasonerIntent, facts: list[ReasonerFact], limit: in
 
 
 def _has_required_claim(answer: str, facts: list[ReasonerFact], citations: list[dict[str, Any]]) -> bool:
-    numeric_facts = [fact for fact in facts if fact.kind != "date" and re.search(r"\d", str(fact.value))]
+    numeric_facts = [fact for fact in facts if fact.metric != "date" and re.search(r"\d", str(fact.value))]
     if numeric_facts:
         answer_digits = re.sub(r"\D", "", answer)
         if not any(re.sub(r"\D", "", str(fact.value).split(".", 1)[0]) in answer_digits for fact in numeric_facts[:3]):

@@ -43,6 +43,11 @@ _FUNDRAISING_INSTRUMENTS: dict[str, list[str]] = {
 @dataclass
 class SlotResult:
     intent: str = "unknown"
+    intent_explicit: bool = False
+    aggregation_scope: str = "unknown"
+    semantic_review: bool = False
+    llm_status: str = "not_called"
+    unresolved_slots: list[str] = field(default_factory=list)
     # compare 의도의 비교 축. entity=기업 간, period=같은 대상의 기간 간.
     compare_axis: str = ""
     question_type: str = "text"
@@ -72,6 +77,7 @@ class SlotResult:
     basis: Optional[str] = None
     basis_explicit: bool = False
     correction_mode: str = "latest_only"
+    correction_explicit: bool = False
     notes: list[str] = field(default_factory=list)
 
 
@@ -169,6 +175,12 @@ def _extract_period(text: str, sq: str, slots: SlotResult, cfg: Any) -> None:
         slots.period_explicit = True
         return
 
+    if any(term in sq for term in ("첫여섯달", "첫6개월", "처음6개월", "전반기")):
+        slots.doc_subtype = "half"
+        slots.base_months = [6]
+        slots.period_explicit = True
+        return
+
     if "하반기" in text:
         slots.doc_subtype = "annual"
         slots.base_months = [12]
@@ -232,6 +244,12 @@ def _resolve_time_mode(sq: str, slots: SlotResult, cfg: Any) -> None:
     disclosure_cues = cfg.defaults.get("time_mode_cues", {}).get("disclosure", [])
     has_cue = any(squash(cue) in sq for cue in disclosure_cues)
 
+    if slots.time_mode == "disclosure" and slots.time_mode_explicit:
+        return
+    if has_cue:
+        slots.time_mode = "disclosure"
+        slots.time_mode_explicit = True
+        return
     if slots.doc_group in ("major", "exchange", "holding"):
         slots.time_mode = "disclosure"
         slots.time_mode_explicit = True
@@ -381,6 +399,10 @@ def _extract_doc_keywords(sq: str, slots: SlotResult, index: CorpusIndex) -> Non
 
 
 def _extract_basis(sq: str, slots: SlotResult, cfg: Any) -> None:
+    if any(cue in sq for cue in ("자회사를빼고", "자회사제외", "자회사를제외", "본사만", "모회사만")):
+        slots.basis = "별도"
+        slots.basis_explicit = True
+        return
     for basis, cues in cfg.defaults.get("basis_cues", {}).items():
         for cue in cues:
             if squash(cue) in sq:
@@ -390,9 +412,18 @@ def _extract_basis(sq: str, slots: SlotResult, cfg: Any) -> None:
 
 
 def _extract_correction(sq: str, slots: SlotResult, cfg: Any) -> None:
+    if any(cue in sq for cue in ("원공시만", "원본만", "최초공시만", "정정본을제외", "정정제외")):
+        slots.correction_mode = "original_only"
+        slots.correction_explicit = True
+        return
+    if any(cue in sq for cue in ("최종내용만", "최종공시만", "정정후최종", "최신정정", "마지막정정")):
+        slots.correction_mode = "latest_only"
+        slots.correction_explicit = True
+        return
     cues = cfg.defaults.get("correction_cues", {}).get("include_chain", [])
     if any(squash(cue) in sq for cue in cues):
         slots.correction_mode = "include_chain"
+        slots.correction_explicit = True
 
 
 # --- intent -------------------------------------------------------------------
@@ -406,8 +437,14 @@ def _extract_intent(sq: str, slots: SlotResult, entities: EntityResult, cfg: Any
         for cue in cues.get(kind, []):
             if squash(cue) in sq:
                 slots.intent = kind
+                slots.intent_explicit = True
                 return
 
+    from .calculation import has_calculation_cue
+    if has_calculation_cue(sq):
+        slots.intent = "calc"
+        slots.intent_explicit = True
+        return
     if entities.corps or entities.sector:
         slots.intent = "lookup"
 

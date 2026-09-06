@@ -87,6 +87,7 @@ def test_clova_capabilities_are_not_constructed_when_flags_are_off(monkeypatch):
     monkeypatch.setattr(composition, "build_validator_node", lambda **_kwargs: lambda _state: {})
     monkeypatch.delenv("CLOVA_LLM_ENABLED", raising=False)
     monkeypatch.delenv("INTERPRETER_USE_LLM", raising=False)
+    monkeypatch.delenv("QUERY_PLANNER_LLM_ENABLED", raising=False)
     monkeypatch.delenv("CLOVA_RERANKER_ENABLED", raising=False)
 
     composition.build_pipeline()

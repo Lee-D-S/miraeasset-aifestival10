@@ -73,7 +73,7 @@ def test_interpreter_blocked_route_skips_downstream_nodes():
 
 
 class SlotClient:
-    def generate_json(self, _messages, *, schema):
+    def generate_json(self, _messages, *, schema, **kwargs):
         assert schema["type"] == "object"
         return {"corp_names": ["삼성전자"], "metric": "revenue", "intent": "lookup", "years": [2025]}
 
@@ -88,7 +88,7 @@ def test_interpreter_slot_llm_is_injected_and_validated():
 
 
 class FailingSlotClient:
-    def generate_json(self, _messages, *, schema):
+    def generate_json(self, _messages, *, schema, **kwargs):
         raise RuntimeError("test failure")
 
 

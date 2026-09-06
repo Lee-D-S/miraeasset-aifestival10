@@ -25,6 +25,7 @@ class StageNodes:
     supervisor: StateNode | None = None
     calculation_planner: StateNode | None = None
     answer_regeneration: StateNode | None = None
+    reinterpreter: StateNode | None = None
 
 
 # One route table per Supervisor phase: action -> next node (or END). A
@@ -45,6 +46,7 @@ _RETRIEVER_ROUTES: Mapping[str, str] = {
     "request_clarification": "clarify",
 }
 _REASONER_ROUTES: Mapping[str, str] = {
+    "reinterpret_question": "reinterpret_question",
     "run_validator": "validator",
     "run_calculation_planner": "calculation_planner",
     "fail_closed": "fail_closed",
@@ -113,11 +115,31 @@ def _planner_node(node: StateNode) -> StateNode:
     return wrapped
 
 
+def _reinterpret_node(node: StateNode) -> StateNode:
+    def wrapped(state: Mapping[str, Any]) -> dict[str, Any]:
+        attempts = int(state.get("reinterpretation_attempts", 0) or 0)
+        if attempts >= 1:
+            return {"route": "need_clarify", "supervisor_phase": "after_interpreter"}
+        update = validate_node_update("interpreter", state, node({**state, "reinterpretation_attempts": attempts + 1}))
+        return {
+            **update, "reinterpretation_attempts": attempts + 1,
+            "supervisor_phase": "after_interpreter", "phase": "after_interpreter",
+            "analysis_plan": None, "plan_status": None, "plan_failure_reason": None, "plan_trace": [],
+            "planner_attempts": 0, "planner_retry_num": 0,
+            "retriever_result": None, "documents": None, "search_queries": {},
+            "reasoner_result": None, "facts": None, "answer": None, "context": None,
+            "validator_result": None,
+            "search_query": str(state.get("original_question") or state.get("question", "")),
+        }
+    return wrapped
+
+
 def build_graph(nodes: StageNodes):
     """Build the bounded Supervisor-controlled four-stage graph."""
 
     supervisor = nodes.supervisor or build_supervisor_node(
-        allow_regeneration=nodes.answer_regeneration is not None
+        allow_regeneration=nodes.answer_regeneration is not None,
+        allow_reinterpretation=nodes.reinterpreter is not None,
     )
     planner = nodes.calculation_planner or build_planner_tool()
     regeneration = nodes.answer_regeneration or (lambda state: {
@@ -128,6 +150,7 @@ def build_graph(nodes: StageNodes):
     })
     builder = StateGraph(AgentState)
     builder.add_node("interpreter", _stage_node("interpreter", "after_interpreter", nodes.interpreter))
+    builder.add_node("reinterpret_question", _reinterpret_node(nodes.reinterpreter or nodes.interpreter))
     builder.add_node("retriever", _stage_node("retriever", "after_retriever", nodes.retriever))
     builder.add_node("reasoner", _stage_node("reasoner", "after_reasoner", nodes.reasoner))
     builder.add_node("validator", _stage_node("validator", "after_validator", nodes.validator))
@@ -141,6 +164,7 @@ def build_graph(nodes: StageNodes):
 
     builder.add_edge(START, "interpreter")
     builder.add_edge("interpreter", "supervisor")
+    builder.add_edge("reinterpret_question", "supervisor")
     builder.add_edge("retriever", "supervisor")
     builder.add_edge("reasoner", "supervisor")
     builder.add_edge("validator", "supervisor")
@@ -156,6 +180,7 @@ def build_graph(nodes: StageNodes):
         _supervisor_route,
         {
             "retriever": "retriever",
+            "reinterpret_question": "reinterpret_question",
             "reasoner": "reasoner",
             "validator": "validator",
             "calculation_planner": "calculation_planner",

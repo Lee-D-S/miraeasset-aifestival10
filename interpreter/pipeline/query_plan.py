@@ -60,8 +60,9 @@ def _filter_for_subquery(
         values["doc_subtype_candidates"] = []
         months = index.config.bounds.get("base_month_by_subtype", {}).get(subtype, [])
         values["base_months"] = [int(months)] if isinstance(months, int) else list(months)
-        values["rcept_from"] = None
-        values["rcept_to"] = None
+        if values.get("base_years"):
+            values["rcept_from"] = None
+            values["rcept_to"] = None
     elif metric_spec.get("doc_subtype"):
         values["doc_subtype"] = metric_spec["doc_subtype"]
         values["doc_subtype_candidates"] = []
@@ -117,6 +118,7 @@ def build_query_plan(
                     "question_type": slots.question_type,
                     "calculation": calculation,
                     "basis": slots.basis,
+                    "aggregation_scope": slots.aggregation_scope,
                     "time": {
                         "mode": slots.time_mode,
                         "years": list(slots.years),

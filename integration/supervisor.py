@@ -19,12 +19,14 @@ SupervisorAction = Literal[
     "fail_closed",
     "regenerate_answer",
     "finish",
+    "reinterpret_question",
 ]
 SupervisorPhase = Literal["after_interpreter", "after_retriever", "after_reasoner", "after_validator"]
 ALLOWED_ACTIONS = frozenset({
     "run_retriever", "retry_search", "run_calculation_planner", "run_reasoner",
     "run_validator", "request_clarification", "unanswerable", "fail_closed",
     "regenerate_answer", "finish",
+    "reinterpret_question",
 })
 
 
@@ -103,14 +105,18 @@ class DeterministicSupervisor:
         max_search_retries: int = 1,
         max_planner_retries: int = 1,
         allow_regeneration: bool = True,
+        allow_reinterpretation: bool = False,
     ):
         self.max_search_retries = max_search_retries
         self.max_planner_retries = max_planner_retries
         self.allow_regeneration = allow_regeneration
+        self.allow_reinterpretation = allow_reinterpretation
 
     def decide(self, *, phase: SupervisorPhase, state: Mapping[str, Any]) -> SupervisorDecision:
         route = str(state.get("route", ""))
         if phase == "after_interpreter":
+            if route not in {"ok", "need_clarify", "unanswerable", "unsafe"}:
+                return SupervisorDecision("fail_closed", "허용되지 않은 라우팅 상태입니다.")
             if route == "unsafe":
                 return SupervisorDecision("fail_closed", "Interpreter가 안전하지 않은 질의로 분류했습니다.")
             if route == "need_clarify":
@@ -140,6 +146,11 @@ class DeterministicSupervisor:
                 return SupervisorDecision("run_calculation_planner", "Reasoner에 계산 계획이 필요합니다.")
             if result.get("status") in {"success", "partial_success"}:
                 return SupervisorDecision("run_validator", "분석 결과가 생성되었습니다.")
+            intent = _intent(state)
+            if (self.allow_reinterpretation and result.get("status") == "insufficient_evidence"
+                    and int(state.get("reinterpretation_attempts", 0) or 0) < 1
+                    and (intent.get("interpretation_uncertain") or intent.get("missing_slots"))):
+                return SupervisorDecision("reinterpret_question", "미해결 질의 조건을 1회 재해석합니다.")
             return SupervisorDecision("fail_closed", "분석 결과를 근거로 검증할 수 없습니다.")
 
         result = state.get("validator_result")
@@ -170,10 +181,12 @@ def build_supervisor_node(
     max_supervisor_steps: int = 12,
     max_planner_retries: int = 1,
     allow_regeneration: bool = True,
+    allow_reinterpretation: bool = False,
 ) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
     policy = client or DeterministicSupervisor(
         max_planner_retries=max_planner_retries,
         allow_regeneration=allow_regeneration,
+        allow_reinterpretation=allow_reinterpretation,
     )
 
     def supervisor_node(state: Mapping[str, Any]) -> dict[str, Any]:
