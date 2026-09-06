@@ -357,9 +357,32 @@ def _format_amount_with_unit(value: Any, unit: str) -> str:
     return text
 
 
-def _format_calc_input(item: dict[str, Any]) -> str:
+# Fine -> coarse. A series line shown at a coarser unit than the finest unit in
+# the same series is a rounded figure, so it is prefixed with "약".
+_UNIT_RANK = {"원": 0, "천원": 1, "백만원": 2, "억원": 3, "조": 4, "조원": 4}
+
+
+def _finest_unit_rank(items: list[dict[str, Any]]) -> int | None:
+    ranks = [
+        _UNIT_RANK[unit]
+        for item in items
+        if (unit := str(item.get("unit") or "")) in _UNIT_RANK
+    ]
+    return min(ranks) if ranks else None
+
+
+def _format_calc_input(item: dict[str, Any], *, finest_rank: int | None = None) -> str:
     period = item.get("period") or "기간 미상"
-    return f"- {period}: {_format_amount_with_unit(item.get('value'), str(item.get('unit') or ''))}"
+    unit = str(item.get("unit") or "")
+    text = _format_amount_with_unit(item.get("value"), unit)
+    if (
+        finest_rank is not None
+        and unit in _UNIT_RANK
+        and _UNIT_RANK[unit] > finest_rank
+        and not text.startswith("약")
+    ):
+        text = f"약 {text}"
+    return f"- {period}: {text}"
 
 
 class AnswerWriter:
@@ -449,7 +472,8 @@ class AnswerWriter:
                 if isinstance(series, list) and len(series) > 2
                 else [item for item in (calculation.get("inputs") or []) if isinstance(item, dict)]
             )
-            input_lines = [_format_calc_input(item) for item in year_items]
+            finest_rank = _finest_unit_rank(year_items)
+            input_lines = [_format_calc_input(item, finest_rank=finest_rank) for item in year_items]
             result_line = f"{calculation['result']}{calculation.get('unit', '')}"
             if input_lines:
                 sections.append("결론\n" + "\n".join(input_lines) + f"\n증감률 {result_line}\n\n계산식\n{calculation.get('formula', '')}")

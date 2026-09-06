@@ -112,3 +112,80 @@ def test_template_limitations_drop_retrieval_trace_lines() -> None:
     assert "reranker=" not in answer
     assert "query=" not in answer
     assert "정보 한계\n- 2023-12 값을 확인할 수 없습니다." in answer
+
+
+def _series_calc(series: list[dict[str, object]]) -> dict[str, object]:
+    return {
+        "status": "ok",
+        "operation": "percentage_change",
+        "formula": "(new-old)/abs(old)*100",
+        "result": 563.9,
+        "unit": "%",
+        "series": series,
+    }
+
+
+def _trend_intent() -> object:
+    question = "삼성전자의 최근 3년 영업이익 추이를 알려줘"
+    return adapt_interpreter_intent(
+        {
+            "raw_question": question,
+            "normalized_question": question,
+            "route": "ok",
+            "intent": "calc",
+            "question_type": "calculation",
+            "metric": "operating_profit",
+            "basis": "연결",
+            "time": {"years": [2023, 2024, 2025], "base_months": [12]},
+            "companies": ["삼성전자"],
+        },
+        question=question,
+    )
+
+
+def test_template_prefixes_approx_for_coarser_series_unit() -> None:
+    facts = [_segment_fact("영업이익", 32725961)]
+    answer = AnswerWriter._template(
+        _trend_intent(),
+        facts,
+        [
+            _series_calc(
+                [
+                    {"period": "2023-12", "value": "7조원", "unit": "조원"},
+                    {"period": "2024-12", "value": 32725961, "unit": "백만원"},
+                    {"period": "2025-12", "value": 43601051, "unit": "백만원"},
+                ]
+            )
+        ],
+        [],
+        [],
+        [],
+        [],
+    )
+
+    assert "- 2023-12: 약 7조원" in answer
+    assert "- 2024-12: 32,725,961백만원" in answer
+    assert "약 32,725,961" not in answer
+
+
+def test_template_does_not_add_approx_when_series_units_match() -> None:
+    facts = [_segment_fact("영업이익", 32725961)]
+    answer = AnswerWriter._template(
+        _trend_intent(),
+        facts,
+        [
+            _series_calc(
+                [
+                    {"period": "2023-12", "value": 6566976, "unit": "백만원"},
+                    {"period": "2024-12", "value": 32725961, "unit": "백만원"},
+                    {"period": "2025-12", "value": 43601051, "unit": "백만원"},
+                ]
+            )
+        ],
+        [],
+        [],
+        [],
+        [],
+    )
+
+    assert "약" not in answer

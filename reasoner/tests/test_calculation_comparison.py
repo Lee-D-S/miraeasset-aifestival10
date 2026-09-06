@@ -412,6 +412,81 @@ class CalculationComparisonTests(unittest.TestCase):
             " ".join(item["document_id"] for item in calculation["series"]),
         )
         self.assertAlmostEqual(calculation["result"], 563.9441, places=1)
+        # 3-year trend: earliest year is the denominator, latest is the numerator.
+        self.assertTrue(str(calculation["inputs"][0]["period"]).startswith("2023"))
+        self.assertTrue(str(calculation["inputs"][-1]["period"]).startswith("2025"))
+
+    def test_net_income_series_drops_a_unit_scale_outlier_year(self):
+        """Reproduces the live 당기순이익 추이 miss: the FY2023 point is parsed
+        from the wrong cell as 30,970,954 '원' (~3e7) while 2024/2025 are real
+        백만원 figures (~3e13). Without a guard percentage_change is 145,965,067%.
+        _drop_scale_outliers removes the 2023 point and the result is the
+        2024 -> 2025 change (~31.2%)."""
+
+        def amount(**kwargs: object) -> ReasonerFact:
+            unit = str(kwargs["unit"])
+            value = float(kwargs["value"])
+            multiplier = {"백만원": 1_000_000, "원": 1}[unit]
+            return ReasonerFact(
+                metric="net_income",
+                label=str(kwargs["label"]),
+                value=value,
+                raw_value=value,
+                unit=unit,
+                normalized_value=value * multiplier,
+                display_value=str(kwargs["display"]) if kwargs.get("display") is not None else None,
+                period=str(kwargs["period"]),
+                basis="연결",
+                company="삼성전자",
+                document_id=str(kwargs["document_id"]),
+                source="",
+                evidence=str(kwargs["evidence"]),
+                confidence=float(kwargs.get("confidence", 0.9)),
+                currency="KRW",
+                aggregation_scope=str(kwargs["scope"]),
+            )
+
+        intent = adapt_interpreter_intent({
+            "raw_question": "삼성전자의 최근 3년 당기순이익 추이를 알려줘",
+            "normalized_question": "삼성전자의 최근 3년 당기순이익 추이를 알려줘",
+            "route": "ok",
+            "intent": "calc",
+            "question_type": "calculation",
+            "calculation": {"operation": "percentage_change", "metric": "net_income"},
+            "metric": "net_income",
+            "basis": "연결",
+            "companies": ["삼성전자"],
+            "time": {"years": [2023, 2024, 2025], "base_months": [12]},
+        })
+        plan = build_analysis_plan(intent)
+        self.assertIsNotNone(plan)
+        facts = [
+            amount(
+                document_id="row-2023", period="2023-12", value=30_970_954, unit="원",
+                scope="unknown", label="당기순이익", display="30,970,954",
+                evidence="제55기 2023.01.01 ~ 2023.12.31", confidence=0.7,
+            ),
+            amount(
+                document_id="summary-2024", period="2024-12", value=34_451_351, unit="백만원",
+                scope="total", label="당기순이익", display="34,451,351",
+                evidence="| 당기순이익 | 34,451,351 |", confidence=0.9,
+            ),
+            amount(
+                document_id="summary-2025", period="2025-12", value=45_206_805, unit="백만원",
+                scope="total", label="당기순이익", display="45,206,805",
+                evidence="| 당기순이익 | 45,206,805 |", confidence=0.9,
+            ),
+        ]
+        result = execute_analysis_plan(plan, facts, intent=intent)
+        self.assertTrue(result["success"])
+        calculation = result["calculations"][0]
+        self.assertEqual(
+            [str(item["period"]) for item in calculation["inputs"]],
+            ["2024-12", "2025-12"],
+        )
+        self.assertNotIn("row-2023", calculation.get("evidence_ids", []))
+        self.assertAlmostEqual(calculation["result"], 31.22, places=1)
+        self.assertNotIn("series", calculation)
 
     def test_comparison_ranks_by_value_not_retrieval_score(self):
         intent, facts = self._facts(
