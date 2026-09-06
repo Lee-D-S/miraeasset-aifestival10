@@ -189,8 +189,8 @@ def test_local_sql_candidate_cache_reuses_only_same_filter_and_limit():
     repository._index_signature = "index-a"
     repository.initialize = lambda: None
 
-    def query_candidates(manifest_filter, limit):
-        calls.append((dict(manifest_filter), limit))
+    def query_candidates(manifest_filter, limit, *, like_terms=()):
+        calls.append((dict(manifest_filter), limit, tuple(like_terms)))
         return [{"id": f"chunk-{len(calls)}", "text": "본문"}]
 
     repository._query_candidates = query_candidates
@@ -205,6 +205,11 @@ def test_local_sql_candidate_cache_reuses_only_same_filter_and_limit():
     repository._index_signature = "index-b"
     repository.filter_candidates(manifest_filter, 10)
     assert len(calls) == 3
+
+    # A different search query yields different salient LIKE terms -> cache miss.
+    repository._index_signature = "index-a"
+    repository.filter_candidates(manifest_filter, 10, query="삼성전자 영업이익은 얼마인가")
+    assert len(calls) == 4
 
 
 def test_structured_parser_cache_reuses_same_chunk_text_and_version(monkeypatch):

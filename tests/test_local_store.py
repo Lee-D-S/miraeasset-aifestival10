@@ -286,3 +286,75 @@ def test_readiness_checks_chroma_metadata_chunk_ids(tmp_path):
         metadatas=[{"chunk_id": "wrong-id"}],
     )
     assert "Chroma collection IDs do not match metadata chunk IDs" in repository.readiness_issues()
+
+
+_QUERY_AWARE_DDL = """
+CREATE TABLE chunk_index (
+    id TEXT PRIMARY KEY,
+    doc_id TEXT NOT NULL,
+    chunk_id TEXT NOT NULL,
+    text TEXT NOT NULL,
+    source_path TEXT NOT NULL,
+    corp_name TEXT,
+    base_year INTEGER,
+    section_name TEXT,
+    raw_json_content TEXT,
+    metadata_json TEXT NOT NULL
+)
+"""
+
+
+def _query_aware_repo(tmp_path) -> LocalHybridRetriever:
+    engine = create_engine(f"sqlite:///{tmp_path / 'qa.db'}")
+    rows = []
+    # 40 filler rows whose ids sort lexicographically before the target.
+    for i in range(40):
+        rows.append((f"20250311001085_{i}", "회사 개요와 사업의 내용 서술", "I. 회사의 개요", None))
+    # The metric-bearing table row: id sorts late, so an id-ordered LIMIT drops it.
+    rows.append((
+        "20250311001085_900",
+        "[삼성전자 | 사업보고서 | 2-2. 연결 손익계산서]\n| 구분 | 제56기 |\n| 영업이익 | 32,725,961 |",
+        "2-2. 연결 손익계산서",
+        '[{"구분": "영업이익", "제56기": "32,725,961"}]',
+    ))
+    with engine.begin() as connection:
+        connection.execute(text(_QUERY_AWARE_DDL))
+        for cid, body, section, raw_json in rows:
+            connection.execute(
+                text(
+                    "INSERT INTO chunk_index (id, doc_id, chunk_id, text, source_path, "
+                    "corp_name, base_year, section_name, raw_json_content, metadata_json) "
+                    "VALUES (:id, :doc_id, :chunk_id, :text, :sp, :corp, :by, :sec, :rj, :mj)"
+                ),
+                {
+                    "id": cid, "doc_id": "doc", "chunk_id": cid, "text": body, "sp": "x.xml",
+                    "corp": "삼성전자", "by": 2024, "sec": section, "rj": raw_json,
+                    "mj": json.dumps({"corp_name": "삼성전자", "base_year": 2024}, ensure_ascii=False),
+                },
+            )
+    return LocalHybridRetriever(engine=engine, vectorstore=object())
+
+
+def test_supplementary_pass_surfaces_a_late_id_metric_row(tmp_path):
+    repo = _query_aware_repo(tmp_path)
+    manifest = {"corp_names": ["삼성전자"], "base_years": [2024]}
+    question = "삼성전자의 2024년 연결기준 손익계산서상 영업이익은 얼마인가?"
+
+    base_only = {row["id"] for row in repo.filter_candidates(manifest, 20)}
+    assert "20250311001085_900" not in base_only  # dropped by the id-ordered cut
+
+    with_query = repo.filter_candidates(manifest, 20, query=question)
+    ids = {row["id"] for row in with_query}
+    assert "20250311001085_900" in ids  # kept by the salient-term pass
+
+    target = next(row for row in with_query if row["id"] == "20250311001085_900")
+    assert target["raw_json_content"] and "32,725,961" in target["raw_json_content"]
+    assert target["metadata"].get("raw_json_content")  # also reaches Reasoner via metadata
+
+
+def test_supplementary_pass_ignores_corp_name_only_terms(tmp_path):
+    repo = _query_aware_repo(tmp_path)
+    manifest = {"corp_names": ["삼성전자"], "base_years": [2024]}
+    # Query carries only the corp name -> no discriminating term -> plain base pass.
+    only_corp = repo.filter_candidates(manifest, 20, query="삼성전자 삼성전자")
+    assert "20250311001085_900" not in {row["id"] for row in only_corp}
