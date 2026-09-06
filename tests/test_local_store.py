@@ -358,3 +358,69 @@ def test_supplementary_pass_ignores_corp_name_only_terms(tmp_path):
     # Query carries only the corp name -> no discriminating term -> plain base pass.
     only_corp = repo.filter_candidates(manifest, 20, query="삼성전자 삼성전자")
     assert "20250311001085_900" not in {row["id"] for row in only_corp}
+
+
+def _summary_section_repo(tmp_path) -> LocalHybridRetriever:
+    """Many early-id chunks that also match '영업이익', plus one late-id
+    요약재무정보 chunk that only the section-priority ordering can reach."""
+    engine = create_engine(f"sqlite:///{tmp_path / 'sec.db'}")
+    rows = []
+    for i in range(30):
+        rows.append((
+            f"20240312000736_1{i:03d}",
+            "본문 서술에서 영업이익 추이를 언급한다",
+            "II. 사업의 내용",
+            None,
+        ))
+    rows.append((
+        "20240312000736_315",  # sorts after every '_1xxx' id above
+        "[삼성전자 | 사업보고서 | 1. 요약재무정보]\n| 구 분 | 제55기 | 제54기 | 제53기 |\n"
+        "| 영업이익 | 6,566,976 | 43,376,630 | 51,633,856 |",
+        "1. 요약재무정보",
+        '[{"구 분": "영업이익", "제55기": "6,566,976", "제54기": "43,376,630", "제53기": "51,633,856"}]',
+    ))
+    with engine.begin() as connection:
+        connection.execute(text(_QUERY_AWARE_DDL))
+        for cid, body, section, raw_json in rows:
+            connection.execute(
+                text(
+                    "INSERT INTO chunk_index (id, doc_id, chunk_id, text, source_path, "
+                    "corp_name, base_year, section_name, raw_json_content, metadata_json) "
+                    "VALUES (:id, :doc_id, :chunk_id, :text, :sp, :corp, :by, :sec, :rj, :mj)"
+                ),
+                {
+                    "id": cid, "doc_id": "doc", "chunk_id": cid, "text": body, "sp": "x.xml",
+                    "corp": "삼성전자", "by": 2023, "sec": section, "rj": raw_json,
+                    "mj": json.dumps({"corp_name": "삼성전자", "base_year": 2023}, ensure_ascii=False),
+                },
+            )
+    return LocalHybridRetriever(engine=engine, vectorstore=object())
+
+
+def test_supplementary_pass_floats_summary_section_over_id_order(tmp_path):
+    repo = _summary_section_repo(tmp_path)
+    manifest = {"corp_names": ["삼성전자"], "base_years": [2023]}
+    question = "삼성전자의 최근 3년 영업이익 추이를 알려줘"
+
+    # term_limit for limit=10 is 5; the 요약재무정보 id sorts after all 30 filler
+    # rows, so a plain id-ordered supplementary pass would never reach it.
+    ids = {row["id"] for row in repo.filter_candidates(manifest, 10, query=question)}
+    assert "20240312000736_315" in ids
+    target = next(
+        row for row in repo.filter_candidates(manifest, 10, query=question)
+        if row["id"] == "20240312000736_315"
+    )
+    assert "6,566,976" in (target["raw_json_content"] or "")
+
+
+def test_financial_summary_pass_surfaces_chunk_without_a_matching_term(tmp_path):
+    """The guaranteed 요약재무정보 pass keeps the chunk even when the query's
+    salient term is not in its text (so the term pass would not pull it)."""
+    repo = _summary_section_repo(tmp_path)
+    manifest = {"corp_names": ["삼성전자"], "base_years": [2023]}
+    # "당기순이익" is nowhere in the 요약재무정보 chunk text above.
+    ids = {
+        row["id"]
+        for row in repo.filter_candidates(manifest, 10, query="삼성전자 최근 3년 당기순이익 추이")
+    }
+    assert "20240312000736_315" in ids

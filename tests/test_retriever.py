@@ -240,6 +240,44 @@ def test_retriever_diversify_keeps_top_hit_for_non_revenue_metric():
     assert by_year["2025"] == "income-2025"
 
 
+def test_search_by_year_injects_summary_table_for_operating_profit():
+    from retriever.retrieval import _search_results_by_year
+
+    # The per-year keyword hit is a prose delta chunk; the 요약재무정보 table
+    # chunk (with per-row JSON) sits in the candidate subset but ranks below it.
+    candidates = [
+        {
+            "id": "prose-2023",
+            "text": "제55기 영업이익은 전년 대비 36조원 감소하였으며",
+            "metadata": {"base_year": 2023},
+        },
+        {
+            "id": "summary-2023",
+            "text": "| 구 분 | 제55기 | 제54기 | 제53기 |\n| 영업이익 | 6,566,976 | 43,376,630 | 51,633,856 |",
+            "raw_json_content": '[{"구 분": "영업이익", "제55기": "6,566,976"}]',
+            "metadata": {"base_year": 2023, "section_name": "1. 요약재무정보"},
+        },
+    ]
+
+    def keyword_search(query, docs, limit):
+        # deterministic: only the prose chunk "matches", summary chunk is missed
+        return [d for d in docs if "영업이익은" in d["text"]][:limit]
+
+    hits = _search_results_by_year(
+        keyword_search, "삼성전자 최근 3년 영업이익 추이", candidates,
+        ["2023", "2024", "2025"], 6, metric="operating_profit",
+    )
+    ids = {d["id"] for d in hits}
+    assert "summary-2023" in ids  # force-included despite missing the keyword hit
+
+    # revenue keeps the existing behaviour: no summary-table injection
+    hits_rev = _search_results_by_year(
+        keyword_search, "삼성전자 최근 3년 매출액 추이", candidates,
+        ["2023", "2024", "2025"], 6, metric="revenue",
+    )
+    assert "summary-2023" not in {d["id"] for d in hits_rev}
+
+
 def test_retriever_keeps_yearly_totals_when_plan_tables_dominate_candidates():
     plan_tables = [
         {
