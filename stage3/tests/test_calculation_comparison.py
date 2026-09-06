@@ -8,6 +8,8 @@ from stage3.agents.calculation import calculate_facts
 from stage3.agents.comparison import compare_facts
 from stage3.agents.fact_extraction import extract_facts
 from stage3.contracts import Stage3Fact
+from stage3.deterministic.calculation_planner import build_analysis_plan
+from stage3.deterministic.calculations import execute_analysis_plan
 from stage3.deterministic.normalization import normalize_facts
 
 
@@ -81,6 +83,104 @@ class CalculationComparisonTests(unittest.TestCase):
         self.assertEqual(result["evidence_ids"], ["total-2024", "total-2025"])
         input_values = [str(item.get("value", "")).replace(",", "") for item in result["inputs"]]
         self.assertFalse(any("75092" in value or value == "100" for value in input_values))
+
+    def test_percentage_change_keeps_jo_total_when_million_won_breakdown_is_present(self):
+        def amount(*, document_id: str, period: str, value: float, unit: str, scope: str, label: str) -> Stage3Fact:
+            multiplier = {"조원": 1_000_000_000_000, "백만원": 1_000_000}[unit]
+            return Stage3Fact(
+                metric="revenue",
+                label=label,
+                value=value,
+                raw_value=value,
+                unit=unit,
+                normalized_value=value * multiplier,
+                period=period,
+                basis="연결",
+                company="기업A",
+                document_id=document_id,
+                source="",
+                evidence=label,
+                confidence=0.9,
+                currency="KRW",
+                aggregation_scope=scope,
+            )
+
+        intent = adapt_stage1_intent({
+            "raw_question": "삼성전자의 2024년과 2025년 매출액을 비교해줘",
+            "normalized_question": "삼성전자의 2024년과 2025년 매출액을 비교해줘",
+            "route": "ok",
+            "intent": "calc",
+            "question_type": "calculation",
+            "calculation": {"operation": "percentage_change"},
+            "metric": "revenue",
+            "basis": "연결",
+            "companies": ["기업A"],
+            "time": {"years": [2024, 2025], "base_months": [12]},
+        })
+        facts = [
+            amount(document_id="total-2024", period="2024-12", value=300, unit="조원", scope="unknown", label="매출"),
+            amount(document_id="total-2025", period="2025-12", value=330, unit="조원", scope="unknown", label="매출"),
+            amount(document_id="breakdown-2024", period="2024-12", value=75_092, unit="백만원", scope="unknown", label="매출"),
+            amount(document_id="breakdown-2025", period="2025-12", value=100, unit="백만원", scope="unknown", label="매출"),
+        ]
+        result = calculate_facts(facts, intent)
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["result"], 10.0)
+        self.assertEqual(result["evidence_ids"], ["total-2024", "total-2025"])
+        input_values = [str(item.get("value", "")).replace(",", "") for item in result["inputs"]]
+        self.assertFalse(any("75092" in value or value == "100" for value in input_values))
+
+    def test_analysis_plan_percentage_change_drops_not_total_and_picks_period_totals(self):
+        def amount(*, document_id: str, period: str, value: float, unit: str, scope: str, label: str) -> Stage3Fact:
+            multiplier = {"조원": 1_000_000_000_000, "백만원": 1_000_000, "%": 1}[unit]
+            return Stage3Fact(
+                metric="revenue",
+                label=label,
+                value=value,
+                raw_value=value,
+                unit=unit,
+                normalized_value=value * multiplier,
+                period=period,
+                basis="연결",
+                company="기업A",
+                document_id=document_id,
+                source="",
+                evidence=label,
+                confidence=0.9,
+                currency="KRW" if unit != "%" else None,
+                aggregation_scope=scope,
+            )
+
+        intent = adapt_stage1_intent({
+            "raw_question": "삼성전자의 2024년과 2025년 매출액을 비교해줘",
+            "normalized_question": "삼성전자의 2024년과 2025년 매출액을 비교해줘",
+            "route": "ok",
+            "intent": "calc",
+            "question_type": "calculation",
+            "calculation": {"operation": "percentage_change", "metric": "revenue"},
+            "metric": "revenue",
+            "basis": "연결",
+            "companies": ["기업A"],
+            "time": {"years": [2024, 2025], "base_months": [12]},
+        })
+        plan = build_analysis_plan(intent)
+        self.assertIsNotNone(plan)
+        facts = [
+            amount(document_id="total-2024", period="2024-12", value=300, unit="조원", scope="unknown", label="매출"),
+            amount(document_id="total-2025", period="2025-12", value=330, unit="조원", scope="unknown", label="매출"),
+            amount(document_id="breakdown-2024", period="2024-12", value=75_092, unit="백만원", scope="not_total", label="용역 및 기타매출"),
+            amount(document_id="breakdown-2025", period="2025-12", value=100, unit="백만원", scope="not_total", label="용역 및 기타매출"),
+            amount(document_id="share-2025", period="2025-12", value=100, unit="%", scope="total", label="매출액"),
+            amount(document_id="noise-2024", period="2024-12", value=16, unit="백만원", scope="unknown", label="매출"),
+        ]
+        result = execute_analysis_plan(plan, facts, intent=intent)
+        self.assertTrue(result["success"])
+        calculation = result["calculations"][0]
+        self.assertEqual(calculation["status"], "ok")
+        self.assertEqual(calculation["result"], 10.0)
+        self.assertEqual(calculation["evidence_ids"], ["total-2024", "total-2025"])
+        input_values = [str(item.get("value", "")).replace(",", "") for item in calculation["inputs"]]
+        self.assertFalse(any("75092" in value or value == "100" or value == "16" for value in input_values))
 
     def test_comparison_ranks_by_value_not_retrieval_score(self):
         intent, facts = self._facts(

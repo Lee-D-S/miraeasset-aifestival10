@@ -217,7 +217,7 @@ def _execute_analysis_plan_stage3(
             if key not in seen_facts:
                 seen_facts.add(key)
                 facts.append(fact)
-    execution = execute_analysis_plan(plan, facts)
+    execution = execute_analysis_plan(plan, facts, intent=intent)
     warnings.extend(execution["warnings"])
     derived_facts = [Stage3Fact.from_dict(value) for value in execution["derived_facts"]]
     all_facts = [*facts, *derived_facts]
