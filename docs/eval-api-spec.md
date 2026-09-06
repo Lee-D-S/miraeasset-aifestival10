@@ -372,8 +372,10 @@ FastAPI 프로세스 liveness만 확인한다. corpus나 DB가 마운트되지 �
 
 ## 9. 동작·제약 메모
 
-- **질문당 제한 시간**: provider reset 대기 기본값이 300초로 질문당 마감과 같다.
-  클라이언트 타임아웃은 여유를 둬서 300초보다 크게 잡는다(예시 코드는 310초).
+- **질문당 제한 시간**: 질문당 처리 예산은 300초다
+  (`integration/rate_limit.py::question_rate_limit_budget`). provider rate-limit 재시도
+  대기 상한(`CLOVA_RATE_LIMIT_MAX_WAIT`)은 코드 기본값 300초이나 배포 `.env`는 60초로
+  낮춰 둔다. 클라이언트 타임아웃은 300초보다 크게 잡는다(예시 코드는 310초).
 - **worker 1개**: `--workers 1`. 동시 요청은 순차 처리된다. 평가 시스템은 질문을 직렬로 보낸다고 가정한다.
 - **지연 초기화**: 프로세스가 떠도 첫 `/ready` 또는 `/answer` 시점에 corpus·DB·provider를 연다.
   초기화 실패는 import 크래시가 아니라 HTTP `503`으로 나타난다.
@@ -381,8 +383,11 @@ FastAPI 프로세스 liveness만 확인한다. corpus나 DB가 마운트되지 �
   검색 재시도는 내부 `search_query`만 바꾼다.
 - **반복 상한**: Supervisor 총 12단계, 검색 재시도 1회, 계산 계획 재시도 1회, 답변 재생성 1회,
   그래프 `recursion_limit` 24.
-- **CLOVA 미설정 시**: `CLOVA_LLM_ENABLED`가 꺼져 있으면 Reasoner/Validator가
-  `deterministic_fallback`으로 동작한다. 답변 수치는 나올 수 있으나 형식이 다듬어지지 않을 수 있다.
+- **CLOVA 챗 모델**: 답변 생성과 semantic validation에 쓰는 모델은 `CLOVA_CHAT_MODEL`로 정하며
+  현재 값은 `HCX-005`다. `docker-compose.yml`의 `environment:` 블록에서 지정하고 `.env`보다 우선한다.
+- **CLOVA 비활성 시**: 운영 컨테이너는 `docker-compose.yml`에서 `CLOVA_LLM_ENABLED=true`를 고정하므로
+  평가 중에는 항상 활성이다. 값을 끄면 Retriever는 `embedding_unavailable`을 반환하고 Validator는
+  semantic 검증을 통과할 수 없어 답변이 검증 실패로 처리된다. 형식만 달라지는 것이 아니라 답변이 차단된다.
 - **근거 표시**: 모든 답변에 근거 공시를 표기한다(과제 필수 규칙).
 
 ---
