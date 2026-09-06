@@ -55,7 +55,7 @@ class ClovaChatClient:
             or os.getenv("CLOVA_API_KEY", "")
             or os.getenv("CLOVASTUDIO_API_KEY", "")
         ).strip()
-        self.model = model or os.getenv("CLOVA_CHAT_MODEL", "HCX-DASH-002")
+        self.model = model or os.getenv("CLOVA_CHAT_MODEL", "HCX-005")
         self.timeout = timeout if timeout is not None else _env_float("CLOVA_CHAT_TIMEOUT", 60.0)
         self.max_retries = max_retries if max_retries is not None else _env_int("CLOVA_CHAT_MAX_RETRIES", 1)
         # A question has a 300-second budget; wait through a normal provider
