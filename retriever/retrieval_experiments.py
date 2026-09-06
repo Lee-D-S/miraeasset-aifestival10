@@ -1003,7 +1003,10 @@ class ExperimentHybridRetriever:
         self,
         manifest_filter: Mapping[str, Any],
         limit: int,
+        *,
+        query: str | None = None,
     ) -> list[dict[str, Any]]:
+        del query  # experiment sidecar keeps the plain id-ordered candidate pass
         self.initialize()
         where_sql, params = build_manifest_where_and_params(manifest_filter or {})
         sql = (

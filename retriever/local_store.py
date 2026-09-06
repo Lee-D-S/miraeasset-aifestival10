@@ -13,6 +13,7 @@ directly and deterministically from ``retriever/node.py``.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,10 @@ _SCALAR_METADATA_COLUMNS = (
     "basis",
     "section_name",
 )
+# Not a WHERE-clause column; carried through to the candidate so Reasoner can
+# extract table values from the preserved per-row JSON instead of re-parsing the
+# flattened markdown. Optional -- omitted when the index lacks the column.
+_EXTRA_PASSTHROUGH_COLUMNS = ("raw_json_content",)
 _MAX_VECTOR_CANDIDATES = 2_000
 _CHROMA_METADATA_SAMPLE = 1_000
 
@@ -149,6 +154,64 @@ def build_manifest_where_and_params(manifest_filter: Mapping[str, Any]) -> tuple
 
     where_sql = " WHERE " + " AND ".join(clauses) if clauses else ""
     return where_sql, params
+
+
+# Question words that would only broaden a LIKE pass without adding precision.
+_QUERY_STOPWORDS = frozenset({
+    "얼마", "얼마인가", "얼마인가요", "무엇", "무엇인가", "무엇인가요", "어떻게",
+    "알려", "알려줘", "알려주세요", "구하", "구해", "각각", "관련", "대한", "대해",
+    "정도", "무슨", "어느", "그리고", "또한", "기준", "기준으로", "말해", "설명",
+})
+# Trailing 조사/접미사 that ``_tokens`` does not strip. Removing them yields the
+# bare noun that actually appears in disclosure text (``손익계산서상`` -> ``손익계산서``).
+_TRAILING_SUFFIXES = ("으로", "로", "상의", "상", "별", "내", "중", "의", "은", "는",
+                      "이", "가", "을", "를", "과", "와", "도", "만", "에")
+_INTERROGATIVE_RE = re.compile(r"(인가요?|일까요?|입니까|한가요?|무엇|얼마)$")
+
+
+def _strip_suffix(token: str) -> str:
+    changed = True
+    while changed and len(token) >= 4:
+        changed = False
+        for suffix in _TRAILING_SUFFIXES:
+            if token.endswith(suffix) and len(token) - len(suffix) >= 3:
+                token = token[: -len(suffix)]
+                changed = True
+                break
+    return token
+
+
+def _salient_like_terms(query: str, *, limit: int = 6) -> list[str]:
+    """Content tokens from the search query for a supplementary ``text LIKE`` pass.
+
+    ``_query_candidates`` otherwise orders by ``id`` (a TEXT column, so the sort
+    is lexicographic, not document order) and truncates at ``candidate_limit``.
+    Financial-statement rows and MD&A tables sit late in a large 사업보고서 and
+    fall outside that cut, so keyword/vector search never sees them. Pulling
+    rows that literally contain the query's salient words guarantees they are
+    candidates regardless of where ``id`` order places them.
+    """
+
+    tokens: set[str] = set()
+    for token in _tokens(query or ""):
+        token = _strip_suffix(token)
+        if len(token) < 2 or token in _QUERY_STOPWORDS:
+            continue
+        if re.fullmatch(r"\d{1,4}년?", token) or re.fullmatch(r"20\d{2}", token):
+            continue
+        if _INTERROGATIVE_RE.search(token) or token.startswith("얼마"):
+            continue
+        if not re.search(r"[가-힣A-Za-z]", token):
+            continue
+        tokens.add(token)
+    # Drop a token that is just another kept token plus a trailing fragment
+    # (``영업이익은`` when ``영업이익`` is present): the shorter form matches more.
+    pruned = {
+        token
+        for token in tokens
+        if not any(other != token and token.startswith(other) for other in tokens)
+    }
+    return sorted(pruned, key=lambda term: (-len(term), term))[:limit]
 
 
 class LocalHybridRetriever:
@@ -348,20 +411,29 @@ class LocalHybridRetriever:
             for column in (
                 *_REQUIRED_COLUMNS,
                 *_SCALAR_METADATA_COLUMNS,
+                *_EXTRA_PASSTHROUGH_COLUMNS,
             )
             if column in self._table_columns
         ]
         return ", ".join(dict.fromkeys(columns))
 
-    def filter_candidates(self, manifest_filter: Mapping[str, Any], limit: int) -> list[dict[str, Any]]:
+    def filter_candidates(
+        self,
+        manifest_filter: Mapping[str, Any],
+        limit: int,
+        *,
+        query: str | None = None,
+    ) -> list[dict[str, Any]]:
         self.initialize()
         filter_dict = dict(manifest_filter or {})
+        like_terms = _salient_like_terms(query or "")
         cache_key = "candidate-documents:" + canonical_json(
             {
                 "index_signature": self._index_signature,
                 "table": self.table_name,
                 "manifest_filter": filter_dict,
                 "limit": int(limit),
+                "like_terms": like_terms,
             }
         )
         cached = safe_cache_get(
@@ -378,14 +450,14 @@ class LocalHybridRetriever:
             merged: list[dict[str, Any]] = []
             for year in years:
                 year_filter = {**filter_dict, "base_years": [year]}
-                for row in self._query_candidates(year_filter, per_year):
+                for row in self._query_candidates(year_filter, per_year, like_terms=like_terms):
                     row_id = str(row.get("id") or row.get("chunk_id") or "")
                     if row_id and row_id not in seen:
                         seen.add(row_id)
                         merged.append(row)
             result = merged[:limit]
         else:
-            result = self._query_candidates(filter_dict, limit)
+            result = self._query_candidates(filter_dict, limit, like_terms=like_terms)
         safe_cache_put(
             getattr(self._cache, "candidate_documents", None),
             cache_key,
@@ -393,16 +465,72 @@ class LocalHybridRetriever:
         )
         return result
 
-    def _query_candidates(self, manifest_filter: Mapping[str, Any], limit: int) -> list[dict[str, Any]]:
+    def _query_candidates(
+        self,
+        manifest_filter: Mapping[str, Any],
+        limit: int,
+        *,
+        like_terms: Sequence[str] = (),
+    ) -> list[dict[str, Any]]:
         where_sql, params = build_manifest_where_and_params(manifest_filter or {})
-        # Explicit-key ordering keeps candidate results deterministic.
-        sql = (
-            f"SELECT {self._select_columns()} FROM {self.table_name}"
-            f"{where_sql} ORDER BY id ASC LIMIT :limit"
-        )
+        columns = self._select_columns()
+        # Drop terms already expressed by the manifest filter: every chunk of a
+        # 사업보고서 carries "[corp | report | section]" in its text, so a
+        # ``text LIKE '%<corp>%'`` clause matches the whole document and defeats
+        # the point of the supplementary pass.
+        scope_terms = {
+            str(value).strip().lower()
+            for value in (
+                *(manifest_filter.get("corp_names") or []),
+                manifest_filter.get("sector") or "",
+            )
+            if str(value).strip()
+        }
+        effective_terms = [
+            term
+            for term in like_terms
+            if not any(scope and (scope in term.lower() or term.lower() in scope) for scope in scope_terms)
+        ]
         with self.engine.connect() as connection:
-            rows = connection.execute(text(sql), {**params, "limit": limit}).mappings().all()
-        return [self._document_from_row(row) for row in rows]
+            # 1) Supplementary pass: rows that literally contain the query's
+            #    salient words. Runs first so query-relevant rows are always
+            #    kept when the merged set is truncated to ``limit``. Bounded so
+            #    it cannot crowd out the base pass entirely.
+            term_rows: list[Any] = []
+            if effective_terms and where_sql:  # require a manifest filter -- never scan the whole table
+                term_clause = " OR ".join(
+                    f"text LIKE :kw_{index}" for index in range(len(effective_terms))
+                )
+                term_params = {
+                    f"kw_{index}": f"%{term}%" for index, term in enumerate(effective_terms)
+                }
+                term_limit = max(min(limit // 2, 600), 1)
+                term_sql = (
+                    f"SELECT {columns} FROM {self.table_name}"
+                    f"{where_sql} AND ({term_clause}) ORDER BY id ASC LIMIT :limit"
+                )
+                term_rows = connection.execute(
+                    text(term_sql), {**params, **term_params, "limit": term_limit}
+                ).mappings().all()
+
+            # 2) Base pass: deterministic id order (kept for behaviour parity).
+            base_sql = (
+                f"SELECT {columns} FROM {self.table_name}"
+                f"{where_sql} ORDER BY id ASC LIMIT :limit"
+            )
+            base_rows = connection.execute(
+                text(base_sql), {**params, "limit": limit}
+            ).mappings().all()
+
+        seen: set[str] = set()
+        ordered: list[Any] = []
+        for row in (*term_rows, *base_rows):
+            row_id = str(row.get("id") or row.get("chunk_id") or "")
+            if row_id in seen:
+                continue
+            seen.add(row_id)
+            ordered.append(row)
+        return [self._document_from_row(row) for row in ordered[:limit]]
 
     @staticmethod
     def _document_from_row(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -417,12 +545,21 @@ class LocalHybridRetriever:
             value = row.get(key)
             if key not in metadata and value not in (None, ""):
                 metadata[key] = value
+        for key in _EXTRA_PASSTHROUGH_COLUMNS:
+            value = row.get(key)
+            if key not in metadata and value not in (None, ""):
+                metadata[key] = value
         return {
             "id": str(row.get("id") or row.get("chunk_id") or ""),
             "doc_id": str(row.get("doc_id") or ""),
             "chunk_id": str(row.get("chunk_id") or row.get("id") or ""),
             "text": str(row.get("text") or ""),
             "source_path": str(row.get("source_path") or ""),
+            "raw_json_content": (
+                str(row["raw_json_content"])
+                if row.get("raw_json_content") not in (None, "")
+                else None
+            ),
             "metadata": metadata,
         }
 

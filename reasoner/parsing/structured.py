@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
+import json
 import re
 from typing import Any, Iterable
 import xml.etree.ElementTree as ET
@@ -594,19 +595,84 @@ def _looks_like_html(value: str) -> bool:
     return bool(re.search(r"<\s*html(?:\s|>)", value, re.IGNORECASE))
 
 
+def _json_grid(raw_json_content: str | None) -> list[list[str]]:
+    """Turn the ingestion-time per-row table JSON into a header+data grid.
+
+    ``retriever.ingestion.dart.chunker`` keeps, per table chunk, the same rows
+    it flattened into markdown, but as ``[{header: cell, ...}, ...]`` (XML/HTML
+    parsers) or ``[[cell, ...], ...]`` (PDF). Rebuilding the grid from that
+    avoids the markdown-reconstruction heuristics (inserted blank cells,
+    reversed 금액/비중 headers, colspan loss) the text path has to undo.
+    """
+
+    if not raw_json_content or not str(raw_json_content).strip():
+        return []
+    try:
+        rows = json.loads(raw_json_content)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(rows, list) or not rows:
+        return []
+
+    grid: list[list[str]] = []
+    if all(isinstance(row, dict) for row in rows):
+        header: list[str] = []
+        for row in rows:
+            for key in row:
+                if str(key) not in header:
+                    header.append(str(key))
+        if not header:
+            return []
+        grid.append(header)
+        for row in rows:
+            grid.append([str(row.get(key, "")) for key in header])
+    elif all(isinstance(row, list) for row in rows):
+        width = max((len(row) for row in rows), default=0)
+        if width < 2:
+            return []
+        grid = [[str(cell) for cell in row] + [""] * (width - len(row)) for row in rows]
+    else:
+        return []
+
+    if len(grid) < 2 or not any(
+        _has_numeric_value(cell) for row in grid[1:] for cell in row
+    ):
+        return []
+    return grid
+
+
+def _json_table(raw_json_content: str | None) -> StructuredTable | None:
+    grid = _json_grid(raw_json_content)
+    if not grid:
+        return None
+    tables = _make_tables(
+        ([[_CellToken(cell) for cell in row] for row in grid],), "json"
+    )
+    return tables[0] if tables else None
+
+
 def parse_structured_evidence(
     value: str,
     *,
+    raw_json_content: str | None = None,
     cache: Any | None = None,
     document_id: str = "",
 ) -> StructuredEvidence:
-    """Parse DART XML or HTML table evidence without third-party packages."""
+    """Parse DART XML or HTML table evidence without third-party packages.
+
+    When ``raw_json_content`` (the ingestion-time per-row table JSON kept
+    alongside the chunk) is present and well formed, it replaces the tables
+    reconstructed from the flattened text -- the JSON preserves the column
+    structure the markdown lost. The visible ``text`` still comes from
+    ``value``; only ``tables`` is swapped.
+    """
 
     raw = str(value or "")
     cache_key = "structured-document:" + canonical_json(
         {
             "document_id": str(document_id),
             "text_sha256": sha256_text(raw),
+            "json_sha256": sha256_text(str(raw_json_content or "")),
             "parser_version": STRUCTURED_PARSER_VERSION,
         }
     )
@@ -617,18 +683,30 @@ def parse_structured_evidence(
     if cached is not None:
         return cached
 
-    if not raw.lstrip().startswith("<"):
-        markdown_rows = _markdown_rows(raw)
-        if markdown_rows:
-            result = StructuredEvidence(raw, "markdown", _make_tables((markdown_rows,), "markdown"))
-        else:
-            result = StructuredEvidence(raw, "text")
+    json_table = _json_table(raw_json_content)
+
+    def _finish(result: StructuredEvidence) -> StructuredEvidence:
+        if json_table is not None:
+            result = StructuredEvidence(
+                result.text,
+                result.source_format,
+                [json_table],
+                result.warnings,
+            )
         safe_cache_put(
             getattr(cache, "structured_documents", None),
             cache_key,
             result,
         )
         return result
+
+    if not raw.lstrip().startswith("<"):
+        markdown_rows = _markdown_rows(raw)
+        if markdown_rows:
+            result = StructuredEvidence(raw, "markdown", _make_tables((markdown_rows,), "markdown"))
+        else:
+            result = StructuredEvidence(raw, "text")
+        return _finish(result)
 
     if _looks_like_html(raw):
         parser = _HTMLTableParser()
@@ -640,12 +718,7 @@ def parse_structured_evidence(
         else:
             tables = _make_tables(parser.tables, "html")
             result = StructuredEvidence(" ".join(parser.visible_parts), "html", tables)
-        safe_cache_put(
-            getattr(cache, "structured_documents", None),
-            cache_key,
-            result,
-        )
-        return result
+        return _finish(result)
 
     try:
         root = ET.fromstring(raw)
@@ -656,12 +729,7 @@ def parse_structured_evidence(
         tables = _make_tables(raw_tables, "xml")
         visible_text = _clean_text(" ".join(root.itertext()))
         result = StructuredEvidence(visible_text, "xml", tables)
-    safe_cache_put(
-        getattr(cache, "structured_documents", None),
-        cache_key,
-        result,
-    )
-    return result
+    return _finish(result)
 
 
 __all__ = [
