@@ -157,17 +157,27 @@ NCP 볼륨 스냅샷은 용량이 커서 사용하지 않는다. 대신:
 
 ### 5. 서버 반영
 
-상세 순서는 `reindex_work/DEPLOY_RUNBOOK.md` 참고. 요약:
+상세·최신 순서와 재개/롤백 절차는 `reindex_work/DEPLOY_RUNBOOK.md` 를 본다.
+아래는 개요다.
 
-1. `/data/reindex/` 에 델타 + `chunk_index_updated.db` + `scripts/merge_reindex_delta.py`
-   + `affected_37_doc_ids.json` 전송
-2. 백업: `chunk_index.db` 복사, `chunk_index_chroma` zstd 압축본
-3. 스왑 32 GB 추가, 서빙 컨테이너 정지
-4. `dis164-agent:local` 이미지로 일회성 컨테이너에서 `merge_reindex_delta.py` 실행
-   (37건 낡은 벡터 삭제 → 델타 104,130개 upsert → 검증)
-5. `chunk_index.db` 를 `chunk_index_updated.db` 로 교체
-6. 컨테이너 기동, `/answer` 로 삼성전자 2024 영업이익 스모크 테스트
-7. 스왑 제거
+1. `/data/reindex/` 에 델타 + `chunk_index_updated.db` +
+   `merge_delta_into_production_v2.py`(=`scripts/merge_reindex_delta.py`) +
+   `affected_37_doc_ids.json` 전송
+2. 백업: `chunk_index.db` → `.bak.<날짜>` 복사, `chunk_index_chroma` →
+   `/data/chunk_index_chroma.bak.<날짜>.tar.zst` (zstd, 약 36 GB)
+3. 압축 백업을 노트북으로 옮기고 서버에서 삭제 → `/data` 확보
+4. 스왑 파일 추가 (프로덕션 `data_level0.bin` 이 23.5 GB, upsert 시 hnswlib
+   버퍼 재할당으로 메모리가 ~2배 튈 수 있음 → 스왑 56 GB 이상)
+5. 서빙 컨테이너 정지 (`docker compose -f /root/dis-164/... stop`)
+6. `dis164-agent:local` 이미지로 일회성 컨테이너에서 병합 스크립트 실행
+   (37건 낡은 벡터 삭제 → 델타 104,130개 upsert → 검증). **재실행 안전.**
+7. `chunk_index.db` sha256 대조 후 교체
+8. 컨테이너 기동, `/answer` 로 삼성전자 2024 영업이익 스모크 테스트
+9. 스왑 제거
+
+병합이 OOM/중단되면 스왑을 키우고 6단계 명령을 그대로 다시 실행한다
+(`delete` 는 멱등, `upsert` 는 덮어쓰기). `chunk_index_chroma` 세그먼트가
+손상되면 압축 백업으로 복구한다 (`RUNBOOK` 6-2).
 
 ## 진행 상태
 
@@ -175,20 +185,26 @@ NCP 볼륨 스냅샷은 용량이 커서 사용하지 않는다. 대신:
 - [x] 작업 디렉터리 구성, 37건 서브셋 코퍼스 staging, NFC 정규화
 - [x] 빌드 venv 준비 (langgraph, dart deps, sentence-transformers, CUDA torch)
 - [x] 델타 빌드 스크립트 작성 (`scripts/reindex_37_delta.py`)
-- [x] `chunk_index_updated.db` 무결성/행수 검증 (ok, 37건 합계 104,130)
+- [x] `chunk_index_updated.db` 무결성/행수 검증 (ok, 37건 합계 104,130,
+  sha256 `c6ae229130efa7f001979f16eb5526739b6df6f53a203e772b3bdcf7c0b2e104`)
 - [x] 델타 빌드 실행 (GPU fp16, 약 25분, 104,130 벡터)
 - [x] 델타 검증 (`verify_delta.py` → OK, 세 집합 일치)
 - [x] 배포 런북 작성 (`reindex_work/DEPLOY_RUNBOOK.md`), 병합 스크립트
   (`scripts/merge_reindex_delta.py`)
-- [ ] **서버 반영 및 스모크 테스트 (내일 아침, 사용자 SSH 필요)**
+- [x] 서버 전송: `/data/reindex/` 에 4개 파일, `chunk_index.db.bak.20260906`,
+  `chunk_index_chroma.bak.20260906.tar.zst` (38,771,953,911 B)
+- [ ] **진행 중:** 압축 백업 노트북으로 이동 → 스왑 추가 → 컨테이너 정지 →
+  병합 → 검증 → `chunk_index.db` 교체 → 스모크 테스트
 - [ ] 파서 수정 브랜치 PR
+  (`https://github.com/miraeasset-aifestival-2026-dart/dis-164/pull/new/fix/dart-xml-stray-angle-brackets`)
 
-## 로컬 산출물 (전송 대기)
+## 로컬 산출물
 
-`/home/user/contest/reindex_work/`
+`/home/user/contest/reindex_work/` (WSL ext4 `/dev/sdd`, `/mnt/c` 아님)
 - `chunk_index_updated.db` (21.7 GB) — 프로덕션 SQLite + 37건 교체본
 - `delta_build/chunk_index_chroma_delta/` (1.2 GB) — 37건 새 벡터
-- `affected_37_doc_ids.json`, `merge_delta_into_production_v2.py`(=repo의
-  `scripts/merge_reindex_delta.py`), `DEPLOY_RUNBOOK.md`, `verify_delta.py`
+- `affected_37_doc_ids.json`, `merge_delta_into_production_v2.py`,
+  `DEPLOY_RUNBOOK.md`, `verify_delta.py`
+- (이동 후) `chunk_index_chroma.bak.20260906.tar.zst` — 프로덕션 Chroma 롤백용
 
-_최종 업데이트: 2026-09-06_
+_최종 업데이트: 2026-09-06 (서버 반영 진행 중)_
