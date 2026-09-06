@@ -14,10 +14,10 @@
 
 | 항목 | 값 |
 |---|---|
-| 제출용 Endpoint | `http://49.50.142.35:8000/answer` |
-| Base URL | `http://49.50.142.35:8000` |
+| 제출용 Endpoint | `http://49.50.142.35/answer` |
+| Base URL | `http://49.50.142.35` |
 | 프로토콜 | HTTP/1.1 (TLS 없음) |
-| 포트 | `8000` (NCP ACG 인바운드 `TCP 8000` 허용) |
+| 포트 | `80` (컨테이너 내부 8000으로 전달, NCP ACG 인바운드 `TCP 80` 허용) |
 | 서버 | NCP, `root@49.50.142.35`, Docker Compose 프로젝트 `/root/dis-164`, 이미지 `dis164-agent:local` |
 | 프로세스 | `uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1` |
 
@@ -60,7 +60,7 @@
 ### 3-2. 요청 예시 — cURL
 
 ```bash
-curl -G "http://49.50.142.35:8000/answer" \
+curl -G "http://49.50.142.35/answer" \
   --data-urlencode "question_id=Q-001" \
   --data-urlencode "question=삼성전자의 2024년 연결기준 영업이익은 얼마인가?"
 ```
@@ -71,7 +71,7 @@ curl -G "http://49.50.142.35:8000/answer" \
 import requests
 
 resp = requests.get(
-    "http://49.50.142.35:8000/answer",
+    "http://49.50.142.35/answer",
     params={
         "question_id": "Q-001",
         "question": "삼성전자의 2024년 연결기준 영업이익은 얼마인가?",
@@ -394,7 +394,7 @@ FastAPI 프로세스 liveness만 확인한다. corpus나 DB가 마운트되지 �
 docker compose exec app python scripts/smoke_api.py --base-url http://127.0.0.1:8000
 
 # 외부에서
-curl -s "http://49.50.142.35:8000/answer?question_id=SMOKE-1&question=삼성전자의 2024년 연결기준 영업이익은 얼마인가?" \
+curl -s "http://49.50.142.35/answer?question_id=SMOKE-1&question=삼성전자의 2024년 연결기준 영업이익은 얼마인가?" \
   | python3 -m json.tool
 ```
 

@@ -12,14 +12,15 @@
 
 ```
 인터넷
-  │  (ACG 인바운드: TCP 8000 허용)
+  │  (ACG 인바운드: TCP 80 허용; TCP 8000은 진단용으로 선택)
   ▼
 NCP Server (VM, RAM 32GB+ 권장)
   ├─ Docker
   │   └─ 컨테이너  dis164-agent:local
   │        - FastAPI + LangGraph (uvicorn, worker 1)
   │        - e5 임베딩 ONNX 가중치는 이미지에 내장 (런타임 다운로드 없음)
-  │        - :8000  →  /health  /ready  /answer
+  │        - :80  →  /health  /ready  /answer (공개 Endpoint)
+  │        - :8000 →  /health  /ready  /answer (진단용)
   └─ Block Storage 볼륨 (150GB+)  →  컨테이너에 /app/data/local_db (read-only) 로 마운트
         ├─ chunk_index.db            (~20GB, SQLite 메타)
         └─ chunk_index_chroma/       (~95GB, Chroma persist + HNSW)
@@ -55,7 +56,8 @@ NCP Server (VM, RAM 32GB+ 권장)
 - 공인 IP: 할당
 - **ACG(Access Control Group) 인바운드 규칙 추가**
   - `TCP 22` (SSH) — 내 IP만
-  - `TCP 8000` — 평가 담당자가 GET 요청을 하는 포트. 주최 측이 특정 IP 대역만 쓴다면 그 대역으로 제한, 아니면 `0.0.0.0/0`
+  - `TCP 80` — 평가 담당자가 GET 요청을 하는 공개 포트. 주최 측이 특정 IP 대역만 쓴다면 그 대역으로 제한, 아니면 `0.0.0.0/0`
+  - `TCP 8000` — 진단용(필요할 때만 외부 허용)
 
 서버가 뜨면 SSH 접속:
 
@@ -209,7 +211,7 @@ docker compose logs -f
 
 `docker-compose.yml` 이 하는 일:
 
-- 이미지 `dis164-agent:local` 실행, 포트 `8000:8000`
+- 이미지 `dis164-agent:local` 실행, 포트 `80:8000`(공개) 및 `8000:8000`(진단용)
 - `/data/local_db` → 컨테이너 `/app/data/local_db` **읽기 전용** 마운트
 - `RETRIEVER_MODE=local`, `RETRIEVER_EMBEDDING=e5`, `RETRIEVER_CHROMA_COLLECTION=chunk_vectors`, `RETRIEVER_SQL_TABLE=chunk_index` 주입
 - `.env` 의 `CLOVA_*` 를 그대로 전달
@@ -243,10 +245,10 @@ docker compose exec app python scripts/smoke_api.py --base-url http://127.0.0.1:
 외부에서도 되는지(평가자 시점):
 
 ```bash
-curl -s "http://<서버_공인_IP>:8000/answer?question_id=SMOKE-2&question=..." | python3 -m json.tool
+curl -s "http://<서버_공인_IP>/answer?question_id=SMOKE-2&question=..." | python3 -m json.tool
 ```
 
-여기까지 되면 **제출용 Endpoint URL = `http://<서버_공인_IP>:8000/answer`** 입니다. 이 URL을 API 명세서에 적습니다.
+여기까지 되면 **제출용 Endpoint URL = `http://<서버_공인_IP>/answer`** 입니다. 이 URL을 API 명세서에 적습니다.
 
 ---
 
@@ -278,7 +280,7 @@ curl -s "http://<서버_공인_IP>:8000/answer?question_id=SMOKE-2&question=..."
 | 검색 결과가 엉뚱함 / 근거 없음 | 임베딩 모델 불일치. `RETRIEVER_EMBEDDING=e5` 인지, 이미지가 `intfloat/multilingual-e5-large`(non-instruct)를 캐시했는지 확인 |
 | 컨테이너가 OOM 으로 죽음 | RAM 부족. 서버 타입을 RAM 큰 것으로 (32GB→64GB). worker는 1 유지 |
 | 첫 요청이 아주 느림 | HNSW/모델 예열. 기동 후 스모크 질의 1~2회로 예열한 뒤 평가 트래픽을 받게 함 |
-| 외부에서 접속 안 됨 | NCP **ACG 인바운드에 TCP 8000** 규칙이 있는지, 컨테이너가 `0.0.0.0:8000` 바인딩인지(`docker compose ps` 포트 표시) 확인 |
+| 외부에서 접속 안 됨 | NCP **ACG 인바운드에 TCP 80** 규칙이 있는지, Compose에 `80:8000` 매핑이 있는지(`docker compose ps` 포트 표시) 확인 |
 | `docker compose build` 가 모델 다운로드에서 멈춤 | 네트워크. `--build-arg SKIP_MODEL_DOWNLOAD=1` 로 빌드 후, 모델을 수동으로 볼륨에 넣고 `FASTEMBED_CACHE_DIR` 지정하는 방법도 있음(아래 참고) |
 
 ### 모델을 이미지에 안 굽고 볼륨으로 주는 대안
@@ -294,7 +296,7 @@ python -c "from fastembed import TextEmbedding; TextEmbedding('intfloat/multilin
 
 ## 10. 최종 체크리스트
 
-- [ ] NCP 서버 생성, 공인 IP, ACG 인바운드 `TCP 8000`
+- [ ] NCP 서버 생성, 공인 IP, ACG 인바운드 `TCP 80` (진단용 TCP 8000은 선택)
 - [ ] Block Storage 150GB `/data` 마운트, `/etc/fstab` 등록
 - [ ] `/data/local_db/chunk_index.db` + `chunk_index_chroma/` 배치 + `du -sh` / `PRAGMA quick_check` 검증
 - [ ] 저장소 클론, `.env` 에 `CLOVA_API_KEY` 등 입력 (커밋 안 함)
@@ -302,5 +304,5 @@ python -c "from fastembed import TextEmbedding; TextEmbedding('intfloat/multilin
 - [ ] `/health` `/ready` `/answer` 스모크 (로컬 + 외부 IP)
 - [ ] 예열 질의 1~2회
 - [ ] `restart: unless-stopped` + `systemctl enable docker` 확인
-- [ ] Endpoint URL `http://<IP>:8000/answer` 를 API 명세서에 기재
+- [ ] Endpoint URL `http://<IP>/answer` 를 API 명세서에 기재
 - [ ] 09.06 이후 재배포 금지, 평가 기간 모니터링
