@@ -464,6 +464,22 @@ class ReasonerNodeTests(unittest.TestCase):
                 },
             },
             {
+                "id": "million-won-table-2025",
+                "source": "annual.md",
+                "text": (
+                    "| 구분 | 2025년 |\n"
+                    "| --- | --- |\n"
+                    "| 매출액 | 76,710,079 |\n"
+                    "(단위: 백만원)"
+                ),
+                "metadata": {
+                    "corp_name": "삼성전자",
+                    "base_year": 2025,
+                    "base_month": 12,
+                    "basis": "연결",
+                },
+            },
+            {
                 "id": "total-revenue-2025",
                 "source": "annual.md",
                 "text": "2025년 당사의 매출은 333조 6,059억원으로 전년 동기 대비 10.9% 증가하였으며...",
@@ -493,6 +509,7 @@ class ReasonerNodeTests(unittest.TestCase):
         self.assertIn("258조 9,355억원", conclusion)
         self.assertIn("300조 8,709억원", conclusion)
         self.assertIn("333조 6,059억원", conclusion)
+        self.assertNotIn("76,710,079", conclusion)
         self.assertNotIn("억원원", answer)
 
     def test_multi_period_trend_uses_first_and_last_period_and_keeps_series(self):

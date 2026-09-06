@@ -13,6 +13,8 @@ from reasoner.grounding import matching_facts, period_matches
 
 _AMOUNT_METRICS = frozenset({"revenue", "operating_profit", "net_income"})
 _AMOUNT_UNITS = frozenset({"백만원", "원", "천원", "억원", "조원", "조"})
+_PLAN_TABLE_CUES = ("잔여 계획기간", "계획기간", "합계 구간", "당기 이행연도")
+_NARRATIVE_TOTAL_CUES = ("당사의 매출", "매출액은")
 
 
 def numeric_facts(facts: Iterable[ReasonerFact], *, metric: str | None = None) -> list[ReasonerFact]:
@@ -43,21 +45,59 @@ def _matches_period(fact: ReasonerFact, requested: str) -> bool:
     return period_matches(fact.period, requested)
 
 
+def _amount_selection_rank(
+    *,
+    unit: str,
+    label: str,
+    value: float,
+    text: str,
+    confidence: float = 0.0,
+) -> tuple:
+    unit = str(unit or "")
+    label = str(label or "")
+    text = str(text or "")
+    not_percent = 0 if unit == "%" else 1
+    plan_table = any(cue in text for cue in _PLAN_TABLE_CUES)
+    narrative_total = any(cue in text for cue in _NARRATIVE_TOTAL_CUES)
+    jo_scale = unit in {"조원", "조", "억원"} or "조" in text
+    label_match = 1 if label in {"매출액", "매출"} else 0
+    amount_unit = 1 if unit in _AMOUNT_UNITS else 0
+    million_table = unit == "백만원" and "조" not in text
+    return (
+        not_percent,
+        int(not plan_table),
+        int(narrative_total),
+        int(jo_scale),
+        label_match,
+        amount_unit,
+        int(not million_table),
+        abs(value),
+        float(confidence),
+    )
+
+
 def _pick_best(facts: Iterable[ReasonerFact]) -> ReasonerFact | None:
     candidates = list(facts)
     if not candidates:
         return None
 
     def rank(fact: ReasonerFact) -> tuple:
-        unit = str(fact.unit or "")
         try:
             magnitude = abs(float(fact.normalized_value or fact.value))
         except (TypeError, ValueError):
             magnitude = 0.0
-        amount_unit = 1 if unit in _AMOUNT_UNITS else 0
-        not_percent = 0 if unit == "%" else 1
-        label_match = 1 if fact.label in {"매출액", "매출"} else 0
-        return (not_percent, label_match, amount_unit, fact.confidence, magnitude, str(fact.document_id))
+        text = " ".join(
+            str(part)
+            for part in (fact.label, fact.display_value, fact.evidence, fact.unit)
+            if part
+        )
+        return _amount_selection_rank(
+            unit=str(fact.unit or ""),
+            label=str(fact.label or ""),
+            value=magnitude,
+            text=text,
+            confidence=float(fact.confidence or 0.0),
+        )
 
     return max(candidates, key=rank)
 
@@ -382,6 +422,7 @@ def _record_from_fact(fact: ReasonerFact) -> dict[str, Any]:
         "label": fact.label,
         "basis": fact.basis,
         "currency": fact.currency,
+        "evidence": fact.evidence,
         "evidence_ids": [fact.document_id],
         "input": {
             "value": fact.display_value or fact.value,
@@ -431,13 +472,24 @@ def _pick_best_record(records: list[dict[str, Any]]) -> dict[str, Any] | None:
         return None
 
     def rank(record: Mapping[str, Any]) -> tuple:
-        unit = str(record.get("unit") or "")
-        value = abs(_record_value(record) or 0.0)
-        amount_unit = 1 if unit in _AMOUNT_UNITS else 0
-        not_percent = 0 if unit == "%" else 1
-        label = str(record.get("label") or "")
-        label_match = 1 if label in {"매출액", "매출"} else 0
-        return (not_percent, label_match, amount_unit, value)
+        payload = record.get("input") if isinstance(record.get("input"), dict) else {}
+        text = " ".join(
+            str(part)
+            for part in (
+                record.get("label"),
+                payload.get("value"),
+                record.get("evidence"),
+                record.get("unit"),
+                payload.get("unit"),
+            )
+            if part
+        )
+        return _amount_selection_rank(
+            unit=str(record.get("unit") or payload.get("unit") or ""),
+            label=str(record.get("label") or ""),
+            value=abs(_record_value(record) or 0.0),
+            text=text,
+        )
 
     return max(records, key=rank)
 

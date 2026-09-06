@@ -182,6 +182,78 @@ class CalculationComparisonTests(unittest.TestCase):
         input_values = [str(item.get("value", "")).replace(",", "") for item in calculation["inputs"]]
         self.assertFalse(any("75092" in value or value == "100" or value == "16" for value in input_values))
 
+    def test_analysis_plan_prefers_jo_narrative_total_over_million_won_table(self):
+        def amount(**kwargs: object) -> ReasonerFact:
+            unit = str(kwargs["unit"])
+            value = float(kwargs["value"])
+            multiplier = {"조원": 1_000_000_000_000, "백만원": 1_000_000}[unit]
+            return ReasonerFact(
+                metric="revenue",
+                label=str(kwargs["label"]),
+                value=value,
+                raw_value=value,
+                unit=unit,
+                normalized_value=value * multiplier,
+                display_value=str(kwargs["display"]) if kwargs.get("display") is not None else None,
+                period=str(kwargs["period"]),
+                basis="연결",
+                company="삼성전자",
+                document_id=str(kwargs["document_id"]),
+                source="",
+                evidence=str(kwargs["evidence"]),
+                confidence=0.9,
+                currency="KRW",
+                aggregation_scope=str(kwargs["scope"]),
+            )
+
+        intent = adapt_interpreter_intent({
+            "raw_question": "삼성전자의 최근 3년 매출액 추이를 알려줘",
+            "normalized_question": "삼성전자의 최근 3년 매출액 추이를 알려줘",
+            "route": "ok",
+            "intent": "calc",
+            "question_type": "calculation",
+            "calculation": {"operation": "percentage_change", "metric": "revenue"},
+            "metric": "revenue",
+            "basis": "연결",
+            "companies": ["삼성전자"],
+            "time": {"years": [2023, 2024, 2025], "base_months": [12]},
+        })
+        plan = build_analysis_plan(intent)
+        self.assertIsNotNone(plan)
+        facts = [
+            amount(
+                document_id="total-2023", period="2023-12", value=258.9355, unit="조원",
+                scope="unknown", label="매출", display="258조 9,355억원",
+                evidence="2023년 당사의 매출은 258조 9,355억원으로",
+            ),
+            amount(
+                document_id="total-2024", period="2024-12", value=300.8709, unit="조원",
+                scope="unknown", label="매출", display="300조 8,709억원",
+                evidence="2024년 당사의 매출은 300조 8,709억원으로",
+            ),
+            amount(
+                document_id="table-2025", period="2025-12", value=76_710_079, unit="백만원",
+                scope="total", label="매출액", display="76,710,079",
+                evidence="| 매출액 | 76,710,079 |",
+            ),
+            amount(
+                document_id="total-2025", period="2025-12", value=333.6059, unit="조원",
+                scope="unknown", label="매출", display="333조 6,059억원",
+                evidence="2025년 당사의 매출은 333조 6,059억원으로",
+            ),
+        ]
+        result = execute_analysis_plan(plan, facts, intent=intent)
+        self.assertTrue(result["success"])
+        calculation = result["calculations"][0]
+        self.assertEqual(
+            [item["document_id"] for item in calculation["series"]],
+            ["total-2023", "total-2024", "total-2025"],
+        )
+        series_by_period = {item["period"]: item for item in calculation["series"]}
+        self.assertIn("333조 6,059억원", str(series_by_period["2025-12"]["value"]))
+        self.assertNotIn("76710079", str(series_by_period["2025-12"]["value"]).replace(",", ""))
+        self.assertEqual(calculation["evidence_ids"][-1], "total-2025")
+
     def test_comparison_ranks_by_value_not_retrieval_score(self):
         intent, facts = self._facts(
             "기업A와 기업B 중 매출액이 큰 기업은?", "revenue",
