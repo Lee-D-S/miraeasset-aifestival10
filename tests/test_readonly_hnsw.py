@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from integration.readiness import validate_embedding_dimension
-from stage2.backends import ReadOnlyHnswVectorStore
+from retriever.backends import ReadOnlyHnswVectorStore
 
 
 class _FakeIndex:

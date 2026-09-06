@@ -1,4 +1,4 @@
-"""Project-wide path and Stage2 backend configuration.
+"""Project-wide path and Retriever backend configuration.
 
 Every module that opens a database, a vector store, or a corpus reads its
 location from here instead of recomputing
@@ -70,7 +70,7 @@ SQLITE_TABLE = os.getenv("STAGE2_SQL_TABLE", "").strip() or "chunk_index"
 DEFAULT_STAGE2_EMBEDDING = "e5"
 EMBEDDING = DEFAULT_STAGE2_EMBEDDING
 
-# --- Stage2 mode -------------------------------------------------------------
+# --- Retriever mode -------------------------------------------------------------
 VALID_STAGE2_MODES: tuple[str, ...] = ("local",)
 # The supplied SQLite/Chroma index and the active query path share this model.
 # Keep the environment variable for deployment compatibility, but do not allow
@@ -80,8 +80,8 @@ VALID_STAGE2_SQL_TABLES: tuple[str, ...] = ("chunk_index", "chunks")
 DEFAULT_STAGE2_MODE = "local"
 
 
-def resolve_stage2_mode() -> str:
-    """Return the configured Stage2 mode.
+def resolve_retriever_mode() -> str:
+    """Return the configured Retriever mode.
 
     ``STAGE2_MODE`` is retained as a compatibility setting.  Only ``local``
     is supported, and leaving it unset selects the supplied local read-only
@@ -104,10 +104,10 @@ def allow_partial_index() -> bool:
 
 
 def corpus_dir() -> Path | None:
-    """Explicit Stage1 corpus directory, or ``None`` for auto-discovery.
+    """Explicit Interpreter corpus directory, or ``None`` for auto-discovery.
 
     A relative ``CORPUS_DIR`` is anchored to the project root; unset leaves
-    Stage1's own filesystem search in charge.
+    Interpreter's own filesystem search in charge.
     """
 
     raw = os.getenv("CORPUS_DIR", "").strip()
@@ -115,8 +115,8 @@ def corpus_dir() -> Path | None:
 
 
 @dataclass(frozen=True)
-class Stage2Settings:
-    """Resolved Stage2 configuration for one ``build_pipeline`` call."""
+class RetrieverSettings:
+    """Resolved Retriever configuration for one ``build_pipeline`` call."""
 
     mode: str
     sqlite_path: Path
@@ -131,11 +131,11 @@ class Stage2Settings:
         return f"sqlite:///{self.sqlite_path}"
 
     @classmethod
-    def from_env(cls) -> "Stage2Settings":
+    def from_env(cls) -> "RetrieverSettings":
         """Snapshot the current environment into an immutable settings object."""
 
         return cls(
-            mode=resolve_stage2_mode(),
+            mode=resolve_retriever_mode(),
             sqlite_path=resolve_path(os.getenv("STAGE2_INDEX_PATH"), SQLITE_PATH),
             chroma_path=resolve_path(os.getenv("STAGE2_CHROMA_PATH"), CHROMA_PATH),
             chroma_collection=(
@@ -162,9 +162,9 @@ __all__ = [
     "VALID_STAGE2_SQL_TABLES",
     "DEFAULT_STAGE2_MODE",
     "DEFAULT_STAGE2_EMBEDDING",
-    "Stage2Settings",
+    "RetrieverSettings",
     "resolve_path",
-    "resolve_stage2_mode",
+    "resolve_retriever_mode",
     "allow_partial_index",
     "corpus_dir",
 ]

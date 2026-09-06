@@ -1,9 +1,9 @@
 """Build the ``chunk_index`` SQLite + Chroma store from a raw DART corpus.
 
 The local equivalent of the Colab notebook cell: parse + chunk disclosures
-with :mod:`stage2.ingestion.dart`, then persist through
-:mod:`stage2.ingestion.writer` into the local SQLite and Chroma index. Serving
-opens the result read-only (:class:`stage2.local_store.LocalHybridRetriever`);
+with :mod:`retriever.ingestion.dart`, then persist through
+:mod:`retriever.ingestion.writer` into the local SQLite and Chroma index. Serving
+opens the result read-only (:class:`retriever.local_store.LocalHybridRetriever`);
 this script is the only writer.
 
 Examples
@@ -23,15 +23,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import config
-from stage2.backends import local_chroma, local_sqlite_engine
-from stage2.ingestion import build_dart_chunk_rows
-from stage2.ingestion.writer import CHUNK_TABLE, write_rows
-from stage2.local_store import LocalHybridRetriever
+from retriever.backends import local_chroma, local_sqlite_engine
+from retriever.ingestion import build_dart_chunk_rows
+from retriever.ingestion.writer import CHUNK_TABLE, write_rows
+from retriever.local_store import LocalHybridRetriever
 
 
 def _embedding_function(name: str):
     if name == "e5":
-        from stage2.embedding import E5Embeddings
+        from retriever.embedding import E5Embeddings
 
         return E5Embeddings()
     raise SystemExit(f"unknown --embedding {name!r}; choose e5")

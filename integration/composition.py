@@ -1,4 +1,4 @@
-"""Runtime factory for the canonical Stage1→Stage4 graph."""
+"""Runtime factory for the canonical Interpreter→Validator graph."""
 
 from __future__ import annotations
 
@@ -20,20 +20,20 @@ from integration.readiness import (
     validate_sqlite_path,
 )
 from integration.service import StagePipeline
-from stage1 import build_stage1_node
-from stage2 import (
+from interpreter import build_interpreter_node
+from retriever import (
     E5Embeddings,
     LocalHybridRetriever,
     RetrievalConfig,
-    build_stage2_node,
+    build_retriever_node,
     local_chroma,
     readonly_sqlite_engine,
 )
-from stage3 import build_stage3_node
-from stage3.deterministic.calculation_planner import build_state_analysis_plan
-from stage4 import build_stage4_node
-from stage4.node import build_answer_regeneration_node
-from stage3.agents.answer import AnswerWriter
+from reasoner import build_reasoner_node
+from reasoner.deterministic.calculation_planner import build_state_analysis_plan
+from validator import build_validator_node
+from validator.node import build_answer_regeneration_node
+from reasoner.agents.answer import AnswerWriter
 
 
 def _env_int(name: str, default: int) -> int:
@@ -66,7 +66,7 @@ def _shared_clova_rate_limiter() -> ClovaRateLimiter:
 
 
 def _embedding_function(
-    settings: config.Stage2Settings,
+    settings: config.RetrieverSettings,
     *,
     cache=None,
     index_signature: str = "",
@@ -84,19 +84,19 @@ def _embedding_function(
             kwargs = {"cache": cache, "index_signature": index_signature}
         return E5Embeddings(**kwargs)
     raise RuntimeError(
-        "unsupported Stage2 embedding: "
+        "unsupported Retriever embedding: "
         f"{embedding}; choose one of {', '.join(config.VALID_STAGE2_EMBEDDINGS)}"
     )
 
 
 def _build_retriever(
-    settings: config.Stage2Settings,
+    settings: config.RetrieverSettings,
     *,
     corpus: Path | None,
     cache=None,
     index_signature: str = "",
 ):
-    """Open the read-only local Stage2 retriever.
+    """Open the read-only local Retriever retriever.
 
     Every path and connection string comes from :mod:`config`; nothing here
     recomputes a project-relative path or reads the environment directly.
@@ -107,7 +107,7 @@ def _build_retriever(
     # creating or writing index files.
     if settings.mode != "local":
         raise RuntimeError(
-            f"unsupported Stage2 mode: {settings.mode}; "
+            f"unsupported Retriever mode: {settings.mode}; "
             f"choose one of {', '.join(config.VALID_STAGE2_MODES)}"
         )
 
@@ -144,7 +144,7 @@ def _build_retriever(
 def build_pipeline() -> StagePipeline:
     """Compose the executable pipeline from environment-selected adapters."""
 
-    settings = config.Stage2Settings.from_env()
+    settings = config.RetrieverSettings.from_env()
     raise_if_invalid(validate_environment(settings.mode))
 
     corpus = config.corpus_dir()
@@ -152,7 +152,7 @@ def build_pipeline() -> StagePipeline:
         raise_if_invalid(validate_corpus_directory(corpus))
 
     index_signature = build_index_signature(
-        stage2_mode=settings.mode,
+        retriever_mode=settings.mode,
         sqlite_path=settings.sqlite_path,
         chroma_path=settings.chroma_path,
         backend_identity=(
@@ -162,13 +162,13 @@ def build_pipeline() -> StagePipeline:
     cache = CacheRegistry.from_env(index_signature=index_signature)
 
     live_llm = _env_bool("CLOVA_LLM_ENABLED")
-    stage1_use_llm = _env_bool("STAGE1_USE_LLM")
+    interpreter_use_llm = _env_bool("STAGE1_USE_LLM")
     query_planner_llm_enabled = _env_bool("QUERY_PLANNER_LLM_ENABLED")
     reranker_enabled = _env_bool("CLOVA_RERANKER_ENABLED")
     clova_rate_limiter = _shared_clova_rate_limiter()
     chat_client = (
         ClovaChatClient(rate_limiter=clova_rate_limiter)
-        if live_llm or stage1_use_llm or query_planner_llm_enabled
+        if live_llm or interpreter_use_llm or query_planner_llm_enabled
         else None
     )
     reranker_client = (
@@ -177,10 +177,10 @@ def build_pipeline() -> StagePipeline:
         else None
     )
 
-    stage1 = build_stage1_node(
+    interpreter = build_interpreter_node(
         corpus_dir=corpus,
-        llm_client=chat_client if stage1_use_llm else None,
-        use_llm=stage1_use_llm,
+        llm_client=chat_client if interpreter_use_llm else None,
+        use_llm=interpreter_use_llm,
     )
 
     retriever = _build_retriever(
@@ -215,21 +215,21 @@ def build_pipeline() -> StagePipeline:
     )
 
     return StagePipeline(StageNodes(
-        stage1=stage1,
-        # Keep all metadata-filtered chunks available so Stage3 can recover
+        interpreter=interpreter,
+        # Keep all metadata-filtered chunks available so Reasoner can recover
         # aggregate rows that rank below subsidiary or segment rows in the
         # hybrid score. Retrieval prompt compaction still bounds what is sent
         # to external LLMs.
-        stage2=build_stage2_node(
+        retriever=build_retriever_node(
             retriever=retriever,
             config=reranker_config,
             cache=cache,
         ),
-        stage3=build_stage3_node(
+        reasoner=build_reasoner_node(
             answer_writer=AnswerWriter(chat_client if live_llm else None),
             cache=cache,
         ),
-        stage4=build_stage4_node(
+        validator=build_validator_node(
             validator_client=chat_client if live_llm else None
         ),
         calculation_planner=calculation_planner,

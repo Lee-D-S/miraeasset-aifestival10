@@ -1,4 +1,4 @@
-"""Rebuild the Stage2 index delta for a small set of doc_ids.
+"""Rebuild the Retriever index delta for a small set of doc_ids.
 
 Used to fix the 37 사업보고서 whose 재무제표 챕터 was lost by the pre-fix DART
 XML parser (see ``docs/reindex-37docs.md``). Produces a SQLite + Chroma delta
@@ -66,7 +66,7 @@ def main() -> int:
         sqlite_path.unlink()
 
     # 1) parse + chunk -----------------------------------------------------
-    from stage2.ingestion import build_dart_chunk_rows
+    from retriever.ingestion import build_dart_chunk_rows
 
     print(f"parsing {len(doc_ids)} documents from {args.corpus_dir} ...", flush=True)
     t0 = time.time()
@@ -84,8 +84,8 @@ def main() -> int:
         raise SystemExit("no chunks for: " + ", ".join(missing))
 
     # 2) write SQL rows --------------------------------------------------
-    from stage2.backends import local_sqlite_engine
-    from stage2.ingestion.writer import _chroma_record, write_rows
+    from retriever.backends import local_sqlite_engine
+    from retriever.ingestion.writer import _chroma_record, write_rows
 
     engine = local_sqlite_engine(sqlite_path)
     write_rows(engine, rows)  # no vectorstore: SQL only

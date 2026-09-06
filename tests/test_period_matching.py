@@ -1,4 +1,4 @@
-from stage3.grounding import period_matches
+from reasoner.grounding import period_matches
 
 
 def test_period_matches_korean_quarter_label_to_normalized_month() -> None:

@@ -1,4 +1,4 @@
-"""Hit /answer for the Stage3 E2E questions that failed the last local round."""
+"""Hit /answer for the Reasoner E2E questions that failed the last local round."""
 
 from __future__ import annotations
 

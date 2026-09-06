@@ -39,7 +39,7 @@ def _redact_trace(value: Any, *, depth: int = 0) -> Any:
 
 
 def _retrieved_context(state: dict[str, Any]) -> str:
-    result = state.get("stage3_result") or {}
+    result = state.get("reasoner_result") or {}
     citations = result.get("citations", [])
     if not isinstance(citations, list):
         return ""
@@ -53,7 +53,7 @@ def _retrieved_context(state: dict[str, Any]) -> str:
 
 def _think_trace(state: dict[str, Any]) -> str:
     trace: dict[str, Any] = {}
-    for key in ("intent", "stage2_result", "stage3_result", "stage4_result"):
+    for key in ("intent", "retriever_result", "reasoner_result", "validator_result"):
         value = state.get(key)
         if isinstance(value, dict):
             trace[key] = {
@@ -73,7 +73,7 @@ def _think_trace(state: dict[str, Any]) -> str:
                 ]
     intent = state.get("intent")
     if isinstance(intent, dict) and intent.get("think_trace"):
-        trace["stage1_think_trace"] = str(intent["think_trace"])
+        trace["interpreter_think_trace"] = str(intent["think_trace"])
     plan = state.get("analysis_plan")
     if isinstance(plan, dict):
         trace["analysis_plan"] = {

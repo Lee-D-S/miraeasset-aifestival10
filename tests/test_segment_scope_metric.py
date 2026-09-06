@@ -2,12 +2,12 @@ from types import SimpleNamespace
 
 import json
 
-from stage1.index.corpus_index import squash
-from stage1.pipeline.slot_extractor import SlotResult, _extract_metric
+from interpreter.index.corpus_index import squash
+from interpreter.pipeline.slot_extractor import SlotResult, _extract_metric
 
 
 def test_scoped_metric_overrides_business_overview_label():
-    with open("stage1/config/metric_router.json", encoding="utf-8") as handle:
+    with open("interpreter/config/metric_router.json", encoding="utf-8") as handle:
         config = SimpleNamespace(metrics=json.load(handle))
     index = SimpleNamespace(config=config)
 

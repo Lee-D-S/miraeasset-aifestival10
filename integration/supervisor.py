@@ -9,21 +9,21 @@ from typing import Any, Literal, Protocol
 
 
 SupervisorAction = Literal[
-    "run_stage2",
+    "run_retriever",
     "retry_search",
     "run_calculation_planner",
-    "run_stage3",
-    "run_stage4",
+    "run_reasoner",
+    "run_validator",
     "request_clarification",
     "unanswerable",
     "fail_closed",
     "regenerate_answer",
     "finish",
 ]
-SupervisorPhase = Literal["after_stage1", "after_stage2", "after_stage3", "after_stage4"]
+SupervisorPhase = Literal["after_interpreter", "after_retriever", "after_reasoner", "after_validator"]
 ALLOWED_ACTIONS = frozenset({
-    "run_stage2", "retry_search", "run_calculation_planner", "run_stage3",
-    "run_stage4", "request_clarification", "unanswerable", "fail_closed",
+    "run_retriever", "retry_search", "run_calculation_planner", "run_reasoner",
+    "run_validator", "request_clarification", "unanswerable", "fail_closed",
     "regenerate_answer", "finish",
 })
 
@@ -110,45 +110,45 @@ class DeterministicSupervisor:
 
     def decide(self, *, phase: SupervisorPhase, state: Mapping[str, Any]) -> SupervisorDecision:
         route = str(state.get("route", ""))
-        if phase == "after_stage1":
+        if phase == "after_interpreter":
             if route == "unsafe":
-                return SupervisorDecision("fail_closed", "Stage1이 안전하지 않은 질의로 분류했습니다.")
+                return SupervisorDecision("fail_closed", "Interpreter가 안전하지 않은 질의로 분류했습니다.")
             if route == "need_clarify":
-                return SupervisorDecision("request_clarification", "Stage1에 필수 질의 슬롯이 없습니다.")
+                return SupervisorDecision("request_clarification", "Interpreter에 필수 질의 슬롯이 없습니다.")
             if route == "unanswerable":
-                return SupervisorDecision("unanswerable", "Stage1에서 처리 불가로 분류했습니다.")
+                return SupervisorDecision("unanswerable", "Interpreter에서 처리 불가로 분류했습니다.")
             if _analysis_plan_required(state):
                 attempts = int(state.get("planner_attempts", 0) or 0)
                 if attempts >= self.max_planner_retries:
                     return SupervisorDecision("fail_closed", "계산 계획을 제한된 횟수 안에 만들지 못했습니다.")
                 return SupervisorDecision("run_calculation_planner", "계산 계획이 없습니다.")
-            return SupervisorDecision("run_stage2", "정상 검색을 시작합니다.")
+            return SupervisorDecision("run_retriever", "정상 검색을 시작합니다.")
 
-        if phase == "after_stage2":
-            result = state.get("stage2_result")
+        if phase == "after_retriever":
+            result = state.get("retriever_result")
             result = result if isinstance(result, Mapping) else {}
             if result.get("cited_documents"):
-                return SupervisorDecision("run_stage3", "인용 가능한 근거가 있습니다.")
+                return SupervisorDecision("run_reasoner", "인용 가능한 근거가 있습니다.")
             if int(state.get("retry_num", 0) or 0) < self.max_search_retries:
                 return SupervisorDecision("retry_search", "검색 결과가 부족합니다.")
             return SupervisorDecision("unanswerable", "제한된 검색 재시도 후에도 문서가 없습니다.")
 
-        if phase == "after_stage3":
-            result = state.get("stage3_result")
+        if phase == "after_reasoner":
+            result = state.get("reasoner_result")
             result = result if isinstance(result, Mapping) else {}
             if _analysis_plan_required(state) and int(state.get("planner_attempts", 0) or 0) < self.max_planner_retries:
-                return SupervisorDecision("run_calculation_planner", "Stage3에 계산 계획이 필요합니다.")
+                return SupervisorDecision("run_calculation_planner", "Reasoner에 계산 계획이 필요합니다.")
             if result.get("status") in {"success", "partial_success"}:
-                return SupervisorDecision("run_stage4", "분석 결과가 생성되었습니다.")
+                return SupervisorDecision("run_validator", "분석 결과가 생성되었습니다.")
             return SupervisorDecision("fail_closed", "분석 결과를 근거로 검증할 수 없습니다.")
 
-        result = state.get("stage4_result")
+        result = state.get("validator_result")
         result = result if isinstance(result, Mapping) else {}
         if result.get("status") == "validation_failed":
             if self.allow_regeneration and int(state.get("regeneration_attempts", 0) or 0) < 1:
                 return SupervisorDecision("regenerate_answer", "검증 실패를 제한된 1회 재생성으로 보완합니다.")
             return SupervisorDecision("fail_closed", "재생성 모델이 없거나 재생성 한도를 초과했습니다.")
-        return SupervisorDecision("finish", "Stage4 처리가 완료되었습니다.")
+        return SupervisorDecision("finish", "Validator 처리가 완료되었습니다.")
 
 
 def normalize_decision(value: SupervisorDecision | Mapping[str, Any]) -> SupervisorDecision:
@@ -177,8 +177,8 @@ def build_supervisor_node(
     )
 
     def supervisor_node(state: Mapping[str, Any]) -> dict[str, Any]:
-        phase = str(state.get("supervisor_phase", "after_stage1"))
-        if phase not in {"after_stage1", "after_stage2", "after_stage3", "after_stage4"}:
+        phase = str(state.get("supervisor_phase", "after_interpreter"))
+        if phase not in {"after_interpreter", "after_retriever", "after_reasoner", "after_validator"}:
             decision = SupervisorDecision("fail_closed", "알 수 없는 Supervisor phase입니다.")
         elif int(state.get("supervisor_steps", 0) or 0) >= max_supervisor_steps:
             decision = SupervisorDecision("fail_closed", "Supervisor 최대 단계 수를 초과했습니다.")
@@ -203,7 +203,7 @@ def build_planner_tool(planner: Callable[[Mapping[str, Any]], Mapping[str, Any]]
     """Return the single canonical calculation planner graph adapter."""
 
     if planner is None:
-        from stage3.deterministic.calculation_planner import build_state_analysis_plan
+        from reasoner.deterministic.calculation_planner import build_state_analysis_plan
 
         planner = build_state_analysis_plan
 

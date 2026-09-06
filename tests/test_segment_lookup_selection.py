@@ -1,9 +1,9 @@
-from stage3.agents.answer import _segment_lookup_facts
-from stage3.contracts import Stage3Fact, Stage3Intent
+from reasoner.agents.answer import _segment_lookup_facts
+from reasoner.contracts import ReasonerFact, ReasonerIntent
 
 
-def _fact(*, kind: str, value: str, row_label: str = "") -> Stage3Fact:
-    return Stage3Fact(
+def _fact(*, kind: str, value: str, row_label: str = "") -> ReasonerFact:
+    return ReasonerFact(
         metric="revenue",
         label="매출액",
         value=value,
@@ -23,7 +23,7 @@ def _fact(*, kind: str, value: str, row_label: str = "") -> Stage3Fact:
 
 
 def test_segment_lookup_prefers_table_numeric_facts_over_narrative_numbers() -> None:
-    intent = Stage3Intent(
+    intent = ReasonerIntent(
         question="현대자동차 2025년 3분기 사업부문별 매출액은?",
         normalized_question="현대자동차 2025년 3분기 사업부문별 매출액은?",
         route="ok",

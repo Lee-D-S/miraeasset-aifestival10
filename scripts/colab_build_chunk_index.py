@@ -12,7 +12,7 @@
 #  · repo 를 clone/import 하지 않는다. Drive 코퍼스(universe.csv + manifest.jsonl
 #    + raw/)만 읽어 chunk_index.db + chunk_index_chroma/ 를 만들고 zip 으로 낸다.
 #  · 임베딩: intfloat/multilingual-e5-large.  '문서 측' 은 "passage: " 프리픽스 + mean
-#    pooling + L2 정규화 — 서빙(stage2, fastembed e5)의 "query: " 측과 같은 비대칭 쌍,
+#    pooling + L2 정규화 — 서빙(retriever, fastembed e5)의 "query: " 측과 같은 비대칭 쌍,
 #    같은 1024-dim 벡터 공간.  Colab 에서는 sentence-transformers(torch) 로 돌린다:
 #    onnxruntime-gpu 의 CUDA 라이브러리 버전 지옥을 피하고 Colab 이 보장하는 torch+CUDA
 #    를 그대로 쓰기 위함(서빙 이미지는 여전히 torch 없이 fastembed).
@@ -20,7 +20,7 @@
 #    STAGE2_INDEX_PATH=<unzip>/chunk_index.db ·
 #    STAGE2_CHROMA_PATH=<unzip>/chunk_index_chroma ·
 #    STAGE2_CHROMA_COLLECTION=<COLLECTION 과 동일>
-#  · "vendored" 구역은 stage2/ingestion/dart/*.py 손복사본. 원본 파싱·청킹이
+#  · "vendored" 구역은 retriever/ingestion/dart/*.py 손복사본. 원본 파싱·청킹이
 #    바뀌면 같이 고치고 pytest tests/test_colab_cell.py 로 확인한다.
 # =============================================================================
 
@@ -118,7 +118,7 @@ from google.colab import files
 
 
 # =============================================================================
-#  vendored — stage2/ingestion/dart/converters.py
+#  vendored — retriever/ingestion/dart/converters.py
 # =============================================================================
 from abc import ABC, abstractmethod
 import json
@@ -216,7 +216,7 @@ def reconstruct_table(table_tag: Tag, tab_type: str) -> str:
 
 
 # =============================================================================
-#  vendored — stage2/ingestion/dart/parsers.py
+#  vendored — retriever/ingestion/dart/parsers.py
 # =============================================================================
 """DART disclosure parsers (XML / HTML / PDF) -> section-tagged elements.
 
@@ -225,7 +225,7 @@ unchanged; only the import path, the removal of a script demo block, and a
 lazy ``pdfplumber`` import (so an XML/HTML-only corpus needs no PDF stack)
 differ from the original.  Each parser returns a list of
 ``{section_name, chunk_type, text_content, raw_json_content}`` dicts that
-:mod:`stage2.ingestion.dart.chunker` turns into chunk rows.
+:mod:`retriever.ingestion.dart.chunker` turns into chunk rows.
 """
 
 from abc import ABC, abstractmethod
@@ -470,7 +470,7 @@ def parse_docs(file_path: str, file_format: str) -> list[dict]:
 
 
 # =============================================================================
-#  vendored — stage2/ingestion/dart/chunker.py
+#  vendored — retriever/ingestion/dart/chunker.py
 # =============================================================================
 """파싱 결과(parsers.py)를 DB 적재용 청크로 쪼갠다.
 
@@ -487,7 +487,7 @@ def _detect_basis(text: str) -> str:
     """청크 본문에서 연결/별도 재무제표 기준을 감지한다.
     문서(리포트) 단위가 아니라 청크 단위 속성이다 — 사업보고서 하나에도
     연결재무제표 섹션과 별도재무제표 섹션이 함께 들어있기 때문에, 여기서
-    "연결"/"별도" 문자열을 직접 찾는 방식(stage3 fact_extraction._basis()와
+    "연결"/"별도" 문자열을 직접 찾는 방식(reasoner fact_extraction._basis()와
     동일한 휴리스틱)만 청크별로 정확하다.
     """
     if '연결' in text:
@@ -692,9 +692,9 @@ def split_to_chunks(
 
 
 # =============================================================================
-#  vendored — stage2/ingestion/dart/rows.py  (build_dart_chunk_rows)
+#  vendored — retriever/ingestion/dart/rows.py  (build_dart_chunk_rows)
 # =============================================================================
-"""DART corpus -> :class:`stage2.contracts.ChunkRow` list.
+"""DART corpus -> :class:`retriever.contracts.ChunkRow` list.
 
 This is the single entry point for the disclosure-aware ingestion path.  It
 ports ``dart_preprocessing/preprocesser.py``'s document loop -- join
@@ -704,7 +704,7 @@ DB.  Persistence is handled by the local SQLite/Chroma index builder after
 this function returns the chunk-row contract.
 
 The master-data join uses the standard library (``csv`` + ``json``); only
-:mod:`stage2.ingestion.dart.parsers` pulls the heavy parsing dependencies.
+:mod:`retriever.ingestion.dart.parsers` pulls the heavy parsing dependencies.
 """
 
 
@@ -972,7 +972,7 @@ __all__ = ["build_dart_chunk_rows", "iter_dart_chunk_rows", "load_master_records
 
 # =============================================================================
 #  chunk_index writer — SQLite chunk_index + Chroma, 체크포인트/재개 지원
-#  (스키마는 stage2/local_store.py 와 1:1, Chroma id == chunk_id)
+#  (스키마는 retriever/local_store.py 와 1:1, Chroma id == chunk_id)
 # =============================================================================
 CHUNK_TABLE = "chunk_index"
 
@@ -1260,7 +1260,7 @@ if FP16 and _device == "cuda":
 
 def embed_texts(batch):
     # e5 문서 측 = "passage: " 프리픽스 + mean pooling + L2 정규화.
-    # 서빙(stage2)의 query 임베딩("query: ") 과 같은 비대칭 쌍·같은 벡터 공간.
+    # 서빙(retriever)의 query 임베딩("query: ") 과 같은 비대칭 쌍·같은 벡터 공간.
     vectors = _model.encode(
         ["passage: " + str(text) for text in batch],
         normalize_embeddings=True,

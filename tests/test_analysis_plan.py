@@ -4,21 +4,21 @@ import unittest
 
 from integration.supervisor import build_planner_tool
 from integration import StageNodes, StagePipeline
-from stage3.adapters.stage1 import adapt_stage1_intent
-from stage3.contracts import Stage3Fact
-from stage3.deterministic.calculation_planner import (
+from reasoner.adapters.interpreter import adapt_interpreter_intent
+from reasoner.contracts import ReasonerFact
+from reasoner.deterministic.calculation_planner import (
     build_analysis_plan,
     build_state_analysis_plan,
     validate_analysis_plan,
 )
-from stage3.deterministic.calculations import execute_analysis_plan
-from stage3 import build_stage3_node
-from stage2.node import build_stage2_node
-from stage2.retrieval import InMemoryRetriever, RetrievalConfig
+from reasoner.deterministic.calculations import execute_analysis_plan
+from reasoner import build_reasoner_node
+from retriever.node import build_retriever_node
+from retriever.retrieval import InMemoryRetriever, RetrievalConfig
 
 
 def _intent():
-    return adapt_stage1_intent(
+    return adapt_interpreter_intent(
         {
             "route": "ok",
             "intent": "compare",
@@ -33,8 +33,8 @@ def _intent():
     )
 
 
-def _fact(company: str, metric: str, period: str, value: float) -> Stage3Fact:
-    return Stage3Fact(
+def _fact(company: str, metric: str, period: str, value: float) -> ReasonerFact:
+    return ReasonerFact(
         metric=metric,
         label=metric,
         value=value,
@@ -113,23 +113,23 @@ class AnalysisPlanTests(unittest.TestCase):
     def test_unplannable_calculation_fails_closed_after_one_attempt(self):
         calls: list[str] = []
 
-        def stage1(_state):
-            calls.append("stage1")
+        def interpreter(_state):
+            calls.append("interpreter")
             return {"route": "ok", "intent": {"route": "ok", "intent": "calc", "question_type": "calculation"}}
 
-        def forbidden_stage2(_state):
-            calls.append("stage2")
+        def forbidden_retriever(_state):
+            calls.append("retriever")
             raise AssertionError("계획을 만들지 못한 계산은 검색으로 진행하면 안 됩니다.")
 
-        def stage4(_state):
-            calls.append("stage4")
-            return {"stage4_result": {"status": "success"}, "answer": "차단"}
+        def validator(_state):
+            calls.append("validator")
+            return {"validator_result": {"status": "success"}, "answer": "차단"}
 
         state = StagePipeline(
-            StageNodes(stage1, forbidden_stage2, lambda _state: {}, stage4)
+            StageNodes(interpreter, forbidden_retriever, lambda _state: {}, validator)
         ).invoke(question_id="Q-UNPLANNABLE", question="알 수 없는 계산")
 
-        self.assertEqual(calls, ["stage1", "stage4"])
+        self.assertEqual(calls, ["interpreter", "validator"])
         self.assertEqual(state["planner_attempts"], 1)
 
     def test_llm_provider_is_only_used_when_deterministic_compiler_cannot_plan(self):
@@ -198,7 +198,7 @@ class AnalysisPlanTests(unittest.TestCase):
         self.assertIn("ratio_percent", system_message)
         self.assertEqual(update["plan_status"], "ready")
 
-    def test_stage3_consumes_the_same_plan_after_requirement_retrieval(self):
+    def test_reasoner_consumes_the_same_plan_after_requirement_retrieval(self):
         intent = _intent().to_dict()
         plan = build_analysis_plan(_intent())
         assert plan is not None
@@ -207,7 +207,7 @@ class AnalysisPlanTests(unittest.TestCase):
             "route": "ok",
             "intent": intent,
             "analysis_plan": plan,
-            "stage2_result": {"cited_documents": [], "subresults": []},
+            "retriever_result": {"cited_documents": [], "subresults": []},
         }
         documents = []
         for company, capex_values, revenue_values in (
@@ -226,13 +226,13 @@ class AnalysisPlanTests(unittest.TestCase):
                 document for document in documents
                 if (metric == "capex" and "capex" in document["id"]) or (metric == "revenue" and "revenue" in document["id"])
             ]
-            state["stage2_result"]["subresults"].append({
+            state["retriever_result"]["subresults"].append({
                 "requirement_id": requirement["id"],
                 "cited_documents": result_documents,
             })
-            state["stage2_result"]["cited_documents"].extend(result_documents)
+            state["retriever_result"]["cited_documents"].extend(result_documents)
 
-        result = build_stage3_node()(state)["stage3_result"]
+        result = build_reasoner_node()(state)["reasoner_result"]
 
         self.assertEqual(result["status"], "success")
         self.assertEqual(result["comparison_results"][0]["top"]["company"], "A")
@@ -243,7 +243,7 @@ class AnalysisPlanTests(unittest.TestCase):
         # "operating_profit"으로 무너져 requirement id가 중복되고
         # validate_analysis_plan이 ValueError를 던졌다 (deterministic_plan_unavailable).
         # 지금은 metric_registry의 numeric_labels로 "연구개발비"를 찾아 정상 계획을 만든다.
-        intent = adapt_stage1_intent(
+        intent = adapt_interpreter_intent(
             {
                 "route": "ok",
                 "intent": "calc",
@@ -264,7 +264,7 @@ class AnalysisPlanTests(unittest.TestCase):
         self.assertEqual(plan["steps"][0]["operation"], "ratio_percent")
 
     def test_ratio_metrics_fallback_never_collides_into_duplicate_requirement(self):
-        from stage3.deterministic.calculation_planner import _metric_candidates, _ratio_metrics
+        from reasoner.deterministic.calculation_planner import _metric_candidates, _ratio_metrics
 
         # T4가 고치기 전에 실제로 밟았던 경로: 요청한 numerator metric이
         # metric_registry에 numeric_labels가 없으면(등록되지 않은 metric도 같은 처지),
@@ -275,7 +275,7 @@ class AnalysisPlanTests(unittest.TestCase):
         # denominator가 같은 requirement 두 개짜리 계획을 만들었고, validate_analysis_plan이
         # id 중복으로 ValueError를 던졌다(deterministic_plan_unavailable:ValueError). 지금은
         # denominator를 "revenue"로 돌려서 같은 metric 두 개짜리 requirement가 나오지 않는다.
-        intent = adapt_stage1_intent(
+        intent = adapt_interpreter_intent(
             {
                 "route": "ok",
                 "intent": "calc",
@@ -299,7 +299,7 @@ class AnalysisPlanTests(unittest.TestCase):
         assert plan is not None
         self.assertEqual(len({item["id"] for item in plan["requirements"]}), len(plan["requirements"]))
 
-    def test_stage2_uses_plan_requirements_instead_of_reinterpreting_query_plan(self):
+    def test_retriever_uses_plan_requirements_instead_of_reinterpreting_query_plan(self):
         plan = build_analysis_plan(_intent())
         assert plan is not None
         documents = [
@@ -316,13 +316,13 @@ class AnalysisPlanTests(unittest.TestCase):
             "search_attempts": 0,
         }
 
-        result = build_stage2_node(
+        result = build_retriever_node(
             retriever=InMemoryRetriever(documents),
             config=RetrievalConfig(final_limit=10),
         )(state)
 
         self.assertEqual(
-            [item["requirement_id"] for item in result["stage2_result"]["subresults"]],
+            [item["requirement_id"] for item in result["retriever_result"]["subresults"]],
             ["capex", "revenue"],
         )
         self.assertEqual(set(result["search_queries"]), {"capex", "revenue"})

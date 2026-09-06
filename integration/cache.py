@@ -1,4 +1,4 @@
-"""Process-local bounded caches shared by the canonical Stage2/Stage3 path.
+"""Process-local bounded caches shared by the canonical Retriever/Reasoner path.
 
 The cache is an optimization layer only.  It never becomes a source of truth:
 cache failures are swallowed by the safe helper functions and callers can
@@ -191,7 +191,7 @@ def _path_signature(path: str | Path | None) -> dict[str, Any] | None:
 
 def build_index_signature(
     *,
-    stage2_mode: str,
+    retriever_mode: str,
     sqlite_path: str | Path | None = None,
     chroma_path: str | Path | None = None,
     backend_identity: str = "",
@@ -205,7 +205,7 @@ def build_index_signature(
             if index_version is not None
             else os.getenv("DIS164_CACHE_INDEX_VERSION", DEFAULT_INDEX_VERSION)
         ),
-        "stage2_mode": str(stage2_mode),
+        "retriever_mode": str(retriever_mode),
         "sqlite": _path_signature(sqlite_path),
         "chroma": _path_signature(chroma_path),
         # Only a caller-provided non-secret identifier belongs here.  Raw

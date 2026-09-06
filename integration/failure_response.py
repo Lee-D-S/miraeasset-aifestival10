@@ -118,13 +118,13 @@ def _intent(state: Mapping[str, Any]) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
 
-def _stage3_result(state: Mapping[str, Any]) -> Mapping[str, Any]:
-    value = state.get("stage3_result")
+def _reasoner_result(state: Mapping[str, Any]) -> Mapping[str, Any]:
+    value = state.get("reasoner_result")
     return value if isinstance(value, Mapping) else {}
 
 
-def _stage2_result(state: Mapping[str, Any]) -> Mapping[str, Any]:
-    value = state.get("stage2_result")
+def _retriever_result(state: Mapping[str, Any]) -> Mapping[str, Any]:
+    value = state.get("retriever_result")
     return value if isinstance(value, Mapping) else {}
 
 
@@ -151,7 +151,7 @@ def _metric_label(intent: Mapping[str, Any]) -> str:
 
 
 def _legacy_conclusion(state: Mapping[str, Any], *, default: str) -> str:
-    candidates = [state.get("answer"), _stage3_result(state).get("answer")]
+    candidates = [state.get("answer"), _reasoner_result(state).get("answer")]
     for candidate in candidates:
         text = str(candidate or "").strip()
         if text in _KNOWN_LEGACY_CONCLUSIONS:
@@ -171,18 +171,18 @@ def _missing_slot_text(intent: Mapping[str, Any]) -> str:
 
 
 def _has_documents(state: Mapping[str, Any]) -> bool:
-    stage2 = _stage2_result(state)
+    retriever = _retriever_result(state)
     for key in ("cited_documents", "documents"):
-        value = stage2.get(key)
+        value = retriever.get(key)
         if isinstance(value, list) and value:
             return True
-    stage3 = _stage3_result(state)
-    citations = stage3.get("citations")
+    reasoner = _reasoner_result(state)
+    citations = reasoner.get("citations")
     return isinstance(citations, list) and bool(citations)
 
 
-def _failed_calculation_or_comparison(stage3: Mapping[str, Any]) -> tuple[str, str] | None:
-    calculations = stage3.get("calculations")
+def _failed_calculation_or_comparison(reasoner: Mapping[str, Any]) -> tuple[str, str] | None:
+    calculations = reasoner.get("calculations")
     if isinstance(calculations, list) and calculations and not any(
         isinstance(item, Mapping) and item.get("status") == "ok" for item in calculations
     ):
@@ -190,7 +190,7 @@ def _failed_calculation_or_comparison(stage3: Mapping[str, Any]) -> tuple[str, s
             "계산에 필요한 기간·단위·기준을 공시 근거에서 확인하지 못했습니다.",
             "연도와 연결·별도 기준을 함께 포함해 질문해 주세요.",
         )
-    comparisons = stage3.get("comparison_results")
+    comparisons = reasoner.get("comparison_results")
     if isinstance(comparisons, list) and comparisons and not any(
         isinstance(item, Mapping) and item.get("status") == "ok" for item in comparisons
     ):
@@ -257,12 +257,12 @@ def build_failure_response(
     intent = _intent(state)
     route = str(state.get("route") or intent.get("route") or "unanswerable")
     reject_reason = _reject_reason(intent)
-    stage3 = _stage3_result(state)
-    stage4 = state.get("stage4_result")
-    stage4 = stage4 if isinstance(stage4, Mapping) else {}
-    numeric = numeric_check if numeric_check is not None else stage4.get("numeric_check", {})
-    citation = citation_check if citation_check is not None else stage4.get("citation_check", {})
-    semantic = semantic_check if semantic_check is not None else stage4.get("semantic_check", {})
+    reasoner = _reasoner_result(state)
+    validator = state.get("validator_result")
+    validator = validator if isinstance(validator, Mapping) else {}
+    numeric = numeric_check if numeric_check is not None else validator.get("numeric_check", {})
+    citation = citation_check if citation_check is not None else validator.get("citation_check", {})
+    semantic = semantic_check if semantic_check is not None else validator.get("semantic_check", {})
     numeric = numeric if isinstance(numeric, Mapping) else {}
     citation = citation if isinstance(citation, Mapping) else {}
     semantic = semantic if isinstance(semantic, Mapping) else {}
@@ -350,7 +350,7 @@ def build_failure_response(
             "기업명·기간·공시 유형·지표를 구체적으로 포함해 질문해 주세요.",
         )
 
-    failed_analysis = _failed_calculation_or_comparison(stage3)
+    failed_analysis = _failed_calculation_or_comparison(reasoner)
     if failed_analysis is not None:
         reason, guidance = failed_analysis
         return FailureResponse(
@@ -361,7 +361,7 @@ def build_failure_response(
         )
 
     if not _has_documents(state) and (
-        not stage3 or not stage3.get("facts")
+        not reasoner or not reasoner.get("facts")
     ):
         metric = _metric_label(intent)
         detail = "요청한 기업·기간·지표 조건에 맞는 근거 문서를 검색하지 못했습니다."
@@ -374,7 +374,7 @@ def build_failure_response(
             "기업·기간·공시 유형·지표를 구체적으로 포함해 질문해 주세요.",
         )
 
-    if stage4.get("status") == "validation_failed" or (
+    if validator.get("status") == "validation_failed" or (
         numeric and numeric.get("pass") is False
     ) or (citation and citation.get("pass") is False) or (semantic and semantic.get("pass") is False):
         return FailureResponse(

@@ -7,7 +7,7 @@ from typing import Any
 from langchain_core.tools import tool
 from langgraph.prebuilt import ToolNode
 
-from stage3.deterministic.calculation_planner import build_simple_analysis_plan
+from reasoner.deterministic.calculation_planner import build_simple_analysis_plan
 
 
 @tool("calculation_planner")

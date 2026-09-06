@@ -20,7 +20,7 @@ amounts (over 100) from ratios (100 or below), the local measure labels are
 corrected to match that evidence. The parser cache version is bumped whenever
 this mapping changes so an older table parse is not reused.
 
-The answer writer lists each requested segment. Stage4 also checks that every
+The answer writer lists each requested segment. Validator also checks that every
 extracted segment amount appears in the final answer and fails closed when one
 is missing.
 

@@ -6,7 +6,7 @@
 
 - 공통 조상: `54f2611`
 - 우리: 3커밋 / 36파일 (+3974/-65) — 대부분 Colab 빌드 파이프라인 + 문서 + WIP
-- 친구(`lds`): **35커밋 / 90파일 (+4744/-1442)** — 서빙 리팩터 + NCP 배포 + stage1/3/4 개선 + 테스트 완비
+- 친구(`lds`): **35커밋 / 90파일 (+4744/-1442)** — 서빙 리팩터 + NCP 배포 + interpreter/3/4 개선 + 테스트 완비
 - **확정 방향:** 임베딩 = `intfloat/multilingual-e5-large` (**non-instruct**) + fastembed/ONNX + `chromadb==1.5.9` PersistentClient. (사용자 확인 완료)
 
 ## 전략: **친구 `lds`를 통합 베이스로, 우리 고유분을 그 위에 replay**
@@ -36,20 +36,20 @@ git checkout refactor/centralized-db-config -- <경로들>
 
 | 영역 | 파일 | 내용 |
 |---|---|---|
-| stage1 | `pipeline/query_plan.py`(신규), `router.py`, `slot_extractor.py`, `calculation.py`, `entity_linker.py`, `build_intent.py`, `config/metric_router.json`, `models/intent.py`, `validator.py`, tests | 결정적 multi-query 계획, '최근 N년' 코퍼스 경계 파싱, 파생 비율 라우팅, compare_axis 분리 |
-| stage3 | `grounding.py`(신규, +157), `node.py`(+186), `agents/{answer,event_linker,fact_extraction}.py`, `deterministic/calculations.py`, `parsing/structured.py`, `contracts.py`, tests | scoped fact grounding, 재무 테이블 근거 우선 파싱, 파생 비율/다기간 추세, linked event 게이팅 |
-| stage4 | `node.py`(+111), `semantic.py`, `contracts.py`, `README.md`, `tests/test_stage4.py` | 근거/인용 처리 |
+| interpreter | `pipeline/query_plan.py`(신규), `router.py`, `slot_extractor.py`, `calculation.py`, `entity_linker.py`, `build_intent.py`, `config/metric_router.json`, `models/intent.py`, `validator.py`, tests | 결정적 multi-query 계획, '최근 N년' 코퍼스 경계 파싱, 파생 비율 라우팅, compare_axis 분리 |
+| reasoner | `grounding.py`(신규, +157), `node.py`(+186), `agents/{answer,event_linker,fact_extraction}.py`, `deterministic/calculations.py`, `parsing/structured.py`, `contracts.py`, tests | scoped fact grounding, 재무 테이블 근거 우선 파싱, 파생 비율/다기간 추세, linked event 게이팅 |
+| validator | `node.py`(+111), `semantic.py`, `contracts.py`, `README.md`, `tests/test_validator.py` | 근거/인용 처리 |
 | integration | `rate_limit.py`(+95), `clova.py`(+58), `api.py`, `readiness.py`, `service.py`, `supervisor.py` | CLOVA 공유 rate-limit, bounded request budget, grounded fallback, provider tracing |
 | ops | `scripts/smoke_api.py`(신규), `scripts/check_real_index.py`(신규), `.github/workflows/real-index.yml`, `pytest.ini`, `shared_state.py` | GET /answer 스모크, 실인덱스 검증 CI |
-| state | `stage3` subquery result envelopes, query rollback/redacted trace | |
+| state | `reasoner` subquery result envelopes, query rollback/redacted trace | |
 
 ### B. 친구 것 채택하되 **임베딩만 우리 것으로 교체** (3장 참조)
 
 | 파일 | 친구 버전 | 조치 |
 |---|---|---|
-| `stage2/local_store.py` | `LocalHybridRetriever` (read-only, `collection_name="chunk_vectors"`, `table_name="chunk_index"`, `readonly_sqlite_engine`) — Chroma 계속 사용 | **채택.** `from stage2.embedding import ClovaEmbeddings` 잔재만 정리 |
-| `stage2/backends.py` | `local_chroma()`(존재-검증 강화), `readonly_sqlite_engine()`, `ReadOnlyHnswVectorStore`(hnswlib 폴백, 미사용) | **채택.** `ReadOnlyHnswVectorStore`는 폴백으로 보존(선택) — `hnswlib`만 의존, torch 아님 |
-| `stage2/node.py`, `stage2/retrieval.py` | 읽기전용 백엔드 wiring | 채택 |
+| `retriever/local_store.py` | `LocalHybridRetriever` (read-only, `collection_name="chunk_vectors"`, `table_name="chunk_index"`, `readonly_sqlite_engine`) — Chroma 계속 사용 | **채택.** `from retriever.embedding import ClovaEmbeddings` 잔재만 정리 |
+| `retriever/backends.py` | `local_chroma()`(존재-검증 강화), `readonly_sqlite_engine()`, `ReadOnlyHnswVectorStore`(hnswlib 폴백, 미사용) | **채택.** `ReadOnlyHnswVectorStore`는 폴백으로 보존(선택) — `hnswlib`만 의존, torch 아님 |
+| `retriever/node.py`, `retriever/retrieval.py` | 읽기전용 백엔드 wiring | 채택 |
 | `integration/composition.py` | `E5InstructEmbeddings(query_instruction=None)`, `if settings.embedding != "e5-instruct": raise` | 채택 후 **임베딩 팩토리/가드를 우리 값으로 수정** |
 | `config.py` | `VALID_STAGE2_EMBEDDINGS=("e5-instruct",)`, `EMBEDDING` 기본 `e5-instruct`, `STAGE2_MODE`(local/container), `STAGE2_ALLOW_PARTIAL_INDEX`, `STAGE2_SQL_TABLE`, `STAGE2_CHROMA_COLLECTION` | 새 env 노브는 **채택**. 임베딩 enum만 `("e5",)` 또는 `("e5","e5-instruct")`로, 기본 `e5` |
 | `requirements.txt` | `+torch==2.1.0`, `+sentence-transformers==3.4.1`, `+transformers==4.49.0`, `+huggingface-hub`, `+langchain-huggingface`, `+chroma-hnswlib==0.7.6` | **이 라인들 제외.** 우리 `fastembed` + `chromadb==1.5.9` 유지. `ReadOnlyHnswVectorStore` 보존 시 `hnswlib` 1줄만 추가 |
@@ -60,36 +60,36 @@ git checkout refactor/centralized-db-config -- <경로들>
 | 파일 | 내용 |
 |---|---|
 | `scripts/colab_build_chunk_index.py` (+1264) | Colab 인덱스 빌드 파이프라인 |
-| `stage2/ingestion/` 전체 (`__init__.py`, `plain.py`, `dart/{__init__,chunker,parsers,rows,converters,embeddings}.py`, `dart/requirements.txt`) | DART 전처리·청킹·임베딩(fastembed e5-large) |
+| `retriever/ingestion/` 전체 (`__init__.py`, `plain.py`, `dart/{__init__,chunker,parsers,rows,converters,embeddings}.py`, `dart/requirements.txt`) | DART 전처리·청킹·임베딩(fastembed e5-large) |
 | `scripts/build_chunk_index.py` | 로컬 빌드 |
 | `docs/{deployment-design,sync-chunk-index,colab_build,chunk_index,local_db}.md` | |
 | `CLAUDE.md` (+182) | |
 | `dart_agent_info.pdf` | 대회 자료 |
 | `requirements.txt`의 `fastembed`, `chromadb==1.5.9` 핀 | |
 
-> 주의: 친구가 `stage2/ingestion.py`를 **삭제**했고 우리는 `stage2/ingestion/plain.py`로 **이동**했다. → 우리 패키지 구조가 이김 (ingestion 측은 우리 담당).
+> 주의: 친구가 `retriever/ingestion.py`를 **삭제**했고 우리는 `retriever/ingestion/plain.py`로 **이동**했다. → 우리 패키지 구조가 이김 (ingestion 측은 우리 담당).
 
 ### D. 양쪽 폐기 (fixture/smoke 인프라 — 둘 다 이미 이탈)
 
 친구가 삭제한 것 그대로 삭제 유지:
-`stage2/json_fixture.py`, `scripts/build_local_smoke_index.py`, `scripts/build_local_sqlite.py`, `scripts/build_subset_corpus.py`, `scripts/migrate_legacy_sqlite.py`, `data/local_smoke/selected_documents.json`, `legacy/test_data/disclosure_clova_local.json`, `tests/test_ingestion.py`, `tests/test_stage2_fixture.py`
+`retriever/json_fixture.py`, `scripts/build_local_smoke_index.py`, `scripts/build_local_sqlite.py`, `scripts/build_subset_corpus.py`, `scripts/migrate_legacy_sqlite.py`, `data/local_smoke/selected_documents.json`, `legacy/test_data/disclosure_clova_local.json`, `tests/test_ingestion.py`, `tests/test_retriever_fixture.py`
 
 ### E. 선택 (친구의 A/B 하니스 — non-instruct에도 유용)
 
-`stage2/query_instruction_eval.py`, `scripts/compare_query_instruction.py`, `tests/fixtures/e5_query_instruction_gold.json`, `tests/test_query_instruction_eval.py`
+`retriever/query_instruction_eval.py`, `scripts/compare_query_instruction.py`, `tests/fixtures/e5_query_instruction_gold.json`, `tests/test_query_instruction_eval.py`
 → non-instruct e5-large에도 `query:` prefix 유무 A/B에 재활용 가능. 채택하되 **NCP 기본은 prefix 없음**(친구 결론과 동일: 안전성 게이트).
 
 ---
 
 ## 임베딩 어댑터 교체 (B의 핵심 작업)
 
-친구 `stage2/embedding.py` = `E5InstructEmbeddings` (sentence-transformers, `e5-large-instruct`, `"Instruct: ...\nQuery:"`).
-우리 `stage2/ingestion/dart/embeddings.py` = fastembed `intfloat/multilingual-e5-large`, 1024-dim, `query:`/`passage:` prefix 자동.
+친구 `retriever/embedding.py` = `E5InstructEmbeddings` (sentence-transformers, `e5-large-instruct`, `"Instruct: ...\nQuery:"`).
+우리 `retriever/ingestion/dart/embeddings.py` = fastembed `intfloat/multilingual-e5-large`, 1024-dim, `query:`/`passage:` prefix 자동.
 
 작업:
-1. `stage2/embedding.py`를 우리 버전으로: `langchain_core.embeddings.Embeddings` 구현체를 fastembed로 래핑. `embed_query` → fastembed `query_embed`, `embed_documents` → `embed` (fastembed가 prefix 처리), 그 뒤 L2 정규화 (`l2_normalize` 재사용).
+1. `retriever/embedding.py`를 우리 버전으로: `langchain_core.embeddings.Embeddings` 구현체를 fastembed로 래핑. `embed_query` → fastembed `query_embed`, `embed_documents` → `embed` (fastembed가 prefix 처리), 그 뒤 L2 정규화 (`l2_normalize` 재사용).
 2. `integration/composition.py`:
-   - `from stage2.embedding import E5InstructEmbeddings` → 우리 클래스명
+   - `from retriever.embedding import E5InstructEmbeddings` → 우리 클래스명
    - `_build_embeddings`: `E5InstructEmbeddings(query_instruction=None)` → `E5FastEmbedEmbeddings()`
    - 가드 `if settings.embedding != "e5-instruct"` → `!= "e5"`
 3. `config.py`: `VALID_STAGE2_EMBEDDINGS = ("e5",)`, `EMBEDDING` 기본 `"e5"`.
@@ -110,7 +110,7 @@ git checkout refactor/centralized-db-config -- <경로들>
 
 ## 열린 항목 / 리스크
 
-- **`chunk_index.db` 스키마 확인 필수** — 다운로드 완료 후 `PRAGMA integrity_check`, `.schema`. 친구 서빙 코드는 테이블명 `chunk_index`, 컬럼 `id/doc_id/chunk_id/text/source_path/metadata_json` + 스칼라 메타(`corp_name, sector, base_year, base_month, rcept_dt, rcept_no, is_correction, report_nm, basis, section_name` 등)를 기대. **우리 Colab ingestion(`stage2/ingestion/dart/rows.py`)이 쓰는 스키마와 일치하는지** 대조.
+- **`chunk_index.db` 스키마 확인 필수** — 다운로드 완료 후 `PRAGMA integrity_check`, `.schema`. 친구 서빙 코드는 테이블명 `chunk_index`, 컬럼 `id/doc_id/chunk_id/text/source_path/metadata_json` + 스칼라 메타(`corp_name, sector, base_year, base_month, rcept_dt, rcept_no, is_correction, report_nm, basis, section_name` 등)를 기대. **우리 Colab ingestion(`retriever/ingestion/dart/rows.py`)이 쓰는 스키마와 일치하는지** 대조.
 - 모델 불일치는 1024-dim 검사로 안 잡힘 → 스모크에서 검색 품질로만 확인.
 - 친구의 `ReadOnlyHnswVectorStore` 주석("older Chroma persistence format ... client can migrate SQLite on open")은 친구가 `chromadb` 1.0.x에서 겪은 것으로 추정. 우리는 1.5.9에서 `PersistentClient` 정상 확인함. 폴백으로만 보존.
 - 친구 브랜치 기준이므로 우리 `config.py` 중앙화 작업(`refactor/centralized-db-config`의 목적)이 친구 버전에 반영됐는지 확인 — 안 됐으면 그 부분도 replay.
@@ -141,26 +141,26 @@ source_path/metadata_json` + 프로모트 스칼라 12개(`corp_name…section_n
 친구 서빙 코드 기대치와 **일치**. `_build_state` 부가 테이블 있음(무해).
 
 **적용된 변경 (vs origin/lds):**
-- `stage2/embedding.py` — `E5Embeddings`(fastembed, non-instruct) **추가**, 기본값.
+- `retriever/embedding.py` — `E5Embeddings`(fastembed, non-instruct) **추가**, 기본값.
   `E5InstructEmbeddings`/`format_e5_query`/`QUERY_INSTRUCTION`은 **삭제하지 않고 유지**
   (e5-instruct A/B 경로 보존).
 - `integration/composition.py::_embedding_function` — `raise` 대신 **디스패치**
   (`e5`→fastembed, `e5-instruct`→sentence-transformers, else 목록과 함께 에러).
 - `config.py` — `EMBEDDING` 기본 `e5`, `VALID_STAGE2_EMBEDDINGS=("e5","e5-instruct")`
   (단일값으로 축소 금지 주석 추가).
-- `stage2/ingestion/writer.py` — **신규**. 빌드 시점 write 경로(DDL+upsert)를 read-only
+- `retriever/ingestion/writer.py` — **신규**. 빌드 시점 write 경로(DDL+upsert)를 read-only
   서빙 `LocalHybridRetriever`에서 분리. **엔진 무관** — SQLite/Postgres 둘 다 한 경로.
   `write_rows` / `write_rows_with_embeddings` / `ensure_schema` / `CHUNK_TABLE`.
-- `scripts/build_chunk_index.py` — writer 모듈 + `stage2.backends` 사용으로 갱신.
+- `scripts/build_chunk_index.py` — writer 모듈 + `retriever.backends` 사용으로 갱신.
   `--rdb-url` 추가(Postgres 타깃). clova 임베딩 인자 제거(어댑터 삭제됨).
 - `requirements.txt` — 재구성. `chromadb==1.5.9` 명시 고정, `fastembed` 추가,
   `hnswlib` 추가(친구 `ReadOnlyHnswVectorStore` 서빙 경로가 실제로 사용 — `create_directory=False`),
   `chroma-hnswlib==0.7.6` 핀 제거(chromadb가 자체 해결). **`psycopg[binary]`/`pgvector`
   유지**(container 방향). torch/sentence-transformers/transformers는 **주석 처리된
   optional 섹션**으로 이동(e5-instruct 전용).
-- `stage2/__init__.py` — `E5Embeddings`, `ChunkRow`, `PROMOTED_COLUMNS` export 추가.
+- `retriever/__init__.py` — `E5Embeddings`, `ChunkRow`, `PROMOTED_COLUMNS` export 추가.
 - `tests/test_embedding.py` — e5 기본 디스패치/모델명 일치/정규화/미지원값 에러 테스트 추가.
-- C 항목(Colab 빌드 파이프라인, `stage2/ingestion/**`, `docs/**`, `CLAUDE.md`) replay 완료.
+- C 항목(Colab 빌드 파이프라인, `retriever/ingestion/**`, `docs/**`, `CLAUDE.md`) replay 완료.
 - D 항목(fixture/smoke 인프라) — 친구 삭제 상태 유지.
 
 **정적 검증 완료:** 변경 `.py` 전부 `py_compile` / `compileall` 통과. dangling 참조

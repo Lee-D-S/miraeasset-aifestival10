@@ -6,9 +6,9 @@
 DIS164_DEBUG_FACTS=true
 ```
 
-설정하면 Stage3 로그에 매칭 후보, numeric/table 우선순위 후보, 최종 선택 Fact의 문서 ID·종류·값·집계 범위·표 문맥이 기록된다. 기본값은 `false`이며, 진단이 끝나면 해제한다.
+설정하면 Reasoner 로그에 매칭 후보, numeric/table 우선순위 후보, 최종 선택 Fact의 문서 ID·종류·값·집계 범위·표 문맥이 기록된다. 기본값은 `false`이며, 진단이 끝나면 해제한다.
 
-범위형 질문뿐 아니라 모든 답변 질문에서 Stage3 입력 Fact 전체도 `answer_input` 단계로 기록된다. 기본 기록 상한은 500개이며, 필요하면 `DIS164_DEBUG_FACT_LIMIT`으로 조정한다.
+범위형 질문뿐 아니라 모든 답변 질문에서 Reasoner 입력 Fact 전체도 `answer_input` 단계로 기록된다. 기본 기록 상한은 500개이며, 필요하면 `DIS164_DEBUG_FACT_LIMIT`으로 조정한다.
 
 ```bash
 docker compose logs --tail=300 app

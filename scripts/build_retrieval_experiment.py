@@ -14,7 +14,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import config
-from stage2.retrieval_experiments import (
+from retriever.retrieval_experiments import (
     DEFAULT_NLIST,
     DEFAULT_PQ_M,
     DEFAULT_PQ_NBITS,

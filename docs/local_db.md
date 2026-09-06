@@ -1,6 +1,6 @@
-# Stage2 로컬 DB — 받아서 테스트하기
+# Retriever 로컬 DB — 받아서 테스트하기
 
-Stage2 검색 백엔드는 제공된 인덱스를 사용하는 `local` 모드만 지원한다. 경로와
+Retriever 검색 백엔드는 제공된 인덱스를 사용하는 `local` 모드만 지원한다. 경로와
 접속 설정은 모두 루트의 `config.py`가 관리하고, 상대경로는 실행 위치가 아니라
 저장소 루트를 기준으로 풀린다.
 
@@ -8,7 +8,7 @@ Stage2 검색 백엔드는 제공된 인덱스를 사용하는 `local` 모드만
 |---|---|---|---|
 | `local` | SQLite `chunk_index` + 로컬 Chroma 디렉터리 | 빌드된 인덱스 + 질의 임베더 | 실데이터를 단일 노드에서 돌려볼 때 |
 
-아래 1~2절은 팀에서 공유한 `local` 인덱스를 받아서 전체 파이프라인(Stage1~4)에
+아래 1~2절은 팀에서 공유한 `local` 인덱스를 받아서 전체 파이프라인(Interpreter~4)에
 물려 돌리는 방법이다.
 
 ---
@@ -94,28 +94,28 @@ STAGE2_EMBEDDING=e5
 
 # 이 인덱스는 벡터 커버리지 69%짜리 부분 빌드다(2-4 참고). 이 플래그가 없으면
 # build_pipeline() 이 readiness 검사에서 "Chroma is missing SQLite chunk IDs" /
-# "manifest contains documents absent from Stage2 index" 로 기동에 실패한다.
+# "manifest contains documents absent from Retriever index" 로 기동에 실패한다.
 STAGE2_ALLOW_PARTIAL_INDEX=true
 
-# Stage1 은 universe.csv + manifest.jsonl 이 있는 코퍼스 디렉터리가 반드시
+# Interpreter 은 universe.csv + manifest.jsonl 이 있는 코퍼스 디렉터리가 반드시
 # 필요하다(저장소에 커밋돼 있지 않음). data/local_db 를 만든 소스 코퍼스를 가리킨다.
 CORPUS_DIR=/absolute/path/to/miraeasset-firstpenguin/data/3.gongsi/corpus
 
-# 아래 키가 있으면 Stage3(답변 생성)·Stage4(의미 검증)까지 실제로 돈다.
-# 없으면 Stage2(검색)까지만 정상 동작한다.
+# 아래 키가 있으면 Reasoner(답변 생성)·Validator(의미 검증)까지 실제로 돈다.
+# 없으면 Retriever(검색)까지만 정상 동작한다.
 CLOVA_API_KEY=...
 CLOVA_API_HOST=clovastudio.stream.ntruss.com
 ```
 
-- `CORPUS_DIR` 없이는 Stage1 이 `FileNotFoundError` 로 죽는다. 이 코퍼스의
+- `CORPUS_DIR` 없이는 Interpreter 이 `FileNotFoundError` 로 죽는다. 이 코퍼스의
   `manifest.jsonl` 은 인덱스보다 문서 집합이 넓지만(부분 빌드),
   `STAGE2_ALLOW_PARTIAL_INDEX=true` 가 그 불일치 검사를 경고로 강등한다.
-- 인덱스에 없는 문서를 Stage1 이 필터로 잡아도 Stage2 검색에서 자연히 0건이 된다.
+- 인덱스에 없는 문서를 Interpreter 이 필터로 잡아도 Retriever 검색에서 자연히 0건이 된다.
 
 ### 2-2. 테스트 방법 A — 전체 파이프라인(권장)
 
-서버를 띄우고 `/answer`를 호출하면 `START → stage1 → supervisor → stage2 → … →
-stage4 → END` 그래프가 이 인덱스에 대해 그대로 돈다. 파이프라인은 첫 요청 때
+서버를 띄우고 `/answer`를 호출하면 `START → interpreter → supervisor → retriever → … →
+validator → END` 그래프가 이 인덱스에 대해 그대로 돈다. 파이프라인은 첫 요청 때
 지연 초기화되며, `e5` 모델을 처음 한 번 내려받느라 수십 초 걸린다.
 
 ```bash
@@ -130,18 +130,18 @@ curl 'http://127.0.0.1:8000/answer?question_id=q1&question=삼성전자 2023년 
 `answer` 다섯 문자열 필드를 돌려준다. `think_trace`(JSON)에 스테이지별
 `status`·`warnings`·`trace`가 들어 있으니 어디서 걸렸는지는 여기서 본다.
 
-CLOVA 키가 없으면 Stage3는 결정론적 그라운딩으로 답을 만들고 Stage4 의미 검증은
+CLOVA 키가 없으면 Reasoner는 결정론적 그라운딩으로 답을 만들고 Validator 의미 검증은
 통과하지 못해 `validation_failed`로 끝난다. 검색이 제대로 되는지는 이 상태에서도
 `retrieved_context`와 `think_trace`로 확인할 수 있다.
 
 ### 2-3. 테스트 방법 B — 검색만 빠르게 확인
 
-CLOVA 키 없이 Stage2(이 인덱스를 쓰는 부분)만 바로 확인하고 싶을 때.
+CLOVA 키 없이 Retriever(이 인덱스를 쓰는 부분)만 바로 확인하고 싶을 때.
 
 ```bash
 python3 - <<'PY'
-from stage2.local_store import LocalHybridRetriever
-from stage2.embedding import E5Embeddings
+from retriever.local_store import LocalHybridRetriever
+from retriever.embedding import E5Embeddings
 
 r = LocalHybridRetriever(
     "data/local_db/chunk_index.db",

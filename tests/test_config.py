@@ -24,7 +24,7 @@ _STAGE2_ENV = (
 
 
 @pytest.fixture(autouse=True)
-def _clean_stage2_env(monkeypatch):
+def _clean_retriever_env(monkeypatch):
     for name in _STAGE2_ENV:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("CLOVA_API_KEY", "test-key")
@@ -42,19 +42,19 @@ def test_resolve_path_keeps_absolute_and_falls_back_to_default(tmp_path):
 
 
 def test_mode_defaults_to_local():
-    assert config.resolve_stage2_mode() == "local"
+    assert config.resolve_retriever_mode() == "local"
 
 
-def test_stage2_mode_container_is_rejected(monkeypatch):
+def test_retriever_mode_container_is_rejected(monkeypatch):
     monkeypatch.setenv("STAGE2_MODE", "container")
-    assert config.resolve_stage2_mode() == "container"
+    assert config.resolve_retriever_mode() == "container"
     assert any("STAGE2_MODE" in issue for issue in validate_environment("container"))
 
 
 def test_settings_resolve_paths_and_sqlite_url(monkeypatch):
     monkeypatch.setenv("STAGE2_MODE", "local")
     monkeypatch.setenv("STAGE2_INDEX_PATH", "data/test_index/custom.db")
-    settings = config.Stage2Settings.from_env()
+    settings = config.RetrieverSettings.from_env()
     assert settings.mode == "local"
     assert settings.sqlite_path == config.PROJECT_ROOT / "data/test_index/custom.db"
     assert settings.sqlite_url == f"sqlite:///{settings.sqlite_path}"

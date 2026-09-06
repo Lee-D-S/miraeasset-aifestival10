@@ -67,6 +67,6 @@ STAGE2_CHROMA_COLLECTION=<COLLECTION 과 동일>
 
 ## 벤더링 사본 유지
 
-`# vendored` 구역은 `stage2/ingestion/dart/*.py` 손복사본. 원본 파싱·청킹 로직을 바꾸면
+`# vendored` 구역은 `retriever/ingestion/dart/*.py` 손복사본. 원본 파싱·청킹 로직을 바꾸면
 같이 고치고 `pytest tests/test_colab_cell.py` 로 두 쪽 결과가 같은지 확인한다.
 로컬 빌드는 `scripts/build_chunk_index.py` (`--workers`, `--embedding e5|clova`).

@@ -104,14 +104,14 @@ result = resp.json()  # 4절 응답 스키마
   "question_id": "Q-001",
   "question": "삼성전자의 2024년 연결기준 영업이익은 얼마인가?",
   "retrieved_context": "[출처: 삼성전자 2024 사업보고서 | 재무제표 | 연결 손익계산서][문서ID: periodic_20250311001085::chunk_00042]\n영업이익 ... 32,725,961(백만원)",
-  "think_trace": "{\"intent\":{\"status\":\"ok\"},\"stage2_result\":{\"status\":\"ok\"},\"stage3_result\":{\"status\":\"success\"},\"stage4_result\":{\"status\":\"success\"},\"supervisor\":{\"phase\":\"after_stage4\",\"action\":\"finish\",\"reason\":\"Stage4 처리가 완료되었습니다.\",\"search_attempts\":0,\"planner_attempts\":0,\"regeneration_attempts\":0,\"validation_attempts\":1,\"termination_reason\":null}}",
+  "think_trace": "{\"intent\":{\"status\":\"ok\"},\"retriever_result\":{\"status\":\"ok\"},\"reasoner_result\":{\"status\":\"success\"},\"validator_result\":{\"status\":\"success\"},\"supervisor\":{\"phase\":\"after_validator\",\"action\":\"finish\",\"reason\":\"Validator 처리가 완료되었습니다.\",\"search_attempts\":0,\"planner_attempts\":0,\"regeneration_attempts\":0,\"validation_attempts\":1,\"termination_reason\":null}}",
   "answer": "삼성전자의 2024년 연결기준 영업이익은 32조 7,259억원입니다. (근거: 삼성전자 2024 사업보고서 연결 손익계산서)"
 }
 ```
 
 ### 5-1. `retrieved_context` 형식
 
-`stage3_result.citations` 목록을 다음 형태로 이어 붙인 것이다. 항목 사이는 빈 줄(`\n\n`)로 구분한다.
+`reasoner_result.citations` 목록을 다음 형태로 이어 붙인 것이다. 항목 사이는 빈 줄(`\n\n`)로 구분한다.
 
 ```text
 [출처: {source}][문서ID: {document_id}]
@@ -131,17 +131,17 @@ result = resp.json()  # 4절 응답 스키마
 ```jsonc
 {
   "intent":        { "status": ..., "warnings": [...], "trace": ..., "provider_status": ..., "failure_reason_code": ... },
-  "stage2_result": { "status": ..., "warnings": [...], "trace": ..., "subqueries": [ { "subquery_id": ..., "status": ... } ] },
-  "stage3_result": { "status": ..., "warnings": [...], "trace": ..., "subqueries": [...] },
-  "stage4_result": { "status": ..., "warnings": [...], "trace": ... },
-  "stage1_think_trace": "Stage1 규칙 추적 요약 문자열",
+  "retriever_result": { "status": ..., "warnings": [...], "trace": ..., "subqueries": [ { "subquery_id": ..., "status": ... } ] },
+  "reasoner_result": { "status": ..., "warnings": [...], "trace": ..., "subqueries": [...] },
+  "validator_result": { "status": ..., "warnings": [...], "trace": ... },
+  "interpreter_think_trace": "Interpreter 규칙 추적 요약 문자열",
   "analysis_plan": {
     "status": ..., "failure_reason": ..., "trace": [...],
     "requirements": 0, "steps": 0
   },
   "supervisor": {
-    "phase": "after_stage1 | after_stage2 | after_stage3 | after_stage4",
-    "action": "run_stage2 | retry_search | run_calculation_planner | run_stage3 | run_stage4 | request_clarification | unanswerable | fail_closed | regenerate_answer | finish",
+    "phase": "after_interpreter | after_retriever | after_reasoner | after_validator",
+    "action": "run_retriever | retry_search | run_calculation_planner | run_reasoner | run_validator | request_clarification | unanswerable | fail_closed | regenerate_answer | finish",
     "reason": "선택 이유 문자열",
     "search_attempts": 0,
     "planner_attempts": 0,
@@ -152,8 +152,8 @@ result = resp.json()  # 4절 응답 스키마
 }
 ```
 
-`stage1_think_trace`와 `analysis_plan`은 해당 정보가 있을 때만 포함된다.
-`intent`~`stage4_result` 하위 필드는 원본에 존재하는 키만 포함된다.
+`interpreter_think_trace`와 `analysis_plan`은 해당 정보가 있을 때만 포함된다.
+`intent`~`validator_result` 하위 필드는 원본에 존재하는 키만 포함된다.
 
 마스킹 규칙(`_redact_trace`):
 
@@ -202,7 +202,7 @@ FastAPI 표준에 따라 오류 본문은 `{"detail": ...}` 형태다. `detail`�
 
 ### `GET /ready`
 
-파이프라인을 지연 초기화하여 Stage1 corpus, Stage2 저장소, provider 설정을 포함한
+파이프라인을 지연 초기화하여 Interpreter corpus, Retriever 저장소, provider 설정을 포함한
 실행 준비 상태를 확인한다.
 
 - 준비됨: `200 OK`
@@ -270,10 +270,10 @@ FastAPI 프로세스 liveness만 확인한다. corpus나 DB가 마운트되지 �
   "type": "object",
   "properties": {
     "intent":        { "$ref": "#/$defs/stageTrace" },
-    "stage2_result": { "$ref": "#/$defs/stageTrace" },
-    "stage3_result": { "$ref": "#/$defs/stageTrace" },
-    "stage4_result": { "$ref": "#/$defs/stageTrace" },
-    "stage1_think_trace": { "type": "string" },
+    "retriever_result": { "$ref": "#/$defs/stageTrace" },
+    "reasoner_result": { "$ref": "#/$defs/stageTrace" },
+    "validator_result": { "$ref": "#/$defs/stageTrace" },
+    "interpreter_think_trace": { "type": "string" },
     "analysis_plan": {
       "type": "object",
       "properties": {
@@ -288,7 +288,7 @@ FastAPI 프로세스 liveness만 확인한다. corpus나 DB가 마운트되지 �
     "supervisor": {
       "type": "object",
       "properties": {
-        "phase":  { "type": ["string", "null"], "enum": ["after_stage1", "after_stage2", "after_stage3", "after_stage4", null] },
+        "phase":  { "type": ["string", "null"], "enum": ["after_interpreter", "after_retriever", "after_reasoner", "after_validator", null] },
         "action": { "type": ["string", "null"] },
         "reason": { "type": ["string", "null"] },
         "search_attempts":       { "type": "integer", "minimum": 0 },
@@ -381,7 +381,7 @@ FastAPI 프로세스 liveness만 확인한다. corpus나 DB가 마운트되지 �
   검색 재시도는 내부 `search_query`만 바꾼다.
 - **반복 상한**: Supervisor 총 12단계, 검색 재시도 1회, 계산 계획 재시도 1회, 답변 재생성 1회,
   그래프 `recursion_limit` 24.
-- **CLOVA 미설정 시**: `CLOVA_LLM_ENABLED`가 꺼져 있으면 Stage3/Stage4가
+- **CLOVA 미설정 시**: `CLOVA_LLM_ENABLED`가 꺼져 있으면 Reasoner/Validator가
   `deterministic_fallback`으로 동작한다. 답변 수치는 나올 수 있으나 형식이 다듬어지지 않을 수 있다.
 - **근거 표시**: 모든 답변에 근거 공시를 표기한다(과제 필수 규칙).
 

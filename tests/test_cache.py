@@ -5,11 +5,11 @@ from concurrent.futures import ThreadPoolExecutor
 from sqlalchemy import create_engine
 
 from integration.cache import CacheRegistry, TTLRUCache, build_index_signature
-from stage2.embedding import E5Embeddings
-from stage2.local_store import LocalHybridRetriever
-from stage3.agents.fact_extraction import extract_facts
-from stage3.contracts import Stage3Document, Stage3Intent
-from stage3.parsing import structured
+from retriever.embedding import E5Embeddings
+from retriever.local_store import LocalHybridRetriever
+from reasoner.agents.fact_extraction import extract_facts
+from reasoner.contracts import ReasonerDocument, ReasonerIntent
+from reasoner.parsing import structured
 
 
 def _registry(**kwargs) -> CacheRegistry:
@@ -26,8 +26,8 @@ def _registry(**kwargs) -> CacheRegistry:
     return CacheRegistry(**defaults)
 
 
-def _intent(*, metric: str = "revenue", basis: str | None = "연결") -> Stage3Intent:
-    return Stage3Intent(
+def _intent(*, metric: str = "revenue", basis: str | None = "연결") -> ReasonerIntent:
+    return ReasonerIntent(
         question="삼성전자의 매출액은?",
         normalized_question="삼성전자 매출액",
         route="ok",
@@ -40,8 +40,8 @@ def _intent(*, metric: str = "revenue", basis: str | None = "연결") -> Stage3I
     )
 
 
-def _document(text: str = "삼성전자 매출액은 100억원입니다.") -> Stage3Document:
-    return Stage3Document(
+def _document(text: str = "삼성전자 매출액은 100억원입니다.") -> ReasonerDocument:
+    return ReasonerDocument(
         id="chunk-1",
         source="report.xml",
         text=text,
@@ -105,13 +105,13 @@ def test_index_signature_changes_with_version_or_index_metadata(tmp_path):
     chroma_path.mkdir()
 
     first = build_index_signature(
-        stage2_mode="local",
+        retriever_mode="local",
         sqlite_path=sqlite_path,
         chroma_path=chroma_path,
         index_version="1",
     )
     second = build_index_signature(
-        stage2_mode="local",
+        retriever_mode="local",
         sqlite_path=sqlite_path,
         chroma_path=chroma_path,
         index_version="2",
@@ -120,7 +120,7 @@ def test_index_signature_changes_with_version_or_index_metadata(tmp_path):
 
     sqlite_path.write_text("changed index", encoding="utf-8")
     third = build_index_signature(
-        stage2_mode="local",
+        retriever_mode="local",
         sqlite_path=sqlite_path,
         chroma_path=chroma_path,
         index_version="1",
@@ -160,7 +160,7 @@ def test_e5_query_embedding_cache_uses_final_query_and_index_signature(monkeypat
             return [[3.0, 4.0] for _ in texts]
 
     monkeypatch.setattr(
-        "stage2.ingestion.dart.embeddings.load_e5_model",
+        "retriever.ingestion.dart.embeddings.load_e5_model",
         lambda **_: FakeModel(),
     )
     registry = _registry()
@@ -233,7 +233,7 @@ def test_structured_parser_cache_reuses_same_chunk_text_and_version(monkeypatch)
 
 def test_fact_cache_is_profile_specific_and_reuses_structured_parse(monkeypatch):
     calls = []
-    import stage3.agents.fact_extraction as fact_module
+    import reasoner.agents.fact_extraction as fact_module
 
     original = fact_module._extract_facts_uncached
 

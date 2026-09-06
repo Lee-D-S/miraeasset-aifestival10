@@ -6,10 +6,10 @@ import pytest
 
 import config
 import integration.composition as composition
-from stage2.embedding import (
+from retriever.embedding import (
     E5Embeddings,
 )
-from stage2.ingestion.dart.embeddings import MODEL_NAME as DART_MODEL_NAME
+from retriever.ingestion.dart.embeddings import MODEL_NAME as DART_MODEL_NAME
 
 
 def test_default_embedding_is_non_instruct_fastembed(monkeypatch):
@@ -59,7 +59,7 @@ def test_e5_cache_failure_is_explicit(monkeypatch):
         raise OSError("cache missing")
 
     monkeypatch.setattr(
-        "stage2.ingestion.dart.embeddings.load_e5_model",
+        "retriever.ingestion.dart.embeddings.load_e5_model",
         fail_to_load,
     )
     with pytest.raises(RuntimeError, match="model cache is unavailable"):
@@ -79,7 +79,7 @@ def test_e5_adapter_normalizes_and_uses_query_prefix(monkeypatch):
             return iter([[3.0, 4.0]])
 
     monkeypatch.setattr(
-        "stage2.ingestion.dart.embeddings.load_e5_model",
+        "retriever.ingestion.dart.embeddings.load_e5_model",
         lambda **_: FakeModel(),
     )
     adapter = E5Embeddings()
