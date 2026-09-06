@@ -18,6 +18,15 @@ from reasoner.grounding import (
 
 logger = logging.getLogger(__name__)
 
+# Retriever folds its retrieval_trace into the Reasoner warning list. Those
+# lines (``query=``, ``candidate_count=``, ``reranker=`` ...) are pipeline
+# diagnostics, not answer limitations, and must not surface in the user-facing
+# "정보 한계" section.
+_RETRIEVAL_TRACE_NOISE_RE = re.compile(
+    r"(?:^|[:\s])(?:query|candidate_count|keyword_count|vector_count|"
+    r"merged_count|cited_count|reranker|reranker_suggested_queries_count)="
+)
+
 
 def _citation_lines(citations: list[dict[str, Any]]) -> list[str]:
     lines: list[str] = []
@@ -469,7 +478,13 @@ class AnswerWriter:
         if citations:
             sections.append("근거 공시\n" + "\n".join(_citation_lines(citations)))
         if warnings:
-            sections.append("정보 한계\n" + "\n".join(f"- {warning}" for warning in warnings))
+            limitations = [
+                str(warning)
+                for warning in warnings
+                if not _RETRIEVAL_TRACE_NOISE_RE.search(str(warning))
+            ]
+            if limitations:
+                sections.append("정보 한계\n" + "\n".join(f"- {warning}" for warning in limitations))
         return "\n\n".join(sections)
 
 
