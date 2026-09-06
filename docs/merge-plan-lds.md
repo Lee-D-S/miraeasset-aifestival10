@@ -51,9 +51,9 @@ git checkout refactor/centralized-db-config -- <경로들>
 | `retriever/backends.py` | `local_chroma()`(존재-검증 강화), `readonly_sqlite_engine()`, `ReadOnlyHnswVectorStore`(hnswlib 폴백, 미사용) | **채택.** `ReadOnlyHnswVectorStore`는 폴백으로 보존(선택) — `hnswlib`만 의존, torch 아님 |
 | `retriever/node.py`, `retriever/retrieval.py` | 읽기전용 백엔드 wiring | 채택 |
 | `integration/composition.py` | `E5InstructEmbeddings(query_instruction=None)`, `if settings.embedding != "e5-instruct": raise` | 채택 후 **임베딩 팩토리/가드를 우리 값으로 수정** |
-| `config.py` | `VALID_STAGE2_EMBEDDINGS=("e5-instruct",)`, `EMBEDDING` 기본 `e5-instruct`, `STAGE2_MODE`(local/container), `STAGE2_ALLOW_PARTIAL_INDEX`, `STAGE2_SQL_TABLE`, `STAGE2_CHROMA_COLLECTION` | 새 env 노브는 **채택**. 임베딩 enum만 `("e5",)` 또는 `("e5","e5-instruct")`로, 기본 `e5` |
+| `config.py` | `VALID_RETRIEVER_EMBEDDINGS=("e5-instruct",)`, `EMBEDDING` 기본 `e5-instruct`, `RETRIEVER_MODE`(local/container), `RETRIEVER_ALLOW_PARTIAL_INDEX`, `RETRIEVER_SQL_TABLE`, `RETRIEVER_CHROMA_COLLECTION` | 새 env 노브는 **채택**. 임베딩 enum만 `("e5",)` 또는 `("e5","e5-instruct")`로, 기본 `e5` |
 | `requirements.txt` | `+torch==2.1.0`, `+sentence-transformers==3.4.1`, `+transformers==4.49.0`, `+huggingface-hub`, `+langchain-huggingface`, `+chroma-hnswlib==0.7.6` | **이 라인들 제외.** 우리 `fastembed` + `chromadb==1.5.9` 유지. `ReadOnlyHnswVectorStore` 보존 시 `hnswlib` 1줄만 추가 |
-| `NCP_DEPLOYMENT.md`, `README.md`, `.env.example` | `STAGE2_EMBEDDING=e5-instruct`, instruct 모델 캐시 안내 | 구조는 채택, **임베딩 값·모델명을 non-instruct로 수정**. `STAGE2_MODE=local` 노브 반영 |
+| `NCP_DEPLOYMENT.md`, `README.md`, `.env.example` | `RETRIEVER_EMBEDDING=e5-instruct`, instruct 모델 캐시 안내 | 구조는 채택, **임베딩 값·모델명을 non-instruct로 수정**. `RETRIEVER_MODE=local` 노브 반영 |
 
 ### C. 우리 것 유지 (친구 브랜치에 없음 → replay)
 
@@ -92,10 +92,10 @@ git checkout refactor/centralized-db-config -- <경로들>
    - `from retriever.embedding import E5InstructEmbeddings` → 우리 클래스명
    - `_build_embeddings`: `E5InstructEmbeddings(query_instruction=None)` → `E5FastEmbedEmbeddings()`
    - 가드 `if settings.embedding != "e5-instruct"` → `!= "e5"`
-3. `config.py`: `VALID_STAGE2_EMBEDDINGS = ("e5",)`, `EMBEDDING` 기본 `"e5"`.
+3. `config.py`: `VALID_RETRIEVER_EMBEDDINGS = ("e5",)`, `EMBEDDING` 기본 `"e5"`.
 4. `requirements.txt`: torch/sentence-transformers/transformers/langchain-huggingface/chroma-hnswlib 제거 (C의 fastembed·chromadb 핀 유지). `ReadOnlyHnswVectorStore` 보존 시 `hnswlib` 추가.
 5. `integration/readiness.py`: `validate_embedding_dimension` → 1024 확인 (e5-large/instruct 둘 다 1024이므로 통과. 모델 불일치는 차원으론 못 잡음 — 스모크로 검증).
-6. 문서(`NCP_DEPLOYMENT.md`, `README.md`, `.env.example`): `STAGE2_EMBEDDING=e5`, 모델 = `intfloat/multilingual-e5-large`, fastembed 캐시 오프라인 배포 안내.
+6. 문서(`NCP_DEPLOYMENT.md`, `README.md`, `.env.example`): `RETRIEVER_EMBEDDING=e5`, 모델 = `intfloat/multilingual-e5-large`, fastembed 캐시 오프라인 배포 안내.
 
 ---
 
@@ -103,7 +103,7 @@ git checkout refactor/centralized-db-config -- <경로들>
 
 1. `pytest` 전체 — 친구 테스트 + 우리 테스트. instruct 전제 테스트(`tests/test_embedding.py` 등)는 non-instruct로 수정.
 2. `python scripts/check_real_index.py --allow-partial-index` — 실 Chroma + `chunk_index.db`.
-3. `python scripts/smoke_api.py` / `GET /answer?question_id=Q-TEST&question=...` — `STAGE2_EMBEDDING=e5`로 검색 결과에 실제 공시 청크가 실리는지.
+3. `python scripts/smoke_api.py` / `GET /answer?question_id=Q-TEST&question=...` — `RETRIEVER_EMBEDDING=e5`로 검색 결과에 실제 공시 청크가 실리는지.
 4. 응답 5필드(`question_id, question, retrieved_context, think_trace, answer`) 계약 확인.
 
 ---
@@ -146,7 +146,7 @@ source_path/metadata_json` + 프로모트 스칼라 12개(`corp_name…section_n
   (e5-instruct A/B 경로 보존).
 - `integration/composition.py::_embedding_function` — `raise` 대신 **디스패치**
   (`e5`→fastembed, `e5-instruct`→sentence-transformers, else 목록과 함께 에러).
-- `config.py` — `EMBEDDING` 기본 `e5`, `VALID_STAGE2_EMBEDDINGS=("e5","e5-instruct")`
+- `config.py` — `EMBEDDING` 기본 `e5`, `VALID_RETRIEVER_EMBEDDINGS=("e5","e5-instruct")`
   (단일값으로 축소 금지 주석 추가).
 - `retriever/ingestion/writer.py` — **신규**. 빌드 시점 write 경로(DDL+upsert)를 read-only
   서빙 `LocalHybridRetriever`에서 분리. **엔진 무관** — SQLite/Postgres 둘 다 한 경로.
@@ -169,7 +169,7 @@ source_path/metadata_json` + 프로모트 스칼라 12개(`corp_name…section_n
 **미검증 (풀 환경 필요 — 이 환경엔 langchain/fastapi/pytest/fastembed 없음):**
 - `pytest` 전체 스위트
 - `python scripts/check_real_index.py --allow-partial-index`
-- `python scripts/smoke_api.py` / `GET /answer` (실 Chroma + sqlite, `STAGE2_EMBEDDING=e5`)
+- `python scripts/smoke_api.py` / `GET /answer` (실 Chroma + sqlite, `RETRIEVER_EMBEDDING=e5`)
 - `Dockerfile` / `docker-compose.yml` 아직 없음 (deployment-design 5장)
 
 **주의:** 친구 서빙 기본 경로는 `ReadOnlyHnswVectorStore`(hnswlib 직접 read)다.

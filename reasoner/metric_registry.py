@@ -105,7 +105,7 @@ METRIC_SPECS: dict[str, dict[str, Any]] = {
 }
 
 
-STAGE1_METRICS = frozenset(METRIC_SPECS)
+INTERPRETER_METRICS = frozenset(METRIC_SPECS)
 TEXT_METRICS = frozenset(metric for metric, spec in METRIC_SPECS.items() if spec.get("section_labels"))
 
 # Interpreter uses total_assets as the retrieval metric for the financial position
@@ -126,7 +126,7 @@ FACT_METRIC_BY_LABEL = {
 
 
 def is_interpreter_metric(metric: str | None) -> bool:
-    return metric in STAGE1_METRICS
+    return metric in INTERPRETER_METRICS
 
 
 def numeric_labels_for(metric: str | None) -> tuple[str, ...]:
@@ -161,7 +161,7 @@ def fact_metric_for_label(label: str, requested_metric: str | None) -> str:
 __all__ = [
     "FACT_METRIC_BY_LABEL",
     "METRIC_SPECS",
-    "STAGE1_METRICS",
+    "INTERPRETER_METRICS",
     "TEXT_METRICS",
     "fact_metric_for_label",
     "field_labels_for",

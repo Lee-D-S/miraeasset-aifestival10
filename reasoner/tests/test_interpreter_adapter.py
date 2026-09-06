@@ -5,7 +5,7 @@ from pathlib import Path
 import unittest
 
 from reasoner.adapters.interpreter import adapt_interpreter_intent
-from reasoner.metric_registry import STAGE1_METRICS
+from reasoner.metric_registry import INTERPRETER_METRICS
 
 
 class InterpreterAdapterTests(unittest.TestCase):
@@ -21,7 +21,7 @@ class InterpreterAdapterTests(unittest.TestCase):
         self.assertEqual(adapted["clarify"].clarify_message, "'삼성'만으로는 기업을 특정할 수 없습니다.")
         self.assertEqual(adapted["unsafe"].reject_reason, "unsafe:investment_advice")
         self.assertEqual(adapted["lookup"].source, fixtures["lookup"])
-        self.assertTrue({"revenue", "capex", "supply_contract"}.issubset(STAGE1_METRICS))
+        self.assertTrue({"revenue", "capex", "supply_contract"}.issubset(INTERPRETER_METRICS))
 
     def test_registry_contains_every_interpreter_metric(self):
         expected = {
@@ -31,7 +31,7 @@ class InterpreterAdapterTests(unittest.TestCase):
             "major_shareholding", "business_overview", "investment_plan", "rnd",
             "dividend", "employees", "shareholders", "litigation",
         }
-        self.assertEqual(set(STAGE1_METRICS), expected)
+        self.assertEqual(set(INTERPRETER_METRICS), expected)
 
     def test_preserves_full_interpreter_lookup_contract(self):
         raw_intent = {

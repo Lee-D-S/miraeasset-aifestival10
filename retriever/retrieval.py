@@ -122,7 +122,7 @@ def matches_manifest_filter(document: Mapping[str, Any], manifest_filter: Mappin
     return True
 
 
-_STAGE1_METRIC_LABELS = {
+_INTERPRETER_METRIC_LABELS = {
     "revenue": ("매출액", "매출"),
     "operating_profit": ("영업이익",),
     "net_income": ("당기순이익", "순이익"),
@@ -140,7 +140,7 @@ def _metric_query_terms(question: str, metric: str) -> list[str]:
         if "부채비율" in compact:
             return ["부채비율"]
         return ["자산총계"]
-    return [label for label in _STAGE1_METRIC_LABELS.get(metric, ()) if label not in compact]
+    return [label for label in _INTERPRETER_METRIC_LABELS.get(metric, ()) if label not in compact]
 
 
 def _requested_years(intent: Mapping[str, Any]) -> list[str]:

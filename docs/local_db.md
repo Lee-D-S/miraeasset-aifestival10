@@ -86,16 +86,16 @@ python3 -m pip install -r requirements.txt -r requirements-langgraph.txt -r requ
 
 ```bash
 # .env
-STAGE2_MODE=local
-STAGE2_INDEX_PATH=data/local_db/chunk_index.db
-STAGE2_CHROMA_PATH=data/local_db/chunk_index_chroma
-STAGE2_CHROMA_COLLECTION=chunk_vectors
-STAGE2_EMBEDDING=e5
+RETRIEVER_MODE=local
+RETRIEVER_INDEX_PATH=data/local_db/chunk_index.db
+RETRIEVER_CHROMA_PATH=data/local_db/chunk_index_chroma
+RETRIEVER_CHROMA_COLLECTION=chunk_vectors
+RETRIEVER_EMBEDDING=e5
 
 # 이 인덱스는 벡터 커버리지 69%짜리 부분 빌드다(2-4 참고). 이 플래그가 없으면
 # build_pipeline() 이 readiness 검사에서 "Chroma is missing SQLite chunk IDs" /
 # "manifest contains documents absent from Retriever index" 로 기동에 실패한다.
-STAGE2_ALLOW_PARTIAL_INDEX=true
+RETRIEVER_ALLOW_PARTIAL_INDEX=true
 
 # Interpreter 은 universe.csv + manifest.jsonl 이 있는 코퍼스 디렉터리가 반드시
 # 필요하다(저장소에 커밋돼 있지 않음). data/local_db 를 만든 소스 코퍼스를 가리킨다.
@@ -109,7 +109,7 @@ CLOVA_API_HOST=clovastudio.stream.ntruss.com
 
 - `CORPUS_DIR` 없이는 Interpreter 이 `FileNotFoundError` 로 죽는다. 이 코퍼스의
   `manifest.jsonl` 은 인덱스보다 문서 집합이 넓지만(부분 빌드),
-  `STAGE2_ALLOW_PARTIAL_INDEX=true` 가 그 불일치 검사를 경고로 강등한다.
+  `RETRIEVER_ALLOW_PARTIAL_INDEX=true` 가 그 불일치 검사를 경고로 강등한다.
 - 인덱스에 없는 문서를 Interpreter 이 필터로 잡아도 Retriever 검색에서 자연히 0건이 된다.
 
 ### 2-2. 테스트 방법 A — 전체 파이프라인(권장)
@@ -170,7 +170,7 @@ PY
 - **벡터 커버리지 69%** — SQLite 1,155,170행 중 800,460행에만 벡터가 있다. 나머지
   35만 행은 벡터 검색에는 안 걸리고 키워드·메타데이터 필터로만 잡힌다. 그래서
   `readiness_issues()`에 "Chroma is missing SQLite chunk IDs" 경고가 항상 뜬다.
-  `build_pipeline()` 은 이 경고를 치명으로 취급하므로 `STAGE2_ALLOW_PARTIAL_INDEX=true`
+  `build_pipeline()` 은 이 경고를 치명으로 취급하므로 `RETRIEVER_ALLOW_PARTIAL_INDEX=true`
   로 강등해야 기동된다(2-1 참고). 2-3 처럼 retriever 를 직접 쓰면 해당되지 않는다.
 - **임베딩 모델 계약** — 공급 Chroma 벡터와 team-feature2의 운영 경로는
   모두 `intfloat/multilingual-e5-large` 1024차원 공간을 사용한다.
@@ -183,7 +183,7 @@ PY
 ## 3. 지원하지 않는 모드
 
 과거 `fixture`와 `container` 경로는 현재 active 실행 경로에서 제거했다. 해당 값을
-`STAGE2_MODE`에 지정하면 자동 전환 없이 readiness 오류가 발생한다. 기존 SQLite·Chroma
+`RETRIEVER_MODE`에 지정하면 자동 전환 없이 readiness 오류가 발생한다. 기존 SQLite·Chroma
 인덱스는 서버에서 read-only로 사용하며, PostgreSQL이나 원격 Chroma로 이관하지 않는다.
 
 ---

@@ -22,7 +22,7 @@ _ALLOWED_INTENTS = {"lookup", "calc", "compare", "list", "change", "exists"}
 
 
 def llm_enabled() -> bool:
-    return os.environ.get("STAGE1_USE_LLM", "0") == "1"
+    return os.environ.get("INTERPRETER_USE_LLM", "0") == "1"
 
 
 SLOT_SCHEMA = {

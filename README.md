@@ -56,22 +56,22 @@ uvicorn app:app --reload
 
 Retriever는 제공된 인덱스를 사용하는 `local` 모드만 지원한다.
 
-- `local`: 제공된 로컬 SQLite(`STAGE2_INDEX_PATH`)의 `chunk_index`로
+- `local`: 제공된 로컬 SQLite(`RETRIEVER_INDEX_PATH`)의 `chunk_index`로
   `manifest_filter`를 SQL `WHERE`절로 필터링하고, 기존 Chroma persistent HNSW 파일을
   query-only로 읽는다. 현재 제공 인덱스는 최신 Chroma writer와 호환되지 않는 legacy
   HNSW pickle 형식이므로 애플리케이션은 Chroma migration/client를 열지 않고
   `chroma.sqlite3`를 SQLite `mode=ro`로 읽으며 HNSW 파일을 직접 검색한다. 질의 임베딩은
-  `STAGE2_EMBEDDING=e5`, 즉 `intfloat/multilingual-e5-large` 하나로 고정한다.
+  `RETRIEVER_EMBEDDING=e5`, 즉 `intfloat/multilingual-e5-large` 하나로 고정한다.
   문서와 질의는 저장 인덱스와 같은 1024차원 E5 공간을 사용하며, `e5-instruct`는
   active 경로에서 허용하지 않는다.
-`STAGE2_CHROMA_COLLECTION`(기본 `chunk_vectors`)은 제공 인덱스를 만든 시점의 컬렉션
-이름과 일치해야 한다. `STAGE2_MODE=container`를 포함해 `local` 외의 값은 readiness에서
+`RETRIEVER_CHROMA_COLLECTION`(기본 `chunk_vectors`)은 제공 인덱스를 만든 시점의 컬렉션
+이름과 일치해야 한다. `RETRIEVER_MODE=container`를 포함해 `local` 외의 값은 readiness에서
 허용되지 않으며, 자동으로 local 모드로 전환하지 않는다.
 
 제공된 local 인덱스는 SQLite `chunk_index` 약 1,155,170행과 Chroma `chunk_vectors`
 약 800,460개 벡터로 구성되어 있다. 벡터 커버리지와 Interpreter manifest 문서 집합이 완전히
 일치하지 않을 수 있으므로, 해당 인덱스를 테스트할 때만
-`STAGE2_ALLOW_PARTIAL_INDEX=true`를 명시한다. 스키마·빈 테이블·차원 오류는 계속 실패한다.
+`RETRIEVER_ALLOW_PARTIAL_INDEX=true`를 명시한다. 스키마·빈 테이블·차원 오류는 계속 실패한다.
 `chunk_index`와 Chroma collection의 ID 관계는 readiness에서 확인하며, HNSW에 실제로
 검색 가능한 벡터가 없는 후보는 결과에서 제외된다.
 
@@ -86,15 +86,15 @@ Interpreter 슬롯 보완 또는 Reranker 중 하나를 활성화할 때만 필�
 재생성하지 않으며, 실행 중 SQLite·Chroma에 쓰지 않는다.
 
 ```powershell
-$env:STAGE2_MODE = "local"
-$env:STAGE2_INDEX_PATH = "data/team-feature2-local-db/local_db/chunk_index.db"
-$env:STAGE2_CHROMA_PATH = "data/team-feature2-local-db/local_db/chunk_index_chroma"
-$env:STAGE2_CHROMA_COLLECTION = "chunk_vectors"
-$env:STAGE2_SQL_TABLE = "chunk_index"
-$env:STAGE2_EMBEDDING = "e5"
-$env:STAGE2_ALLOW_PARTIAL_INDEX = "true"
+$env:RETRIEVER_MODE = "local"
+$env:RETRIEVER_INDEX_PATH = "data/team-feature2-local-db/local_db/chunk_index.db"
+$env:RETRIEVER_CHROMA_PATH = "data/team-feature2-local-db/local_db/chunk_index_chroma"
+$env:RETRIEVER_CHROMA_COLLECTION = "chunk_vectors"
+$env:RETRIEVER_SQL_TABLE = "chunk_index"
+$env:RETRIEVER_EMBEDDING = "e5"
+$env:RETRIEVER_ALLOW_PARTIAL_INDEX = "true"
 $env:CLOVA_LLM_ENABLED = "true"       # 답변 생성·semantic validation
-$env:STAGE1_USE_LLM = "0"              # unresolved 슬롯 보완
+$env:INTERPRETER_USE_LLM = "0"              # unresolved 슬롯 보완
 $env:QUERY_PLANNER_LLM_ENABLED = "false" # unresolved 복합 계산 plan 보완
 $env:CLOVA_RERANKER_ENABLED = "false" # production Reranker 기본 OFF
 $env:CLOVA_RERANKER_CANDIDATE_LIMIT = "100"
@@ -165,7 +165,7 @@ Interpreter manifest_filter
 - `CLOVA_RERANKER_ENABLED=true`일 때만 상위 100개 후보를 CLOVA Reranker에 보내며,
   실패하면 전체 merged 후보의 deterministic 순위로 fallback한다. `suggestedQueries`는
   trace에만 기록한다.
-- `STAGE1_USE_LLM=1`일 때만 규칙으로 unresolved 상태인 Interpreter 슬롯에 CLOVA Chat을 호출한다.
+- `INTERPRETER_USE_LLM=1`일 때만 규칙으로 unresolved 상태인 Interpreter 슬롯에 CLOVA Chat을 호출한다.
 - 잘못된 action, provider 오류, 근거 부족은 fail-closed 처리한다.
 
 ## 검증

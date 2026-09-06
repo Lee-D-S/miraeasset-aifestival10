@@ -27,22 +27,22 @@ CLOVA_API_KEY=<secret>
 CLOVA_API_HOST=clovastudio.stream.ntruss.com
 CLOVA_LLM_ENABLED=true
 CLOVA_CHAT_MODEL=HCX-DASH-002
-STAGE1_USE_LLM=0
+INTERPRETER_USE_LLM=0
 CLOVA_RERANKER_ENABLED=false
 CLOVA_RERANKER_CANDIDATE_LIMIT=100
 
 # compose 가 아래를 이미 넣지만, 직접 uvicorn 실행 시엔 명시한다
-STAGE2_MODE=local
-STAGE2_EMBEDDING=e5
-STAGE2_INDEX_PATH=/app/data/local_db/chunk_index.db
-STAGE2_CHROMA_PATH=/app/data/local_db/chunk_index_chroma
-STAGE2_CHROMA_COLLECTION=chunk_vectors
-STAGE2_SQL_TABLE=chunk_index
-STAGE2_ALLOW_PARTIAL_INDEX=true
+RETRIEVER_MODE=local
+RETRIEVER_EMBEDDING=e5
+RETRIEVER_INDEX_PATH=/app/data/local_db/chunk_index.db
+RETRIEVER_CHROMA_PATH=/app/data/local_db/chunk_index_chroma
+RETRIEVER_CHROMA_COLLECTION=chunk_vectors
+RETRIEVER_SQL_TABLE=chunk_index
+RETRIEVER_ALLOW_PARTIAL_INDEX=true
 # FASTEMBED_CACHE_DIR=/opt/models/fastembed   # 이미지에 내장됨
 ```
 
-`STAGE2_ALLOW_PARTIAL_INDEX=true`는 공유 인덱스의 예상된 ID·manifest 불일치만 경고로
+`RETRIEVER_ALLOW_PARTIAL_INDEX=true`는 공유 인덱스의 예상된 ID·manifest 불일치만 경고로
 낮춘다. 스키마·빈 테이블·컬렉션·차원 오류는 기동을 막는다. Secret은 `.env`, 로그,
 Git, README, 응답에 기록하지 않는다.
 
@@ -67,13 +67,13 @@ E5 질의 임베딩, manifest filter SQL 후보, structured parsing, intent별 F
 않으며, signature·version·TTL로 무효화된다. cache 내부 오류는 원래 계산으로 우회한다.
 worker는 독립 cache를 가지므로 현재 권장하는 one-worker 운용과 호환된다.
 
-기본값은 **`STAGE2_EMBEDDING=e5`** — 인덱스를 만든 모델과 동일한
+기본값은 **`RETRIEVER_EMBEDDING=e5`** — 인덱스를 만든 모델과 동일한
 `intfloat/multilingual-e5-large` (1024-dim, **non-instruct**)를 **fastembed / ONNX**로 로드한다.
 가중치는 **컨테이너 이미지에 빌드 시 내장**되므로 기동 시 외부 다운로드가 없다
 (`Dockerfile` 의 builder 단계, `FASTEMBED_CACHE_DIR=/opt/models/fastembed`).
 torch / transformers / sentence-transformers 는 필요 없다.
 
-`STAGE2_MODE=local` 의 벡터 검색은 `backends.ReadOnlyHnswVectorStore` 가 담당한다 —
+`RETRIEVER_MODE=local` 의 벡터 검색은 `backends.ReadOnlyHnswVectorStore` 가 담당한다 —
 공급 Chroma persist 디렉터리의 `chroma.sqlite3` 를 `mode=ro` 로 읽고 HNSW 파일을 직접
 연다 (Chroma writer/client 를 열지 않아 마이그레이션이 없다). 표준 Chroma
 `PersistentClient` 경로도 `chromadb==1.5.9` 에서 동작 확인됨 —
@@ -113,8 +113,8 @@ uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1
 문자열로 반환해야 한다. local Chroma와 process-local rate limiter를 사용하므로 worker는
 1개로 유지한다.
 
-Retriever는 `STAGE2_MODE=local`만 지원한다. PostgreSQL container와 원격 Chroma 경로는
-제거했으며, `STAGE2_MODE=container` 같은 잘못된 설정은 자동 전환 없이 readiness 오류로
+Retriever는 `RETRIEVER_MODE=local`만 지원한다. PostgreSQL container와 원격 Chroma 경로는
+제거했으며, `RETRIEVER_MODE=container` 같은 잘못된 설정은 자동 전환 없이 readiness 오류로
 실패한다. 현재 제공 인덱스 검증과 서버 테스트의 기준은 local SQLite·Chroma다.
 
 일반 회귀 테스트는 대용량 인덱스를 필요로 하지 않고 `pytest`에서 `real_index` marker를

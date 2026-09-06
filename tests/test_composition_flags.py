@@ -48,7 +48,7 @@ def test_interpreter_and_reranker_flags_are_independent(monkeypatch):
     monkeypatch.setattr(composition, "build_validator_node", fake_validator)
     monkeypatch.setattr(composition, "AnswerWriter", lambda _client: object())
     monkeypatch.setenv("CLOVA_LLM_ENABLED", "false")
-    monkeypatch.setenv("STAGE1_USE_LLM", "1")
+    monkeypatch.setenv("INTERPRETER_USE_LLM", "1")
     monkeypatch.setenv("CLOVA_RERANKER_ENABLED", "true")
 
     composition.build_pipeline()
@@ -86,7 +86,7 @@ def test_clova_capabilities_are_not_constructed_when_flags_are_off(monkeypatch):
     monkeypatch.setattr(composition, "build_reasoner_node", lambda **_kwargs: lambda _state: {})
     monkeypatch.setattr(composition, "build_validator_node", lambda **_kwargs: lambda _state: {})
     monkeypatch.delenv("CLOVA_LLM_ENABLED", raising=False)
-    monkeypatch.delenv("STAGE1_USE_LLM", raising=False)
+    monkeypatch.delenv("INTERPRETER_USE_LLM", raising=False)
     monkeypatch.delenv("CLOVA_RERANKER_ENABLED", raising=False)
 
     composition.build_pipeline()

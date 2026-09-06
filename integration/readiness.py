@@ -33,12 +33,12 @@ def validate_environment(mode: str) -> list[str]:
     """Return configuration problems without making a network request."""
 
     issues: list[str] = []
-    if mode not in config.VALID_STAGE2_MODES:
+    if mode not in config.VALID_RETRIEVER_MODES:
         issues.append(
-            "STAGE2_MODE must be one of " + ", ".join(config.VALID_STAGE2_MODES)
+            "RETRIEVER_MODE must be one of " + ", ".join(config.VALID_RETRIEVER_MODES)
         )
     live_llm = os.getenv("CLOVA_LLM_ENABLED", "false").strip().lower() == "true"
-    interpreter_llm = os.getenv("STAGE1_USE_LLM", "0").strip().lower() in {"1", "true", "yes", "on"}
+    interpreter_llm = os.getenv("INTERPRETER_USE_LLM", "0").strip().lower() in {"1", "true", "yes", "on"}
     query_planner_llm = os.getenv("QUERY_PLANNER_LLM_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
     reranker = os.getenv("CLOVA_RERANKER_ENABLED", "false").strip().lower() == "true"
     provider_enabled = live_llm or interpreter_llm or query_planner_llm or reranker
@@ -46,17 +46,17 @@ def validate_environment(mode: str) -> list[str]:
         issues.append("CLOVA_API_KEY is not configured")
     if provider_enabled and not os.getenv("CLOVA_API_HOST", "clovastudio.stream.ntruss.com").strip():
         issues.append("CLOVA_API_HOST is empty")
-    embedding = os.getenv("STAGE2_EMBEDDING", config.EMBEDDING).strip().lower()
-    if embedding not in config.VALID_STAGE2_EMBEDDINGS:
+    embedding = os.getenv("RETRIEVER_EMBEDDING", config.EMBEDDING).strip().lower()
+    if embedding not in config.VALID_RETRIEVER_EMBEDDINGS:
         issues.append(
-            "STAGE2_EMBEDDING must be one of "
-            + ", ".join(config.VALID_STAGE2_EMBEDDINGS)
+            "RETRIEVER_EMBEDDING must be one of "
+            + ", ".join(config.VALID_RETRIEVER_EMBEDDINGS)
         )
-    table = os.getenv("STAGE2_SQL_TABLE", config.SQLITE_TABLE).strip()
-    if table not in config.VALID_STAGE2_SQL_TABLES:
+    table = os.getenv("RETRIEVER_SQL_TABLE", config.SQLITE_TABLE).strip()
+    if table not in config.VALID_RETRIEVER_SQL_TABLES:
         issues.append(
-            "STAGE2_SQL_TABLE must be one of "
-            + ", ".join(config.VALID_STAGE2_SQL_TABLES)
+            "RETRIEVER_SQL_TABLE must be one of "
+            + ", ".join(config.VALID_RETRIEVER_SQL_TABLES)
         )
     return issues
 
@@ -102,7 +102,7 @@ def validate_embedding_dimension(vectorstore: Any, expected: int = 1024) -> list
 
 def validate_sqlite_path(path: Path) -> list[str]:
     if not path.is_file():
-        return ["STAGE2_INDEX_PATH does not point to an existing SQLite file"]
+        return ["RETRIEVER_INDEX_PATH does not point to an existing SQLite file"]
     return []
 
 

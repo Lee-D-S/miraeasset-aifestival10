@@ -19,7 +19,7 @@ from integration.cache import canonical_json, safe_cache_get, safe_cache_put
 class E5Embeddings(Embeddings):
     """``intfloat/multilingual-e5-large`` (1024-dim, non-instruct) via fastembed.
 
-    The active default (``STAGE2_EMBEDDING=e5``).  The same model that embedded
+    The active default (``RETRIEVER_EMBEDDING=e5``).  The same model that embedded
     the documents into ``chunk_index``'s Chroma collection also embeds the
     query.  fastembed (ONNX Runtime) is used rather than sentence-transformers
     so there is no torch / transformers / Pillow dependency; it installs

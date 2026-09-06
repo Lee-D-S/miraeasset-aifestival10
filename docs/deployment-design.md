@@ -21,7 +21,7 @@
 
 **아직 안 됨 (D-3):**
 - **풀 환경 `pytest` 통과 확인** — 이 세션 환경엔 deps 없어 정적 검증만 함. CI(`913edfe` 이후)에서 초록인지 확인 필요.
-- **실 인덱스 스모크** — `scripts/check_real_index.py`, `GET /answer` (`STAGE2_EMBEDDING=e5`, 실 Chroma+sqlite).
+- **실 인덱스 스모크** — `scripts/check_real_index.py`, `GET /answer` (`RETRIEVER_EMBEDDING=e5`, 실 Chroma+sqlite).
 - **NCP 서버 실제 배포** — `docs/ncp-deploy.md` 따라. endpoint URL 확정.
 - **제출물** — README 에 실행법·API 명세(요청/응답 5필드) + endpoint URL, 기술제안서.
 
@@ -105,8 +105,8 @@ GET /answer?question_id={id}&question={평가 질의}
 
 | 변수 | 값 | 주의 |
 |---|---|---|
-| `STAGE2_EMBEDDING` | **`e5`** | `config.py`에서 `e5`만 허용한다. 인덱스와 질의가 다른 공간을 사용하지 않도록 `e5-instruct`는 거부한다. |
-| `STAGE2_MODE` | **`local`** | active 경로는 local SQLite·Chroma만 지원하며 다른 값은 readiness에서 거부 |
+| `RETRIEVER_EMBEDDING` | **`e5`** | `config.py`에서 `e5`만 허용한다. 인덱스와 질의가 다른 공간을 사용하지 않도록 `e5-instruct`는 거부한다. |
+| `RETRIEVER_MODE` | **`local`** | active 경로는 local SQLite·Chroma만 지원하며 다른 값은 readiness에서 거부 |
 | `CLOVA_API_HOST` | `clovastudio.stream.ntruss.com` | |
 | `CLOVA_CHAT_MODEL` | 예 `HCX-DASH-002` | 대회 허용 HyperCLOVA X 모델로 확정 |
 | `CLOVA_API_KEY` 등 인증 | (NCP CLOVA Studio 키) | git·이미지에 넣지 않음. NCP secret 또는 `.env` |
@@ -149,7 +149,7 @@ NCP Server (RAM 32GB+) + Block Storage 150GB (/data)
    │   ├─ volume: /data/chunk_index_chroma        # ~95GB
    │   ├─ volume: /data/chunk_index.db:ro         # SQLite
    │   ├─ volume: /data/models (fastembed cache)  # e5 오프라인
-   │   ├─ env: STAGE2_EMBEDDING=e5, STAGE2_MODE=local, CLOVA_*
+   │   ├─ env: RETRIEVER_EMBEDDING=e5, RETRIEVER_MODE=local, CLOVA_*
    │   └─ requirements.txt: chromadb==1.5.9 핀
 ```
 
@@ -179,7 +179,7 @@ NCP Server (RAM 32GB+) + Block Storage 150GB (/data)
 
 ## 8. 리스크 / 게이차
 
-- **임베딩 provider 불일치:** `STAGE2_EMBEDDING`을 `e5` 외 값으로 설정하면 readiness에서 거부한다. 인덱스와 질의 모두 `intfloat/multilingual-e5-large`를 사용한다.
+- **임베딩 provider 불일치:** `RETRIEVER_EMBEDDING`을 `e5` 외 값으로 설정하면 readiness에서 거부한다. 인덱스와 질의 모두 `intfloat/multilingual-e5-large`를 사용한다.
 - **`chunk_index.db` 미완성:** 다운로드 중. 완료 후 무결성/스키마 확인 전엔 서빙 불가.
 - **fastembed 런타임 모델 다운로드:** 오프라인 평가 환경이면 기동 실패. 5.4 대비.
 - **langchain-chroma 1.0 ↔ chromadb 1.5.9 호환:** 실제로 `list_collections`/쿼리 되는지 배포 전 확인.
@@ -194,7 +194,7 @@ NCP Server (RAM 32GB+) + Block Storage 150GB (/data)
 
 1. `chunk_index.db` 다운로드 완료 → `PRAGMA integrity_check`, `.schema`, 앱에서의 용도 확인
 2. `Dockerfile` + `docker-compose.yml` 작성 (env 4장 반영, e5 캐시 포함)
-3. 로컬에서 `GET /answer` 스모크 (실 Chroma + sqlite, `STAGE2_EMBEDDING=e5`)
+3. 로컬에서 `GET /answer` 스모크 (실 Chroma + sqlite, `RETRIEVER_EMBEDDING=e5`)
 4. NCP Server + Block Storage 프로비저닝 → 데이터 이관(6장) → 검증
 5. NCP에서 스모크 → **endpoint URL 확정**
 6. README + API 명세서 + 기술 제안서 마무리 → 제출 repo push (09.06 전)

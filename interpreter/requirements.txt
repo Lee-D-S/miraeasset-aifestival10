@@ -1,7 +1,7 @@
 # 1단계 코어는 표준 라이브러리만 사용한다 (universe.csv / manifest.jsonl 로딩 포함).
 # raw/ XML은 1단계에서 열지 않는다.
 
-# HyperCLOVA X 슬롯 보충을 켤 때만 필요 (STAGE1_USE_LLM=1)
+# HyperCLOVA X 슬롯 보충을 켤 때만 필요 (INTERPRETER_USE_LLM=1)
 requests>=2.31.0
 
 # 테스트

@@ -55,47 +55,47 @@ DATA_DIR = resolve_path(os.getenv("DATA_DIR"), PROJECT_ROOT / "data")
 # persist directory for vector search.
 LOCAL_DB_DIR = DATA_DIR / "team-feature2-local-db" / "local_db"
 SQLITE_PATH = resolve_path(
-    os.getenv("STAGE2_INDEX_PATH"), LOCAL_DB_DIR / "chunk_index.db"
+    os.getenv("RETRIEVER_INDEX_PATH"), LOCAL_DB_DIR / "chunk_index.db"
 )
 CHROMA_PATH = resolve_path(
-    os.getenv("STAGE2_CHROMA_PATH"), LOCAL_DB_DIR / "chunk_index_chroma"
+    os.getenv("RETRIEVER_CHROMA_PATH"), LOCAL_DB_DIR / "chunk_index_chroma"
 )
 
 # One collection name for the local Chroma persist directory.
-CHROMA_COLLECTION = os.getenv("STAGE2_CHROMA_COLLECTION", "").strip() or "chunk_vectors"
-SQLITE_TABLE = os.getenv("STAGE2_SQL_TABLE", "").strip() or "chunk_index"
-# Canonical default for unset ``STAGE2_EMBEDDING``. Keep this a module constant
+CHROMA_COLLECTION = os.getenv("RETRIEVER_CHROMA_COLLECTION", "").strip() or "chunk_vectors"
+SQLITE_TABLE = os.getenv("RETRIEVER_SQL_TABLE", "").strip() or "chunk_index"
+# Canonical default for unset ``RETRIEVER_EMBEDDING``. Keep this a module constant
 # rather than reading os.getenv at import time so CI pre-existing e5 env vars
 # do not freeze ``config.EMBEDDING`` before tests clear the environment.
-DEFAULT_STAGE2_EMBEDDING = "e5"
-EMBEDDING = DEFAULT_STAGE2_EMBEDDING
+DEFAULT_RETRIEVER_EMBEDDING = "e5"
+EMBEDDING = DEFAULT_RETRIEVER_EMBEDDING
 
 # --- Retriever mode -------------------------------------------------------------
-VALID_STAGE2_MODES: tuple[str, ...] = ("local",)
+VALID_RETRIEVER_MODES: tuple[str, ...] = ("local",)
 # The supplied SQLite/Chroma index and the active query path share this model.
 # Keep the environment variable for deployment compatibility, but do not allow
 # a second embedding space to be selected accidentally.
-VALID_STAGE2_EMBEDDINGS: tuple[str, ...] = ("e5",)
-VALID_STAGE2_SQL_TABLES: tuple[str, ...] = ("chunk_index", "chunks")
-DEFAULT_STAGE2_MODE = "local"
+VALID_RETRIEVER_EMBEDDINGS: tuple[str, ...] = ("e5",)
+VALID_RETRIEVER_SQL_TABLES: tuple[str, ...] = ("chunk_index", "chunks")
+DEFAULT_RETRIEVER_MODE = "local"
 
 
 def resolve_retriever_mode() -> str:
     """Return the configured Retriever mode.
 
-    ``STAGE2_MODE`` is retained as a compatibility setting.  Only ``local``
+    ``RETRIEVER_MODE`` is retained as a compatibility setting.  Only ``local``
     is supported, and leaving it unset selects the supplied local read-only
     index.
     """
 
-    mode = os.getenv("STAGE2_MODE", "").strip().lower()
-    return mode or DEFAULT_STAGE2_MODE
+    mode = os.getenv("RETRIEVER_MODE", "").strip().lower()
+    return mode or DEFAULT_RETRIEVER_MODE
 
 
 def allow_partial_index() -> bool:
     """Return whether expected partial-index consistency issues are tolerated."""
 
-    return os.getenv("STAGE2_ALLOW_PARTIAL_INDEX", "").strip().lower() in {
+    return os.getenv("RETRIEVER_ALLOW_PARTIAL_INDEX", "").strip().lower() in {
         "1",
         "true",
         "yes",
@@ -136,14 +136,14 @@ class RetrieverSettings:
 
         return cls(
             mode=resolve_retriever_mode(),
-            sqlite_path=resolve_path(os.getenv("STAGE2_INDEX_PATH"), SQLITE_PATH),
-            chroma_path=resolve_path(os.getenv("STAGE2_CHROMA_PATH"), CHROMA_PATH),
+            sqlite_path=resolve_path(os.getenv("RETRIEVER_INDEX_PATH"), SQLITE_PATH),
+            chroma_path=resolve_path(os.getenv("RETRIEVER_CHROMA_PATH"), CHROMA_PATH),
             chroma_collection=(
-                os.getenv("STAGE2_CHROMA_COLLECTION", "").strip() or CHROMA_COLLECTION
+                os.getenv("RETRIEVER_CHROMA_COLLECTION", "").strip() or CHROMA_COLLECTION
             ),
-            sqlite_table=os.getenv("STAGE2_SQL_TABLE", "").strip() or SQLITE_TABLE,
-            embedding=os.getenv("STAGE2_EMBEDDING", "").strip().lower()
-            or DEFAULT_STAGE2_EMBEDDING,
+            sqlite_table=os.getenv("RETRIEVER_SQL_TABLE", "").strip() or SQLITE_TABLE,
+            embedding=os.getenv("RETRIEVER_EMBEDDING", "").strip().lower()
+            or DEFAULT_RETRIEVER_EMBEDDING,
             allow_partial_index=allow_partial_index(),
         )
 
@@ -157,11 +157,11 @@ __all__ = [
     "CHROMA_COLLECTION",
     "SQLITE_TABLE",
     "EMBEDDING",
-    "VALID_STAGE2_MODES",
-    "VALID_STAGE2_EMBEDDINGS",
-    "VALID_STAGE2_SQL_TABLES",
-    "DEFAULT_STAGE2_MODE",
-    "DEFAULT_STAGE2_EMBEDDING",
+    "VALID_RETRIEVER_MODES",
+    "VALID_RETRIEVER_EMBEDDINGS",
+    "VALID_RETRIEVER_SQL_TABLES",
+    "DEFAULT_RETRIEVER_MODE",
+    "DEFAULT_RETRIEVER_EMBEDDING",
     "RetrieverSettings",
     "resolve_path",
     "resolve_retriever_mode",

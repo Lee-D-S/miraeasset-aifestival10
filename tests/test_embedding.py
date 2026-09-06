@@ -13,7 +13,7 @@ from retriever.ingestion.dart.embeddings import MODEL_NAME as DART_MODEL_NAME
 
 
 def test_default_embedding_is_non_instruct_fastembed(monkeypatch):
-    """STAGE2_EMBEDDING=e5 -> E5Embeddings (fastembed, non-instruct)."""
+    """RETRIEVER_EMBEDDING=e5 -> E5Embeddings (fastembed, non-instruct)."""
 
     made = []
 
@@ -30,7 +30,7 @@ def test_default_embedding_is_non_instruct_fastembed(monkeypatch):
 
 def test_only_index_embedding_is_selectable():
     assert config.EMBEDDING == "e5"
-    assert set(config.VALID_STAGE2_EMBEDDINGS) == {"e5"}
+    assert set(config.VALID_RETRIEVER_EMBEDDINGS) == {"e5"}
 
 
 def test_unknown_embedding_lists_valid_choices():
@@ -41,10 +41,10 @@ def test_unknown_embedding_lists_valid_choices():
 
 
 def test_instruct_embedding_is_rejected(monkeypatch):
-    monkeypatch.setenv("STAGE2_EMBEDDING", "e5-instruct")
+    monkeypatch.setenv("RETRIEVER_EMBEDDING", "e5-instruct")
     from integration.readiness import validate_environment
 
-    assert any("STAGE2_EMBEDDING" in issue for issue in validate_environment("local"))
+    assert any("RETRIEVER_EMBEDDING" in issue for issue in validate_environment("local"))
 
 
 def test_e5_adapter_model_matches_the_builder():

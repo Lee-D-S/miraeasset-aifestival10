@@ -6,7 +6,7 @@ from typing import Any
 from reasoner.contracts import RetrieverBundle, ReasonerDocument
 
 
-_STAGE2_METADATA_FIELDS = (
+_RETRIEVER_METADATA_FIELDS = (
     "chunk_id",
     "corp_name",
     "corp_code",
@@ -62,7 +62,7 @@ def adapt_retriever_document(document: Mapping[str, Any]) -> ReasonerDocument:
     metadata = _as_mapping(raw.get("metadata"))
     # Some Retriever candidates may expose metadata at the top level.  Preserve
     # it as a fallback without overriding an explicit nested value.
-    for key in _STAGE2_METADATA_FIELDS:
+    for key in _RETRIEVER_METADATA_FIELDS:
         if key not in metadata and key in raw:
             metadata[key] = raw[key]
 

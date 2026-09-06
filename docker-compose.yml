@@ -1,4 +1,4 @@
-# dis-164 공시 Agent -- 기본 배포 (STAGE2_MODE=local, 단일 컨테이너).
+# dis-164 공시 Agent -- 기본 배포 (RETRIEVER_MODE=local, 단일 컨테이너).
 #
 #   INDEX_DIR=/data/local_db docker compose up -d --build
 #
@@ -23,13 +23,13 @@ services:
       # 둔다 -- 이 environment: 블록의 값이 env_file: (.env)의 값보다 우선하므로, .env에서
       # 값을 빠뜨리거나 false로 둬도 항상 true로 시작한다.
       CLOVA_LLM_ENABLED: "true"
-      STAGE2_MODE: local
-      STAGE2_EMBEDDING: e5
-      STAGE2_INDEX_PATH: /app/data/local_db/chunk_index.db
-      STAGE2_CHROMA_PATH: /app/data/local_db/chunk_index_chroma
-      STAGE2_CHROMA_COLLECTION: chunk_vectors
-      STAGE2_SQL_TABLE: chunk_index
-      STAGE2_ALLOW_PARTIAL_INDEX: "true"
+      RETRIEVER_MODE: local
+      RETRIEVER_EMBEDDING: e5
+      RETRIEVER_INDEX_PATH: /app/data/local_db/chunk_index.db
+      RETRIEVER_CHROMA_PATH: /app/data/local_db/chunk_index_chroma
+      RETRIEVER_CHROMA_COLLECTION: chunk_vectors
+      RETRIEVER_SQL_TABLE: chunk_index
+      RETRIEVER_ALLOW_PARTIAL_INDEX: "true"
       FASTEMBED_CACHE_DIR: /opt/models/fastembed
     volumes:
       - ${INDEX_DIR:-./data/local_db}:/app/data/local_db:ro

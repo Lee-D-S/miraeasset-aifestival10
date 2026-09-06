@@ -325,7 +325,7 @@ def _extract_metric(sq: str, slots: SlotResult, index: CorpusIndex) -> None:
 def _extract_derived_metric(sq: str, slots: SlotResult, index: CorpusIndex) -> None:
     """'부채비율'처럼 한 단어가 분자·분모·연산을 함께 뜻하는 지표를 우선 적용한다.
 
-    검색용 metric은 3단계 레지스트리(STAGE1_METRICS)에 있는 키만 쓴다. 재무상태표
+    검색용 metric은 3단계 레지스트리(INTERPRETER_METRICS)에 있는 키만 쓴다. 재무상태표
     항목은 total_assets 하나로 검색하고, 3단계가 근거의 라벨을 보고 자산/부채/자본을
     나눈다는 합의가 있어서 여기서 새 키를 만들지 않는다.
     """

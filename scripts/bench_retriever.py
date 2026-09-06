@@ -130,7 +130,7 @@ pipe = build_pipeline()
 print(f"build_pipeline: {time.perf_counter() - _t:.1f}s")
 retriever = _CAPTURED.get("retriever")
 if retriever is None:
-    print("경고: retriever 를 가로채지 못함 (STAGE2_MODE 가 local/container 가 아님). Part B 생략.")
+    print("경고: retriever 를 가로채지 못함 (RETRIEVER_MODE 가 local/container 가 아님). Part B 생략.")
 
 
 # ==========================================================================

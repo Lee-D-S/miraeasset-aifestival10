@@ -12,7 +12,7 @@ Retriever는 Interpreter Intent를 받아 공시 근거 문서를 검색하고 R
 local       read-only SQLite chunk_index + supplied Chroma persistent HNSW files
 ```
 
-`STAGE2_MODE`의 허용값은 `local` 하나다. local 모드의 기본 인덱스는 다음과 같다.
+`RETRIEVER_MODE`의 허용값은 `local` 하나다. local 모드의 기본 인덱스는 다음과 같다.
 
 ```text
 data/team-feature2-local-db/local_db/chunk_index.db
@@ -26,13 +26,13 @@ data/team-feature2-local-db/local_db/chunk_index_chroma/
 ## local 설정
 
 ```env
-STAGE2_MODE=local
-STAGE2_INDEX_PATH=data/team-feature2-local-db/local_db/chunk_index.db
-STAGE2_CHROMA_PATH=data/team-feature2-local-db/local_db/chunk_index_chroma
-STAGE2_CHROMA_COLLECTION=chunk_vectors
-STAGE2_SQL_TABLE=chunk_index
-STAGE2_EMBEDDING=e5
-STAGE2_ALLOW_PARTIAL_INDEX=true
+RETRIEVER_MODE=local
+RETRIEVER_INDEX_PATH=data/team-feature2-local-db/local_db/chunk_index.db
+RETRIEVER_CHROMA_PATH=data/team-feature2-local-db/local_db/chunk_index_chroma
+RETRIEVER_CHROMA_COLLECTION=chunk_vectors
+RETRIEVER_SQL_TABLE=chunk_index
+RETRIEVER_EMBEDDING=e5
+RETRIEVER_ALLOW_PARTIAL_INDEX=true
 ```
 
 `e5`는 `intfloat/multilingual-e5-large` 하나만 허용한다. 문서와 질의는 저장 인덱스와
@@ -45,11 +45,11 @@ Production Reranker는 다음 독립 설정으로만 켠다.
 ```env
 CLOVA_RERANKER_ENABLED=false
 CLOVA_RERANKER_CANDIDATE_LIMIT=100
-STAGE1_USE_LLM=0
+INTERPRETER_USE_LLM=0
 ```
 
 Interpreter은 별도의 `CORPUS_DIR`에서 `universe.csv`와 `manifest.jsonl`을 읽는다. 제공 인덱스는
-벡터·문서 집합이 코퍼스와 완전히 일치하지 않을 수 있으므로 `STAGE2_ALLOW_PARTIAL_INDEX`
+벡터·문서 집합이 코퍼스와 완전히 일치하지 않을 수 있으므로 `RETRIEVER_ALLOW_PARTIAL_INDEX`
 가 명시된 경우에만 해당 불일치를 경고로 낮춘다. 스키마 누락, 빈 테이블, Chroma 컬렉션
 부재·차원 오류는 항상 실패한다.
 

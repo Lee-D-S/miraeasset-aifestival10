@@ -16,10 +16,10 @@
 #    같은 1024-dim 벡터 공간.  Colab 에서는 sentence-transformers(torch) 로 돌린다:
 #    onnxruntime-gpu 의 CUDA 라이브러리 버전 지옥을 피하고 Colab 이 보장하는 torch+CUDA
 #    를 그대로 쓰기 위함(서빙 이미지는 여전히 torch 없이 fastembed).
-#  · 만든 DB 서빙: STAGE2_MODE=local · STAGE2_EMBEDDING=e5 ·
-#    STAGE2_INDEX_PATH=<unzip>/chunk_index.db ·
-#    STAGE2_CHROMA_PATH=<unzip>/chunk_index_chroma ·
-#    STAGE2_CHROMA_COLLECTION=<COLLECTION 과 동일>
+#  · 만든 DB 서빙: RETRIEVER_MODE=local · RETRIEVER_EMBEDDING=e5 ·
+#    RETRIEVER_INDEX_PATH=<unzip>/chunk_index.db ·
+#    RETRIEVER_CHROMA_PATH=<unzip>/chunk_index_chroma ·
+#    RETRIEVER_CHROMA_COLLECTION=<COLLECTION 과 동일>
 #  · "vendored" 구역은 retriever/ingestion/dart/*.py 손복사본. 원본 파싱·청킹이
 #    바뀌면 같이 고치고 pytest tests/test_colab_cell.py 로 확인한다.
 # =============================================================================

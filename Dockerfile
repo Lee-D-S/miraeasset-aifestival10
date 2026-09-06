@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #
-# dis-164 공시 Agent -- 서빙 이미지 (STAGE2_MODE=local 기본).
+# dis-164 공시 Agent -- 서빙 이미지 (RETRIEVER_MODE=local 기본).
 #
 # 인덱스(chunk_index.db ~20GB, chunk_index_chroma ~95GB)는 이미지에 넣지 않는다.
 # 런타임에 볼륨으로 /app/data/local_db 에 마운트한다 (docker-compose.yml 참고).
@@ -57,13 +57,13 @@ ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     FASTEMBED_CACHE_DIR=/opt/models/fastembed \
     HF_HUB_OFFLINE=1 \
-    STAGE2_MODE=local \
-    STAGE2_EMBEDDING=e5 \
-    STAGE2_INDEX_PATH=/app/data/local_db/chunk_index.db \
-    STAGE2_CHROMA_PATH=/app/data/local_db/chunk_index_chroma \
-    STAGE2_CHROMA_COLLECTION=chunk_vectors \
-    STAGE2_SQL_TABLE=chunk_index \
-    STAGE2_ALLOW_PARTIAL_INDEX=true
+    RETRIEVER_MODE=local \
+    RETRIEVER_EMBEDDING=e5 \
+    RETRIEVER_INDEX_PATH=/app/data/local_db/chunk_index.db \
+    RETRIEVER_CHROMA_PATH=/app/data/local_db/chunk_index_chroma \
+    RETRIEVER_CHROMA_COLLECTION=chunk_vectors \
+    RETRIEVER_SQL_TABLE=chunk_index \
+    RETRIEVER_ALLOW_PARTIAL_INDEX=true
 
 USER app
 EXPOSE 8000

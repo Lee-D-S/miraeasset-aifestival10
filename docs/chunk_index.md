@@ -1,6 +1,6 @@
 # chunk_index — Retriever 로컬/컨테이너 인덱스
 
-`STAGE2_MODE=local`이 서빙하는 하이브리드 인덱스. SQLite 한 테이블
+`RETRIEVER_MODE=local`이 서빙하는 하이브리드 인덱스. SQLite 한 테이블
 (`chunk_index`)로 메타데이터 필터 → `chunk_id` 집합 → 그 집합 안에서 Chroma 벡터
 검색. `LocalHybridRetriever`가 SQLite와 Chroma를 read-only로 함께 사용한다
 (`retriever/backends.py`).
@@ -43,7 +43,7 @@ rcept_no, is_correction, report_nm, basis, section_name`. 표 청크는
 `rows.py` 진입점. `corpus_dir`에 `universe.csv` + `manifest.jsonl` + `raw/` 필요.
 `doc_ids`/`selection_path` 없으면 manifest 전체.
 
-## 임베딩 — `STAGE2_EMBEDDING`
+## 임베딩 — `RETRIEVER_EMBEDDING`
 
 | 값 | 모델 | 스택 |
 |---|---|---|
@@ -72,11 +72,11 @@ python scripts/build_chunk_index.py --corpus-dir <corpus> \
 
 **서빙 env**
 ```
-STAGE2_MODE=local
-STAGE2_EMBEDDING=e5
-STAGE2_INDEX_PATH=<unzip>/chunk_index.db
-STAGE2_CHROMA_PATH=<unzip>/chunk_index_chroma
-STAGE2_CHROMA_COLLECTION=chunk_vectors     # 빌드 시 COLLECTION 과 일치
+RETRIEVER_MODE=local
+RETRIEVER_EMBEDDING=e5
+RETRIEVER_INDEX_PATH=<unzip>/chunk_index.db
+RETRIEVER_CHROMA_PATH=<unzip>/chunk_index_chroma
+RETRIEVER_CHROMA_COLLECTION=chunk_vectors     # 빌드 시 COLLECTION 과 일치
 ```
 
 현재 active 경로는 local SQLite·Chroma만 사용한다. PostgreSQL·원격 Chroma로의

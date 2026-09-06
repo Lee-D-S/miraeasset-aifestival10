@@ -85,7 +85,7 @@ def _embedding_function(
         return E5Embeddings(**kwargs)
     raise RuntimeError(
         "unsupported Retriever embedding: "
-        f"{embedding}; choose one of {', '.join(config.VALID_STAGE2_EMBEDDINGS)}"
+        f"{embedding}; choose one of {', '.join(config.VALID_RETRIEVER_EMBEDDINGS)}"
     )
 
 
@@ -108,7 +108,7 @@ def _build_retriever(
     if settings.mode != "local":
         raise RuntimeError(
             f"unsupported Retriever mode: {settings.mode}; "
-            f"choose one of {', '.join(config.VALID_STAGE2_MODES)}"
+            f"choose one of {', '.join(config.VALID_RETRIEVER_MODES)}"
         )
 
     raise_if_invalid(validate_sqlite_path(settings.sqlite_path))
@@ -162,7 +162,7 @@ def build_pipeline() -> StagePipeline:
     cache = CacheRegistry.from_env(index_signature=index_signature)
 
     live_llm = _env_bool("CLOVA_LLM_ENABLED")
-    interpreter_use_llm = _env_bool("STAGE1_USE_LLM")
+    interpreter_use_llm = _env_bool("INTERPRETER_USE_LLM")
     query_planner_llm_enabled = _env_bool("QUERY_PLANNER_LLM_ENABLED")
     reranker_enabled = _env_bool("CLOVA_RERANKER_ENABLED")
     clova_rate_limiter = _shared_clova_rate_limiter()

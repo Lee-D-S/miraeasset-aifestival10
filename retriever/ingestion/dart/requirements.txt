@@ -1,6 +1,6 @@
 # DART ingestion path only -- NOT needed to serve the fixture tier.
 # Install alongside the base requirements when building a chunk_index from raw
-# disclosures (scripts/build_chunk_index.py) or when serving with STAGE2_EMBEDDING=e5.
+# disclosures (scripts/build_chunk_index.py) or when serving with RETRIEVER_EMBEDDING=e5.
 #
 # fastembed (ONNX Runtime) is used for the e5 model instead of
 # sentence-transformers / torch, so there is no torch / transformers / Pillow
