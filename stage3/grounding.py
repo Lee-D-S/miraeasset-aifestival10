@@ -219,6 +219,42 @@ def matching_facts(
     return [fact for fact in facts if fact_matches_intent(fact, intent, require_scope=require_scope)]
 
 
+def select_segment_facts(
+    facts: Iterable[Stage3Fact], *, limit: int = 20
+) -> list[Stage3Fact]:
+    """Select the table-backed amount rows for a segment answer.
+
+    A retrieval set can contain narrative totals and percentage cells alongside
+    the requested segment rows.  When structured rows exist, they are the
+    authoritative answer candidates.  The selection is cardinality-agnostic
+    and deduplicates repeated evidence before applying the same limit used by
+    the answer writer.
+    """
+
+    pool = [fact for fact in facts if fact.unit != "%"]
+    numeric_pool = [fact for fact in pool if fact.kind == "numeric"]
+    table_numeric_pool = [fact for fact in numeric_pool if fact.table_context]
+    if table_numeric_pool:
+        pool = table_numeric_pool
+    elif numeric_pool:
+        pool = numeric_pool
+
+    unique: dict[tuple[str, str, str], Stage3Fact] = {}
+    for fact in pool:
+        row_label = str(fact.table_context.get("row_label") or fact.label or "")
+        value = str(fact.normalized_value if fact.normalized_value is not None else fact.value)
+        key = (row_label, str(fact.period or ""), value)
+        unique.setdefault(key, fact)
+    return sorted(
+        unique.values(),
+        key=lambda fact: (
+            str(fact.table_context.get("row_label") or fact.label or ""),
+            str(fact.period or ""),
+            str(fact.document_id or ""),
+        ),
+    )[: max(int(limit), 1)]
+
+
 def strict_grounding_enabled() -> bool:
     value = os.getenv("DIS164_STRICT_GROUNDING_V2", "true").strip().lower()
     return value not in {"0", "false", "no", "off"}
@@ -229,6 +265,7 @@ __all__ = [
     "aggregation_scope_for_context",
     "fact_matches_intent",
     "matching_facts",
+    "select_segment_facts",
     "period_matches",
     "requested_aggregation_scope",
     "requested_periods",
