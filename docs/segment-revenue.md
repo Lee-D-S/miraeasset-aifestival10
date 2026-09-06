@@ -23,3 +23,8 @@ this mapping changes so an older table parse is not reused.
 The answer writer lists each requested segment. Stage4 also checks that every
 extracted segment amount appears in the final answer and fails closed when one
 is missing.
+
+Fallback answers render a table period label (for example, `2025년 3분기`) so
+the year is not mistaken for an answer number. Citation lines use an explicit
+`[문서ID: ...]` marker, which keeps document identifiers out of numeric claim
+validation.
