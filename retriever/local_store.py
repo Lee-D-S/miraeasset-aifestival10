@@ -53,10 +53,15 @@ _SCALAR_METADATA_COLUMNS = (
 # flattened markdown. Optional -- omitted when the index lacks the column.
 _EXTRA_PASSTHROUGH_COLUMNS = ("raw_json_content",)
 _MAX_VECTOR_CANDIDATES = 2_000
-# Sections that carry a company's multi-year metric tables (요약재무정보 and the
-# MD&A financial-results tables). A "최근 3년 X 추이" answer lives here for every
-# amount metric, but these chunks have high, lexicographically late ``id`` values
-# in a large 사업보고서, so the supplementary pass floats them ahead of ``id`` order.
+# 요약재무정보: a small section (a few chunks per report) whose table lists every
+# amount metric for the last three fiscal years with a ``제NN기`` header, so one
+# chunk answers a "최근 3년 X 추이" question. Its ``id`` sorts late in a large
+# 사업보고서, so a dedicated small-LIMIT pass keeps it regardless of ``id`` order.
+_FINANCIAL_SUMMARY_LIKE = "%요약재무%"
+_FINANCIAL_SUMMARY_LIMIT = 40
+# Broader financial-results sections floated ahead of ``id`` order inside the
+# bounded supplementary pass (the 경영진단 chapter is large, so it only gets a
+# tiebreak here, not a guaranteed slot).
 _SUMMARY_SECTION_LIKE = ("요약재무", "경영진단", "재무상태", "영업실적")
 _CHROMA_METADATA_SAMPLE = 1_000
 
@@ -497,6 +502,21 @@ class LocalHybridRetriever:
             if not any(scope and (scope in term.lower() or term.lower() in scope) for scope in scope_terms)
         ]
         with self.engine.connect() as connection:
+            # 0) Guaranteed pass: the 요약재무정보 table. Few chunks per report,
+            #    late ``id``, and it carries every amount metric for the last
+            #    three fiscal years, so a small dedicated LIMIT keeps it in the
+            #    candidate set no matter where ``id`` order places it.
+            summary_rows: list[Any] = []
+            if where_sql and "section_name" in self._table_columns:
+                summary_sql = (
+                    f"SELECT {columns} FROM {self.table_name}"
+                    f"{where_sql} AND section_name LIKE :fin_summary ORDER BY id ASC LIMIT :limit"
+                )
+                summary_rows = connection.execute(
+                    text(summary_sql),
+                    {**params, "fin_summary": _FINANCIAL_SUMMARY_LIKE, "limit": _FINANCIAL_SUMMARY_LIMIT},
+                ).mappings().all()
+
             # 1) Supplementary pass: rows that literally contain the query's
             #    salient words. Runs first so query-relevant rows are always
             #    kept when the merged set is truncated to ``limit``. Bounded so
@@ -509,7 +529,8 @@ class LocalHybridRetriever:
                 term_params = {
                     f"kw_{index}": f"%{term}%" for index, term in enumerate(effective_terms)
                 }
-                term_limit = max(min(limit // 2, 600), 1)
+                # Leave at least a quarter of ``limit`` for the base pass.
+                term_limit = max(min(limit * 3 // 4, 900), 1)
                 order_sql = "ORDER BY id ASC"
                 if "section_name" in self._table_columns:
                     # Float 요약재무정보 / MD&A financial-results chunks to the
@@ -547,7 +568,7 @@ class LocalHybridRetriever:
 
         seen: set[str] = set()
         ordered: list[Any] = []
-        for row in (*term_rows, *base_rows):
+        for row in (*summary_rows, *term_rows, *base_rows):
             row_id = str(row.get("id") or row.get("chunk_id") or "")
             if row_id in seen:
                 continue

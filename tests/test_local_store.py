@@ -411,3 +411,16 @@ def test_supplementary_pass_floats_summary_section_over_id_order(tmp_path):
         if row["id"] == "20240312000736_315"
     )
     assert "6,566,976" in (target["raw_json_content"] or "")
+
+
+def test_financial_summary_pass_surfaces_chunk_without_a_matching_term(tmp_path):
+    """The guaranteed 요약재무정보 pass keeps the chunk even when the query's
+    salient term is not in its text (so the term pass would not pull it)."""
+    repo = _summary_section_repo(tmp_path)
+    manifest = {"corp_names": ["삼성전자"], "base_years": [2023]}
+    # "당기순이익" is nowhere in the 요약재무정보 chunk text above.
+    ids = {
+        row["id"]
+        for row in repo.filter_candidates(manifest, 10, query="삼성전자 최근 3년 당기순이익 추이")
+    }
+    assert "20240312000736_315" in ids
