@@ -38,10 +38,12 @@ def build_retriever_node(
         if companies:
             manifest["corp_names"] = companies
         if periods:
-            manifest["base_years"] = [int(period) for period in periods if period.isdigit()]
+            years = [int(period[:4]) for period in periods if str(period)[:4].isdigit()]
+            if years:
+                manifest["base_years"] = years
         sub_intent["metric"] = metric
         sub_intent["manifest_filter"] = manifest
-        sub_intent["time"] = {"years": periods}
+        sub_intent["time"] = {"years": [str(year) for year in manifest.get("base_years") or []] or periods}
         sub_intent["calculation"] = {}
         sub_intent["query_plan"] = []
         return sub_intent

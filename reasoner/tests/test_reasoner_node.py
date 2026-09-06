@@ -449,6 +449,21 @@ class ReasonerNodeTests(unittest.TestCase):
                 },
             },
             {
+                "id": "plan-table-2025",
+                "source": "annual.md",
+                "text": (
+                    "|  | 2025년(당기 이행연도) | 잔여 계획기간 합계 |\n"
+                    "| --- | --- | --- |\n"
+                    "| 매출액 | 100 | 합계 구간  합계 |"
+                ),
+                "metadata": {
+                    "corp_name": "삼성전자",
+                    "base_year": 2025,
+                    "base_month": 12,
+                    "basis": "연결",
+                },
+            },
+            {
                 "id": "total-revenue-2025",
                 "source": "annual.md",
                 "text": "2025년 당사의 매출은 333조 6,059억원으로 전년 동기 대비 10.9% 증가하였으며...",

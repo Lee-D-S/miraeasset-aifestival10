@@ -152,6 +152,7 @@ def test_retriever_search_query_includes_requested_years():
         },
     )
     assert "2023" in query and "2025" in query
+    assert "당사의 매출" in query
 
 
 def test_retriever_diversify_by_year_keeps_each_requested_year():
@@ -165,6 +166,133 @@ def test_retriever_diversify_by_year_keeps_each_requested_year():
     ]
     picked = _diversify_by_year(docs, ["2023", "2024", "2025"], 3)
     assert {item["id"] for item in picked} == {"y25", "y24a", "y23"}
+
+
+def test_retriever_diversify_prefers_company_total_over_plan_table():
+    from retriever.retrieval import _diversify_by_year
+
+    docs = [
+        {
+            "id": "plan-2025",
+            "text": "|  | 2025년(당기 이행연도) | 잔여 계획기간 합계 | 합계 구간  합계 |",
+            "metadata": {"base_year": 2025},
+            "hybrid_score": 0.99,
+        },
+        {
+            "id": "total-2025",
+            "text": "2025년 당사의 매출은 333조 6,059억원으로 전년 동기 대비 증가하였으며...",
+            "metadata": {"base_year": 2025},
+            "hybrid_score": 0.1,
+        },
+        {
+            "id": "total-2024",
+            "text": "2024년 당사의 매출은 300조 8,709억원으로 전년 동기 대비 증가하였으며...",
+            "metadata": {"base_year": 2024},
+            "hybrid_score": 0.5,
+        },
+        {
+            "id": "total-2023",
+            "text": "2023년 당사의 매출은 258조 9,355억원으로 전년 대비 감소하였으며...",
+            "metadata": {"base_year": 2023},
+            "hybrid_score": 0.4,
+        },
+    ]
+    picked = _diversify_by_year(docs, ["2023", "2024", "2025"], 10)
+    by_year = {str(item["metadata"]["base_year"]): item["id"] for item in picked[:3]}
+    assert by_year["2025"] == "total-2025"
+    assert {item["id"] for item in picked} >= {"total-2023", "total-2024", "total-2025"}
+
+
+def test_retriever_keeps_yearly_totals_when_plan_tables_dominate_candidates():
+    plan_tables = [
+        {
+            "id": f"plan-2025-{index}",
+            "text": (
+                "삼성전자 연결 매출액 | 2024년 | 2025년(당기 이행연도) | "
+                "잔여 계획기간 합계 | 합계 구간  합계 |"
+            ),
+            "source": "plan.md",
+            "metadata": {
+                "corp_name": "삼성전자",
+                "doc_group": "periodic",
+                "doc_subtype": "annual",
+                "base_year": 2025,
+                "base_month": 12,
+                "is_correction": False,
+            },
+        }
+        for index in range(12)
+    ]
+    totals = [
+        {
+            "id": "total-2023",
+            "text": "2023년 당사의 매출은 258조 9,355억원으로 전년 대비 감소하였으며...",
+            "source": "2023.md",
+            "metadata": {
+                "corp_name": "삼성전자",
+                "doc_group": "periodic",
+                "doc_subtype": "annual",
+                "base_year": 2023,
+                "base_month": 12,
+                "is_correction": False,
+            },
+        },
+        {
+            "id": "total-2024",
+            "text": "2024년 당사의 매출은 300조 8,709억원으로 전년 동기 대비 증가하였으며...",
+            "source": "2024.md",
+            "metadata": {
+                "corp_name": "삼성전자",
+                "doc_group": "periodic",
+                "doc_subtype": "annual",
+                "base_year": 2024,
+                "base_month": 12,
+                "is_correction": False,
+            },
+        },
+        {
+            "id": "total-2025",
+            "text": "2025년 당사의 매출은 333조 6,059억원으로 전년 동기 대비 증가하였으며...",
+            "source": "2025.md",
+            "metadata": {
+                "corp_name": "삼성전자",
+                "doc_group": "periodic",
+                "doc_subtype": "annual",
+                "base_year": 2025,
+                "base_month": 12,
+                "is_correction": False,
+            },
+        },
+    ]
+    documents = plan_tables + totals
+    scores = {item["id"]: 0.2 for item in documents}
+    scores.update({item["id"]: 0.9 for item in plan_tables})
+    retriever = InMemoryRetriever(documents, vector_scores=scores)
+    state = _state(
+        question="삼성전자의 최근 3년 매출액 추이를 알려줘",
+        intent={
+            "normalized_question": "삼성전자의 최근 3년 매출액 추이를 알려줘",
+            "metric": "revenue",
+            "basis": "연결",
+            "time": {"years": [2023, 2024, 2025], "base_months": [12]},
+            "manifest_filter": {
+                "corp_names": ["삼성전자"],
+                "doc_group": "periodic",
+                "doc_subtype": "annual",
+                "base_years": [2023, 2024, 2025],
+                "base_months": [12],
+                "is_correction": False,
+            },
+        },
+    )
+    result = build_retriever_node(
+        retriever=retriever,
+        config=RetrievalConfig(candidate_limit=40, branch_limit=6, final_limit=6),
+    )(state)["retriever_result"]
+    cited = {item["id"] for item in result["documents"]}
+    assert "total-2023" in cited
+    assert "total-2024" in cited
+    assert "total-2025" in cited
 
 
 def test_reasoner_consumes_cited_documents_from_retriever_result():

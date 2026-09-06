@@ -60,6 +60,10 @@ def aggregation_scope_for_context(
     # row_label to compare against the extracted metric label.
     if any(cue in joined for cue in _NON_TOTAL_CUES):
         return "not_total"
+    # Forward-looking capex/investment plan tables use year headers and
+    # "합계" without being company-wide revenue totals.
+    if any(cue in joined for cue in ("잔여 계획기간", "계획기간", "합계 구간", "당기 이행연도")):
+        return "not_total"
     # Explicit total rows take precedence over a table title such as
     # "부문별 매출현황". This keeps a table's total row usable for a total query.
     if any(cue in joined for cue in ("총계", "합계", "전체 합", "소계")):
